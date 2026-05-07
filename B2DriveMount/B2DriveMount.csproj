@@ -10,7 +10,6 @@
     <SelfContained>true</SelfContained>
     <PublishSingleFile>true</PublishSingleFile>
     <IncludeNativeLibrariesForSelfExtract>true</IncludeNativeLibrariesForSelfExtract>
-    <Version>0.1.2</Version>
     <AssemblyName>CloudDriveMount</AssemblyName>
     <AssemblyTitle>Cloud Drive Mount</AssemblyTitle>
     <Product>Cloud Drive Mount</Product>
