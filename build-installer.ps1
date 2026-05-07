@@ -43,18 +43,18 @@ if (-not $dotnetCommand) {
 }
 
 $repoRoot = Split-Path -Parent $MyInvocation.MyCommand.Path
-$installerProject = Join-Path $repoRoot 'installer\CloudDriveMount.installer.wixproj'
+$bootstrapperProject = Join-Path $repoRoot 'installer\CloudDriveMount.bootstrapper.wixproj'
 
-Write-Host "Building Cloud Drive Mount MSI with PackageVersion=$Version..."
-& $dotnetCommand build $installerProject -c $Configuration "-p:PackageVersion=$Version"
+Write-Host "Building Cloud Drive Mount installer with PackageVersion=$Version..."
+& $dotnetCommand build $bootstrapperProject -c $Configuration "-p:PackageVersion=$Version"
 
 if ($LASTEXITCODE -ne 0) {
     exit $LASTEXITCODE
 }
 
-$msiPath = Join-Path $repoRoot "installer\bin\$Configuration\CloudDriveMount.installer.msi"
-Write-Host "Built MSI: $msiPath"
+$installerPath = Join-Path $repoRoot "installer\bin\$Configuration\CloudDriveMount.bootstrapper.exe"
+Write-Host "Built installer: $installerPath"
 
 if ($OpenInstaller) {
-    Start-Process $msiPath
+    Start-Process $installerPath
 }

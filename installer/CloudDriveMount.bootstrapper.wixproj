@@ -1,0 +1,26 @@
+<Project Sdk="WixToolset.Sdk/6.0.2" InitialTargets="EnsureWinFsp;BuildAppMsi">
+  <PropertyGroup>
+    <OutputType>Bundle</OutputType>
+    <EnableDefaultItems>false</EnableDefaultItems>
+    <InstallerPlatform>x64</InstallerPlatform>
+    <Cultures>en-us</Cultures>
+    <PackageVersion Condition="'$(PackageVersion)' == ''">1.0.0</PackageVersion>
+    <AppMsiPath>$(MSBuildProjectDirectory)\bin\$(Configuration)\CloudDriveMount.installer.msi</AppMsiPath>
+    <WinFspMsiPath>$(MSBuildProjectDirectory)\assets\winfsp.msi</WinFspMsiPath>
+    <DefineConstants>$(DefineConstants);PackageVersion=$(PackageVersion);AppMsiPath=$(AppMsiPath);WinFspMsiPath=$(WinFspMsiPath)</DefineConstants>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <Compile Include="Bundle.wxs" />
+    <PackageReference Include="WixToolset.BootstrapperApplications.wixext" Version="6.0.2" />
+    <PackageReference Include="WixToolset.Util.wixext" Version="6.0.2" />
+  </ItemGroup>
+
+  <Target Name="EnsureWinFsp" Condition="!Exists('$(WinFspMsiPath)')">
+    <Exec Command="powershell -NoProfile -ExecutionPolicy Bypass -Command &quot;$ErrorActionPreference='Stop'; $dest='$(WinFspMsiPath)'; New-Item -ItemType Directory -Path (Split-Path -Parent $dest) -Force | Out-Null; $release=Invoke-RestMethod -Uri 'https://api.github.com/repos/winfsp/winfsp/releases/latest' -Headers @{ 'User-Agent'='PowerShell' }; $asset=$release.assets | Where-Object { $_.name -match '\.msi$' } | Select-Object -First 1; if (-not $asset) { throw 'Could not find WinFsp MSI release asset.' }; Invoke-WebRequest -Uri $asset.browser_download_url -OutFile $dest -UseBasicParsing&quot;" />
+  </Target>
+
+  <Target Name="BuildAppMsi">
+    <Exec Command="dotnet build &quot;$(MSBuildProjectDirectory)\CloudDriveMount.installer.wixproj&quot; -c $(Configuration) -p:PackageVersion=$(PackageVersion)" />
+  </Target>
+</Project>

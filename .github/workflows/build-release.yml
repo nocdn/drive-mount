@@ -1,4 +1,4 @@
-name: Build And Release MSI
+name: Build And Release Installer
 
 on:
   push:
@@ -15,7 +15,8 @@ jobs:
       DOTNET_NOLOGO: true
       DOTNET_CLI_TELEMETRY_OPTOUT: true
       Configuration: Release
-      InstallerProject: installer/CloudDriveMount.installer.wixproj
+      InstallerProject: installer/CloudDriveMount.bootstrapper.wixproj
+      BootstrapperOutput: ${{ github.workspace }}\installer\bin\Release\CloudDriveMount.bootstrapper.exe
       InstallerOutput: ${{ github.workspace }}\installer\bin\Release\CloudDriveMount.installer.msi
       AppPayloadOutput: ${{ github.workspace }}\B2DriveMount\bin\Release\net10.0-windows\win-x64\publish
 
@@ -36,6 +37,7 @@ jobs:
           $version = "0.0.${env:GITHUB_RUN_NUMBER}"
           $tagName = "v$version"
           $releaseName = "v$version"
+          $setupName = "CloudDriveMount-$version-x64-setup.exe"
           $msiName = "CloudDriveMount-$version-x64.msi"
           $portableZipName = "CloudDriveMount-$version-x64-portable.zip"
 
@@ -43,10 +45,11 @@ jobs:
           "package_version=$version" >> $env:GITHUB_OUTPUT
           "tag_name=$tagName" >> $env:GITHUB_OUTPUT
           "release_name=$releaseName" >> $env:GITHUB_OUTPUT
+          "setup_name=$setupName" >> $env:GITHUB_OUTPUT
           "msi_name=$msiName" >> $env:GITHUB_OUTPUT
           "portable_zip_name=$portableZipName" >> $env:GITHUB_OUTPUT
 
-      - name: Build MSI
+      - name: Build installer
         shell: pwsh
         run: |
           dotnet build $env:InstallerProject -c $env:Configuration -p:PackageVersion=${{ steps.metadata.outputs.package_version }}
@@ -56,6 +59,7 @@ jobs:
         run: |
           New-Item -ItemType Directory -Path release -Force | Out-Null
 
+          Copy-Item $env:BootstrapperOutput (Join-Path release '${{ steps.metadata.outputs.setup_name }}') -Force
           Copy-Item $env:InstallerOutput (Join-Path release '${{ steps.metadata.outputs.msi_name }}') -Force
 
           if (Test-Path $env:AppPayloadOutput) {
@@ -75,7 +79,8 @@ jobs:
             "Branch: ``${{ github.ref_name }}``",
             "",
             "### Assets",
-            "- ``${{ steps.metadata.outputs.msi_name }}`` - Windows MSI installer",
+            "- ``${{ steps.metadata.outputs.setup_name }}`` - Recommended installer; installs WinFsp if needed, then Cloud Drive Mount",
+            "- ``${{ steps.metadata.outputs.msi_name }}`` - App MSI only; requires WinFsp to already be installed",
             "- ``${{ steps.metadata.outputs.portable_zip_name }}`` - Portable app files"
           ) | Set-Content -Path release-notes.md
 
@@ -85,6 +90,7 @@ jobs:
         with:
           name: CloudDriveMount-${{ steps.metadata.outputs.package_version }}-${{ steps.metadata.outputs.short_sha }}
           path: |
+            release/*.exe
             release/*.msi
             release/*.zip
             release-notes.md
@@ -101,5 +107,6 @@ jobs:
           make_latest: true
           fail_on_unmatched_files: true
           files: |
+            release/*.exe
             release/*.msi
             release/*.zip
