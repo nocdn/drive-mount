@@ -47,6 +47,8 @@ public partial class MainWindow : Window
             foreach (var bucket in _settings.Buckets)
                 AddBucketRow(bucket.BucketName, bucket.DriveLetter);
 
+        UpdateSaveMountButton();
+
         var logMsg = "Cloud Drive Mount started. Log file: " + LogService.GetLogFilePath();
         AddLog("[INFO] " + logMsg);
         LogService.Info(logMsg);
@@ -82,6 +84,7 @@ public partial class MainWindow : Window
     private void AddBucketRow(string bucketName = "", string driveLetter = "")
     {
         var rowSaved = !string.IsNullOrWhiteSpace(bucketName) && !string.IsNullOrWhiteSpace(driveLetter);
+        var savedDriveLetter = NormalizeDriveInput(driveLetter);
         var row = new StackPanel
         {
             Orientation = System.Windows.Controls.Orientation.Horizontal,
@@ -97,12 +100,26 @@ public partial class MainWindow : Window
 
         void UpdateRemoveButton() => removeButton.IsEnabled = rowSaved || (string.IsNullOrWhiteSpace(bucketText.Text) && string.IsNullOrWhiteSpace(driveText.Text));
 
-        removeButton.Click += (_, _) => BucketsPanel.Children.Remove(row);
+        removeButton.Click += (_, _) =>
+        {
+            var driveToUnmount = rowSaved ? savedDriveLetter : NormalizeDriveInput(driveText.Text);
+            BucketsPanel.Children.Remove(row);
+
+            if (!string.IsNullOrWhiteSpace(driveToUnmount))
+            {
+                _rcloneManager.UnmountDrive(driveToUnmount);
+                AddLog("[INFO] Removed drive " + driveToUnmount + ":");
+            }
+
+            SaveSettings();
+            UpdateSaveMountButton();
+        };
         saveButton.Click += (_, _) =>
         {
             if (SaveSettings())
             {
                 rowSaved = true;
+                savedDriveLetter = NormalizeDriveInput(driveText.Text);
                 UpdateRemoveButton();
             }
         };
@@ -110,11 +127,13 @@ public partial class MainWindow : Window
         {
             rowSaved = false;
             UpdateRemoveButton();
+            UpdateSaveMountButton();
         };
         driveText.TextChanged += (_, _) =>
         {
             rowSaved = false;
             UpdateRemoveButton();
+            UpdateSaveMountButton();
         };
 
         row.Children.Add(bucketLabel);
@@ -126,6 +145,18 @@ public partial class MainWindow : Window
 
         BucketsPanel.Children.Add(row);
         UpdateRemoveButton();
+        UpdateSaveMountButton();
+    }
+
+    private void UpdateSaveMountButton()
+    {
+        BtnSaveMount.IsEnabled = BucketsPanel.Children.OfType<StackPanel>().Any(row =>
+        {
+            var textBoxes = row.Children.OfType<System.Windows.Controls.TextBox>().ToList();
+            return textBoxes.Count >= 2 &&
+                   !string.IsNullOrWhiteSpace(textBoxes[0].Text) &&
+                   !string.IsNullOrWhiteSpace(textBoxes[1].Text);
+        });
     }
 
     private bool SaveSettings()
@@ -134,7 +165,7 @@ public partial class MainWindow : Window
         {
             _settings.ApplicationKeyId = TxtKeyId.Text.Trim();
             _settings.ApplicationKey = TxtKey.Text.Trim();
-            _settings.Buckets = CollectBucketMounts();
+            _settings.Buckets = CollectBucketMounts(requireAtLeastOne: false);
             _settings.StartOnLogin = ChkStartOnLogin.IsChecked == true;
             _settings.StartMinimized = ChkStartMinimized.IsChecked == true;
 
@@ -158,7 +189,7 @@ public partial class MainWindow : Window
         }
     }
 
-    private List<BucketMount> CollectBucketMounts()
+    private List<BucketMount> CollectBucketMounts(bool requireAtLeastOne)
     {
         var buckets = new List<BucketMount>();
         var seenDrives = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
@@ -203,7 +234,7 @@ public partial class MainWindow : Window
             buckets.Add(new BucketMount { BucketName = bucketText, DriveLetter = drive });
         }
 
-        if (buckets.Count == 0)
+        if (requireAtLeastOne && buckets.Count == 0)
             throw new InvalidOperationException("Add at least one bucket and drive letter before mounting.");
 
         return buckets;
@@ -221,10 +252,22 @@ public partial class MainWindow : Window
     private void BtnAddBucket_Click(object sender, RoutedEventArgs e)
     {
         AddBucketRow();
+        UpdateSaveMountButton();
     }
 
     private void BtnSaveMount_Click(object? sender, RoutedEventArgs? e)
     {
+        try
+        {
+            _settings.Buckets = CollectBucketMounts(requireAtLeastOne: true);
+        }
+        catch (Exception ex)
+        {
+            AddLog("[ERROR] " + ex.Message);
+            LogService.Error(ex.ToString());
+            return;
+        }
+
         if (SaveSettings())
         {
             var ok = _rcloneManager.Mount(_settings);

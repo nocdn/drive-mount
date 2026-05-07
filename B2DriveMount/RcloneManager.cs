@@ -185,13 +185,12 @@ public class RcloneManager : IDisposable
             driveLetter += ":";
 
         var remotePath = $"b2remote:{bucketName}";
-        var shareName = SanitizeShareName(bucketName);
-        var volName = $"\\\\CloudMount\\{shareName}";
+        var volName = bucketName;
 
         var psi = new ProcessStartInfo
         {
             FileName = rclonePath,
-            Arguments = $"mount \"{remotePath}\" \"{driveLetter}\" --config \"{_configPath}\" --network-mode --vfs-cache-mode writes --volname \"{volName}\" --links",
+            Arguments = $"mount \"{remotePath}\" \"{driveLetter}\" --config \"{_configPath}\" --vfs-cache-mode writes --volname \"{volName}\" --links",
             RedirectStandardOutput = true,
             RedirectStandardError = true,
             UseShellExecute = false,
@@ -256,15 +255,6 @@ public class RcloneManager : IDisposable
         }
     }
 
-    private static string SanitizeShareName(string value)
-    {
-        var invalid = new[] { '\\', '/', ':', '*', '?', '"', '<', '>', '|' };
-        var result = value;
-        foreach (var c in invalid)
-            result = result.Replace(c, '-');
-        return string.IsNullOrWhiteSpace(result) ? "bucket" : result;
-    }
-
     private void HandleStderrLine(string line, string bucketName)
     {
         LogService.Debug("[rclone stderr] [" + bucketName + "] " + line);
@@ -326,6 +316,40 @@ public class RcloneManager : IDisposable
         }
 
         _processes.Clear();
+    }
+
+    public void UnmountDrive(string driveLetter)
+    {
+        var drive = driveLetter.Trim().ToUpperInvariant();
+        if (!drive.EndsWith(":"))
+            drive += ":";
+
+        if (!_processes.TryGetValue(drive, out var process))
+            return;
+
+        _processes.Remove(drive);
+        if (process.HasExited)
+        {
+            process.Dispose();
+            return;
+        }
+
+        LogService.Info("Unmounting drive " + drive + ": killing rclone process PID=" + process.Id);
+        _intentionalStops.Add(process.Id);
+        try
+        {
+            process.Kill();
+            process.WaitForExit(5000);
+            LogService.Info("rclone process terminated for drive " + drive + ". PID=" + process.Id);
+        }
+        catch (Exception ex)
+        {
+            LogService.Error("Error killing rclone process for drive " + drive + ": " + ex.Message);
+        }
+        finally
+        {
+            process.Dispose();
+        }
     }
 
     public void Dispose()
