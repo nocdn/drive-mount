@@ -18,7 +18,7 @@
     <UIRef Id="WixUI_ErrorProgressText" />
     <CustomAction Id="LaunchInstalledCloudDriveMount"
                   FileRef="CloudDriveMountExecutableFile"
-                  ExeCommand=""
+                  ExeCommand="--show-window"
                   Return="asyncNoWait" />
 
     <UI>

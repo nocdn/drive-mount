@@ -1,3 +1,4 @@
+using System.Linq;
 using System.Windows;
 
 namespace B2DriveMount;
@@ -34,7 +35,8 @@ public partial class App : System.Windows.Application
         };
 
         var settings = new SettingsService().Load();
-        if (!settings.StartMinimized)
+        var showWindow = e.Args.Contains("--show-window");
+        if (showWindow || !settings.StartMinimized)
         {
             _mainWindow.Show();
         }
