@@ -1,0 +1,22 @@
+<Wix xmlns="http://wixtoolset.org/schemas/v4/wxs">
+  <Fragment>
+    <ComponentGroup Id="ApplicationShortcuts">
+      <Component Id="StartMenuShortcutComponent" Directory="ApplicationProgramsFolder" Guid="*">
+        <Shortcut
+          Id="ApplicationStartMenuShortcut"
+          Name="Cloud Drive Mount"
+          Description="Launch Cloud Drive Mount"
+          Target="[INSTALLFOLDER]CloudDriveMount.exe"
+          WorkingDirectory="INSTALLFOLDER" />
+        <RemoveFolder Id="RemoveApplicationProgramsFolder" Directory="ApplicationProgramsFolder" On="uninstall" />
+        <RegistryValue
+          Root="HKCU"
+          Key="Software\Bartek\CloudDriveMount"
+          Name="StartMenuShortcut"
+          Type="integer"
+          Value="1"
+          KeyPath="yes" />
+      </Component>
+    </ComponentGroup>
+  </Fragment>
+</Wix>

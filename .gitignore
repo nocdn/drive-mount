@@ -1,0 +1,23 @@
+# Build output
+**/bin/
+**/obj/
+publish/
+release/
+
+# Installer/build artifacts
+*.exe
+*.msi
+*.wixpdb
+*.zip
+
+# Local/runtime binaries downloaded or copied during build
+rclone.exe
+winfsp.msi
+
+# OS/editor noise
+.vs/
+.vscode/
+*.user
+*.suo
+Thumbs.db
+Desktop.ini

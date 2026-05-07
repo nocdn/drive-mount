@@ -1,0 +1,28 @@
+<Project Sdk="Microsoft.NET.Sdk">
+  <PropertyGroup>
+    <OutputType>WinExe</OutputType>
+    <TargetFramework>net10.0-windows</TargetFramework>
+    <UseWPF>true</UseWPF>
+    <UseWindowsForms>true</UseWindowsForms>
+    <Nullable>enable</Nullable>
+    <ImplicitUsings>enable</ImplicitUsings>
+    <RuntimeIdentifier>win-x64</RuntimeIdentifier>
+    <SelfContained>true</SelfContained>
+    <PublishSingleFile>true</PublishSingleFile>
+    <IncludeNativeLibrariesForSelfExtract>true</IncludeNativeLibrariesForSelfExtract>
+    <Version>0.1.2</Version>
+    <AssemblyName>CloudDriveMount</AssemblyName>
+    <AssemblyTitle>Cloud Drive Mount</AssemblyTitle>
+    <Product>Cloud Drive Mount</Product>
+    <Copyright>CloudDriveMount</Copyright>
+  </PropertyGroup>
+
+  <!-- If rclone.exe is placed next to the project file, it will be copied alongside the published EXE for a truly self-contained distribution -->
+  <ItemGroup>
+    <Content Include="rclone.exe" Condition="Exists('rclone.exe')">
+      <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
+      <CopyToPublishDirectory>PreserveNewest</CopyToPublishDirectory>
+      <ExcludeFromSingleFile>true</ExcludeFromSingleFile>
+    </Content>
+  </ItemGroup>
+</Project>

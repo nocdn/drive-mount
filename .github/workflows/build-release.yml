@@ -1,0 +1,105 @@
+name: Build And Release MSI
+
+on:
+  push:
+    branches:
+      - main
+
+permissions:
+  contents: write
+
+jobs:
+  build-release:
+    runs-on: windows-2022
+    env:
+      DOTNET_NOLOGO: true
+      DOTNET_CLI_TELEMETRY_OPTOUT: true
+      Configuration: Release
+      InstallerProject: installer/CloudDriveMount.installer.wixproj
+      InstallerOutput: ${{ github.workspace }}\installer\bin\Release\CloudDriveMount.installer.msi
+      AppPayloadOutput: ${{ github.workspace }}\B2DriveMount\bin\Release\net10.0-windows\win-x64\publish
+
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@v6
+
+      - name: Set up .NET SDK
+        uses: actions/setup-dotnet@v5
+        with:
+          dotnet-version: 10.0.x
+
+      - name: Compute build metadata
+        id: metadata
+        shell: pwsh
+        run: |
+          $shortSha = "${env:GITHUB_SHA}".Substring(0, 7)
+          $version = "0.0.${env:GITHUB_RUN_NUMBER}"
+          $tagName = "v$version"
+          $releaseName = "v$version"
+          $msiName = "CloudDriveMount-$version-x64.msi"
+          $portableZipName = "CloudDriveMount-$version-x64-portable.zip"
+
+          "short_sha=$shortSha" >> $env:GITHUB_OUTPUT
+          "package_version=$version" >> $env:GITHUB_OUTPUT
+          "tag_name=$tagName" >> $env:GITHUB_OUTPUT
+          "release_name=$releaseName" >> $env:GITHUB_OUTPUT
+          "msi_name=$msiName" >> $env:GITHUB_OUTPUT
+          "portable_zip_name=$portableZipName" >> $env:GITHUB_OUTPUT
+
+      - name: Build MSI
+        shell: pwsh
+        run: |
+          dotnet build $env:InstallerProject -c $env:Configuration -p:PackageVersion=${{ steps.metadata.outputs.package_version }}
+
+      - name: Prepare release assets
+        shell: pwsh
+        run: |
+          New-Item -ItemType Directory -Path release -Force | Out-Null
+
+          Copy-Item $env:InstallerOutput (Join-Path release '${{ steps.metadata.outputs.msi_name }}') -Force
+
+          if (Test-Path $env:AppPayloadOutput) {
+            Compress-Archive -Path (Join-Path $env:AppPayloadOutput '*') -DestinationPath (Join-Path release '${{ steps.metadata.outputs.portable_zip_name }}') -Force
+          }
+          else {
+            throw "App payload folder not found: $env:AppPayloadOutput"
+          }
+
+      - name: Generate release notes
+        shell: pwsh
+        run: |
+          @(
+            "## Cloud Drive Mount ${{ steps.metadata.outputs.release_name }}",
+            "",
+            "Commit: ``${{ github.sha }}``",
+            "Branch: ``${{ github.ref_name }}``",
+            "",
+            "### Assets",
+            "- ``${{ steps.metadata.outputs.msi_name }}`` - Windows MSI installer",
+            "- ``${{ steps.metadata.outputs.portable_zip_name }}`` - Portable app files"
+          ) | Set-Content -Path release-notes.md
+
+      - name: Upload workflow artifacts
+        uses: actions/upload-artifact@v7
+        if: ${{ !env.ACT }}
+        with:
+          name: CloudDriveMount-${{ steps.metadata.outputs.package_version }}-${{ steps.metadata.outputs.short_sha }}
+          path: |
+            release/*.msi
+            release/*.zip
+            release-notes.md
+          if-no-files-found: error
+
+      - name: Publish GitHub release
+        uses: softprops/action-gh-release@v2
+        with:
+          tag_name: ${{ steps.metadata.outputs.tag_name }}
+          target_commitish: ${{ github.sha }}
+          name: ${{ steps.metadata.outputs.release_name }}
+          body_path: release-notes.md
+          prerelease: false
+          make_latest: true
+          fail_on_unmatched_files: true
+          files: |
+            release/*.msi
+            release/*.zip

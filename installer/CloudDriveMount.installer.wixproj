@@ -1,0 +1,26 @@
+<Project Sdk="WixToolset.Sdk/6.0.2" InitialTargets="PublishApplication">
+  <PropertyGroup>
+    <OutputType>Package</OutputType>
+    <InstallerPlatform>x64</InstallerPlatform>
+    <Cultures>en-us</Cultures>
+    <PackageVersion Condition="'$(PackageVersion)' == ''">1.0.0</PackageVersion>
+    <SkipAppPublish Condition="'$(SkipAppPublish)' == ''">false</SkipAppPublish>
+    <SuppressValidation>true</SuppressValidation>
+    <AppProject>..\B2DriveMount\B2DriveMount.csproj</AppProject>
+    <AppRuntimeIdentifier>win-x64</AppRuntimeIdentifier>
+    <AppPayloadDir>$(MSBuildProjectDirectory)\..\B2DriveMount\bin\$(Configuration)\net10.0-windows\$(AppRuntimeIdentifier)\publish</AppPayloadDir>
+    <DefineConstants>$(DefineConstants);AppPayloadDir=$(AppPayloadDir);PackageVersion=$(PackageVersion)</DefineConstants>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <PackageReference Include="WixToolset.UI.wixext" Version="6.0.2" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <ProjectReference Include="..\B2DriveMount\B2DriveMount.csproj" />
+  </ItemGroup>
+
+  <Target Name="PublishApplication" Condition="'$(SkipAppPublish)' != 'true'">
+    <Exec Command="dotnet publish &quot;$(AppProject)&quot; -c $(Configuration) -r $(AppRuntimeIdentifier) --self-contained true -p:PublishSingleFile=true -p:IncludeNativeLibrariesForSelfExtract=true -p:Version=$(PackageVersion)" />
+  </Target>
+</Project>

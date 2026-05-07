@@ -1,0 +1,14 @@
+<Wix xmlns="http://wixtoolset.org/schemas/v4/wxs">
+  <Fragment>
+    <ComponentGroup Id="ApplicationFiles" Directory="INSTALLFOLDER">
+      <Files Include="$(AppPayloadDir)\**">
+        <Exclude Files="$(AppPayloadDir)\**\*.pdb" />
+        <Exclude Files="$(AppPayloadDir)\CloudDriveMount.exe" />
+      </Files>
+
+      <Component Id="CloudDriveMountExecutableComponent" Guid="*">
+        <File Id="CloudDriveMountExecutableFile" Source="$(AppPayloadDir)\CloudDriveMount.exe" KeyPath="yes" />
+      </Component>
+    </ComponentGroup>
+  </Fragment>
+</Wix>
