@@ -1,7 +1,7 @@
 using System.Linq;
 using System.Windows;
 
-namespace B2DriveMount;
+namespace CloudDriveMount;
 
 public partial class App : System.Windows.Application
 {

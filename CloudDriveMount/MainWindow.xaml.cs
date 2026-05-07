@@ -4,7 +4,7 @@ using System.Windows;
 using System.Windows.Controls;
 using System.Windows.Forms;
 
-namespace B2DriveMount;
+namespace CloudDriveMount;
 
 public partial class MainWindow : Window
 {

@@ -1,7 +1,7 @@
 using System.IO;
 using System.Text.Json;
 
-namespace B2DriveMount;
+namespace CloudDriveMount;
 
 public class SettingsService
 {

@@ -1,6 +1,6 @@
 using Microsoft.Win32;
 
-namespace B2DriveMount;
+namespace CloudDriveMount;
 
 public static class StartupManager
 {

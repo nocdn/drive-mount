@@ -1,4 +1,4 @@
-namespace B2DriveMount;
+namespace CloudDriveMount;
 
 public class BucketMount
 {

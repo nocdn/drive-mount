@@ -7,9 +7,9 @@
     <PackageVersion Condition="'$(PackageVersion)' == ''">1.0.0</PackageVersion>
     <SkipAppPublish Condition="'$(SkipAppPublish)' == ''">false</SkipAppPublish>
     <SuppressValidation>true</SuppressValidation>
-    <AppProject>..\B2DriveMount\B2DriveMount.csproj</AppProject>
+    <AppProject>..\CloudDriveMount\CloudDriveMount.csproj</AppProject>
     <AppRuntimeIdentifier>win-x64</AppRuntimeIdentifier>
-    <AppPayloadDir>$(MSBuildProjectDirectory)\..\B2DriveMount\bin\$(Configuration)\net10.0-windows\$(AppRuntimeIdentifier)\publish</AppPayloadDir>
+    <AppPayloadDir>$(MSBuildProjectDirectory)\..\CloudDriveMount\bin\$(Configuration)\net10.0-windows\$(AppRuntimeIdentifier)\publish</AppPayloadDir>
     <DefineConstants>$(DefineConstants);AppPayloadDir=$(AppPayloadDir);PackageVersion=$(PackageVersion)</DefineConstants>
   </PropertyGroup>
 
@@ -22,7 +22,7 @@
   </ItemGroup>
 
   <ItemGroup>
-    <ProjectReference Include="..\B2DriveMount\B2DriveMount.csproj" />
+    <ProjectReference Include="..\CloudDriveMount\CloudDriveMount.csproj" />
   </ItemGroup>
 
   <Target Name="PublishApplication" Condition="'$(SkipAppPublish)' != 'true'">

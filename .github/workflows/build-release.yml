@@ -18,7 +18,7 @@ jobs:
       InstallerProject: installer/CloudDriveMount.bootstrapper.wixproj
       BootstrapperOutput: ${{ github.workspace }}\installer\bin\Release\CloudDriveMount.bootstrapper.exe
       InstallerOutput: ${{ github.workspace }}\installer\bin\Release\CloudDriveMount.installer.msi
-      AppPayloadOutput: ${{ github.workspace }}\B2DriveMount\bin\Release\net10.0-windows\win-x64\publish
+      AppPayloadOutput: ${{ github.workspace }}\CloudDriveMount\bin\Release\net10.0-windows\win-x64\publish
 
     steps:
       - name: Check out repository

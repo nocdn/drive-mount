@@ -3,7 +3,7 @@ using System.IO;
 using System.Text;
 using Microsoft.Win32;
 
-namespace B2DriveMount;
+namespace CloudDriveMount;
 
 public class RcloneManager : IDisposable
 {

@@ -1,4 +1,4 @@
-<Window x:Class="B2DriveMount.MainWindow"
+<Window x:Class="CloudDriveMount.MainWindow"
         xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
         xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
         Title="Cloud Drive Mount - Settings"
