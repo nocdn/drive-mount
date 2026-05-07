@@ -10,8 +10,9 @@ param(
 )
 
 $ErrorActionPreference = "Stop"
-$repoRoot = $PSScriptRoot
-if (-not $repoRoot) { $repoRoot = (Get-Location).Path }
+$scriptDir = $PSScriptRoot
+if (-not $scriptDir) { $scriptDir = (Get-Location).Path }
+$repoRoot = Split-Path -Parent $scriptDir
 
 function Write-Header($text) {
     Write-Host ""
@@ -31,7 +32,7 @@ Write-Header "Cloud Drive Mount Builder"
 Write-Host "Building version: $Version" -ForegroundColor Yellow
 
 Write-Header "Building Installer"
-$buildInstaller = Join-Path $repoRoot 'build-installer.ps1'
+$buildInstaller = Join-Path $repoRoot 'scripts\build-installer.ps1'
 & $buildInstaller -Version $Version -Configuration Release
 
 if ($LASTEXITCODE -ne 0) {

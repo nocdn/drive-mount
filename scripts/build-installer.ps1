@@ -42,7 +42,7 @@ if (-not $dotnetCommand) {
     throw 'dotnet.exe was not found. Install the .NET SDK or add dotnet to PATH.'
 }
 
-$repoRoot = Split-Path -Parent $MyInvocation.MyCommand.Path
+$repoRoot = Split-Path -Parent (Split-Path -Parent $MyInvocation.MyCommand.Path)
 $bootstrapperProject = Join-Path $repoRoot 'installer\CloudDriveMount.bootstrapper.wixproj'
 
 Write-Host "Building Cloud Drive Mount installer with PackageVersion=$Version..."
