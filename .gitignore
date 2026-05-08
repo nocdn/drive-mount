@@ -1,18 +1,55 @@
-# Build output
+# Build output (shared)
 **/bin/
 **/obj/
-publish/
 release/
 
-# Installer/build artifacts
-*.exe
-*.msi
-*.wixpdb
-*.zip
+# Windows
+win/**/publish/
+win/**/*.exe
+win/**/*.msi
+win/**/*.wixpdb
+win/**/*.zip
+win/**/rclone.exe
+win/**/winfsp.msi
+win/**/.vs/
+win/**/assets/
+win/**/*.user
+win/**/*.suo
 
-# Local/runtime binaries downloaded or copied during build
-rclone.exe
-winfsp.msi
+# macOS
+mac/**/.build/
+mac/**/DerivedData/
+mac/**/build/
+mac/**/*.app
+mac/**/*.dmg
+mac/**/*.pkg
+mac/**/*.ipa
+mac/**/*.dSYM.zip
+mac/**/*.dSYM
+mac/**/*.xcworkspace
+mac/**/xcuserdata/
+mac/**/*.xcuserstate
+mac/**/*.xcbkptlist
+mac/**/*.xccheckout
+mac/**/*.xcscmblueprint
+mac/**/*.pbxuser
+mac/**/!default.pbxuser
+mac/**/*.mode1v3
+mac/**/!default.mode1v3
+mac/**/*.mode2v3
+mac/**/!default.mode2v3
+mac/**/*.perspectivev3
+mac/**/!default.perspectivev3
+mac/**/*.moved-aside
+mac/**/*.hmap
+mac/**/*.gcno
+mac/**/*.gcda
+mac/**/Timeline.xctimeline
+mac/**/playground.xcworkspace
+mac/**/IDEWorkspaceChecks.plist
+mac/**/Carthage/
+mac/**/Pods/
+mac/**/.DS_Store
 
 # OS/editor noise
 .vs/
@@ -21,3 +58,4 @@ winfsp.msi
 *.suo
 Thumbs.db
 Desktop.ini
+.DS_Store

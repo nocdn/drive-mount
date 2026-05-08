@@ -15,10 +15,10 @@ jobs:
       DOTNET_NOLOGO: true
       DOTNET_CLI_TELEMETRY_OPTOUT: true
       Configuration: Release
-      InstallerProject: installer/CloudDriveMount.bootstrapper.wixproj
-      BootstrapperOutput: ${{ github.workspace }}\installer\bin\Release\CloudDriveMount.bootstrapper.exe
-      InstallerOutput: ${{ github.workspace }}\installer\bin\Release\CloudDriveMount.installer.msi
-      AppPayloadOutput: ${{ github.workspace }}\CloudDriveMount\bin\Release\net10.0-windows\win-x64\publish
+      InstallerProject: win/installer/CloudDriveMount.bootstrapper.wixproj
+      BootstrapperOutput: ${{ github.workspace }}\win\installer\bin\Release\CloudDriveMount.bootstrapper.exe
+      InstallerOutput: ${{ github.workspace }}\win\installer\bin\Release\CloudDriveMount.installer.msi
+      AppPayloadOutput: ${{ github.workspace }}\win\CloudDriveMount\bin\Release\net10.0-windows\win-x64\publish
 
     steps:
       - name: Check out repository

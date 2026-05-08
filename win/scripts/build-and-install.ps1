@@ -12,7 +12,7 @@ param(
 $ErrorActionPreference = "Stop"
 $scriptDir = $PSScriptRoot
 if (-not $scriptDir) { $scriptDir = (Get-Location).Path }
-$repoRoot = Split-Path -Parent $scriptDir
+$repoRoot = Split-Path -Parent (Split-Path -Parent $scriptDir)
 
 function Write-Header($text) {
     Write-Host ""
@@ -32,14 +32,14 @@ Write-Header "Cloud Drive Mount Builder"
 Write-Host "Building version: $Version" -ForegroundColor Yellow
 
 Write-Header "Building Installer"
-$buildInstaller = Join-Path $repoRoot 'scripts\build-installer.ps1'
+$buildInstaller = Join-Path $repoRoot 'win\scripts\build-installer.ps1'
 & $buildInstaller -Version $Version -Configuration Release
 
 if ($LASTEXITCODE -ne 0) {
     exit $LASTEXITCODE
 }
 
-$installerPath = Join-Path $repoRoot 'installer\bin\Release\CloudDriveMount.bootstrapper.exe'
+$installerPath = Join-Path $repoRoot 'win\installer\bin\Release\CloudDriveMount.bootstrapper.exe'
 if (-not (Test-Path $installerPath)) {
     throw "Installer not found after build: $installerPath"
 }
