@@ -109,11 +109,13 @@ final class SettingsWindowController: NSWindowController, NSWindowDelegate {
         startAtLoginCheckbox.state = AppPreferences.startAtLogin ? .on : .off
         startAtLoginCheckbox.target = self
         startAtLoginCheckbox.action = #selector(startAtLoginChanged)
+        configurePreferenceCheckbox(startAtLoginCheckbox)
         root.addArrangedSubview(startAtLoginCheckbox)
 
         startMinimizedCheckbox.state = AppPreferences.startMinimized ? .on : .off
         startMinimizedCheckbox.target = self
         startMinimizedCheckbox.action = #selector(startMinimizedChanged)
+        configurePreferenceCheckbox(startMinimizedCheckbox)
         root.addArrangedSubview(startMinimizedCheckbox)
         root.setCustomSpacing(14, after: startMinimizedCheckbox)
 
@@ -167,6 +169,13 @@ final class SettingsWindowController: NSWindowController, NSWindowDelegate {
     private func makeDescription(_ text: String) -> NSTextField {
         let label = NSTextField(wrappingLabelWithString: text)
         return label
+    }
+
+    private func configurePreferenceCheckbox(_ checkbox: NSButton) {
+        checkbox.controlSize = .small
+        checkbox.cell?.controlSize = .small
+        checkbox.title = " \(checkbox.title)"
+        checkbox.font = NSFont.systemFont(ofSize: NSFont.systemFontSize)
     }
 
     private func makeFieldRow(label: String, field: NSTextField) -> NSView {
