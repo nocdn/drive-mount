@@ -18,8 +18,10 @@ win/**/*.suo
 
 # macOS
 mac/**/.build/
+mac/**/.swiftpm/
 mac/**/DerivedData/
 mac/**/build/
+mac/**/vendor/rclone/
 mac/**/*.app
 mac/**/*.dmg
 mac/**/*.pkg
