@@ -31,6 +31,7 @@ final class SettingsWindowController: NSWindowController, NSWindowDelegate {
         super.init(window: window)
         window.delegate = self
         buildInterface()
+        loadSavedCredentials()
         wireRcloneManager()
         addBucketRow()
         updateMountedState(false)
@@ -161,6 +162,18 @@ final class SettingsWindowController: NSWindowController, NSWindowDelegate {
         }
     }
 
+    private func loadSavedCredentials() {
+        do {
+            guard let credentials = try B2CredentialStore.load() else { return }
+            keyIdField.stringValue = credentials.applicationKeyId
+            keyField.stringValue = credentials.applicationKey
+            RuntimeLog.info("Loaded saved B2 credentials from Keychain")
+        } catch {
+            RuntimeLog.error("Failed to load saved B2 credentials: \(error.localizedDescription)")
+            appendError(error.localizedDescription)
+        }
+    }
+
     private func makeLabel(_ text: String) -> NSTextField {
         let label = NSTextField(labelWithString: text)
         return label
@@ -237,7 +250,8 @@ final class SettingsWindowController: NSWindowController, NSWindowDelegate {
         do {
             let buckets = collectBuckets()
             RuntimeLog.info("Mount requested from UI. bucketCount=\(buckets.count)")
-            try rcloneManager.mount(applicationKeyId: keyIdField.stringValue, applicationKey: keyField.stringValue, buckets: buckets)
+            let credentials = try saveCredentials()
+            try rcloneManager.mount(applicationKeyId: credentials.applicationKeyId, applicationKey: credentials.applicationKey, buckets: buckets)
             appendInfo("Saved settings")
             appendInfo("Mount requested for \(buckets.count) bucket(s).")
         } catch {
@@ -247,6 +261,21 @@ final class SettingsWindowController: NSWindowController, NSWindowDelegate {
                 onMacFuseHelpRequested?()
             }
         }
+    }
+
+    private func saveCredentials() throws -> B2Credentials {
+        let credentials = B2Credentials(
+            applicationKeyId: keyIdField.stringValue.trimmingCharacters(in: .whitespacesAndNewlines),
+            applicationKey: keyField.stringValue.trimmingCharacters(in: .whitespacesAndNewlines)
+        )
+
+        guard !credentials.applicationKeyId.isEmpty, !credentials.applicationKey.isEmpty else {
+            throw MountError.missingCredentials
+        }
+
+        try B2CredentialStore.save(credentials)
+        RuntimeLog.info("Saved B2 credentials to Keychain")
+        return credentials
     }
 
     @objc private func unmountAll() {
