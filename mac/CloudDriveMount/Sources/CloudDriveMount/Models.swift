@@ -1,8 +1,22 @@
 import Foundation
 
-struct BucketMount: Equatable {
+enum CloudProvider: String, Codable {
+    case backblazeB2 = "B2"
+    case googleDrive = "GoogleDrive"
+
+    static let defaultGoogleDriveRemoteName = "gdrive"
+}
+
+struct BucketMount: Codable, Equatable {
     var bucketName: String
     var mountPath: String
+}
+
+struct GoogleDriveSettings: Codable, Equatable {
+    var remoteName: String = CloudProvider.defaultGoogleDriveRemoteName
+    var remotePath: String = ""
+    var rootFolderId: String = ""
+    var mountPath: String = ""
 }
 
 enum MountError: LocalizedError {
@@ -10,6 +24,8 @@ enum MountError: LocalizedError {
     case missingMacFuse
     case missingCredentials
     case missingBuckets
+    case missingGoogleDriveMountPath
+    case googleDriveNotConfigured
     case duplicateBucket(String)
     case duplicateMountPath(String)
     case invalidMountPath(String)
@@ -24,6 +40,10 @@ enum MountError: LocalizedError {
             return "Enter your Backblaze B2 Application Key ID and Application Key."
         case .missingBuckets:
             return "Add at least one bucket and mount folder."
+        case .missingGoogleDriveMountPath:
+            return "Enter a mount folder for Google Drive."
+        case .googleDriveNotConfigured:
+            return "Google Drive is not connected. Click Connect Google Drive first."
         case .duplicateBucket(let bucket):
             return "Bucket '\(bucket)' is listed more than once."
         case .duplicateMountPath(let path):

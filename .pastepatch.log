@@ -1,0 +1,36 @@
+[2026-05-26T22:17:40.370Z] INIT root=/Users/bartosz/github/drive-mount
+[2026-05-26T22:19:12.009Z] INIT taskBytes=137
+[2026-05-26T22:19:12.012Z] INGEST bunx @nocdn/ingest /Users/bartosz/github/drive-mount --stdout
+[2026-05-26T22:19:12.479Z] INIT complete promptBytes=153774
+[2026-05-26T22:21:40.604Z] HISTORY saved /Users/bartosz/github/drive-mount/.git/pastepatch/history/2026-05-26T22-21-40-592Z-11125.json
+[2026-05-26T22:21:40.605Z] TOOL 1/5 {"tool":"create_file","path":"mac/CloudDriveMount/Sources/CloudDriveMount/Models.swift","content":"<1872 bytes>"}
+[2026-05-26T22:21:40.606Z] TOOL 2/5 {"tool":"create_file","path":"mac/CloudDriveMount/Sources/CloudDriveMount/AppPreferences.swift","content":"<5338 bytes>"}
+[2026-05-26T22:21:40.606Z] TOOL 3/5 {"tool":"create_file","path":"mac/CloudDriveMount/Sources/CloudDriveMount/RcloneManager.swift","content":"<20135 bytes>"}
+[2026-05-26T22:21:40.607Z] TOOL 4/5 {"tool":"create_file","path":"mac/CloudDriveMount/Sources/CloudDriveMount/SettingsWindowController.swift","content":"<30299 bytes>"}
+[2026-05-26T22:21:40.608Z] TOOL 5/5 {"tool":"replace_in_file","path":"mac/CloudDriveMount/scripts/run-app.sh","old":"<50 bytes>","new":"<52 bytes>"}
+[2026-05-26T22:21:40.609Z] EDIT complete dryRun=false
+[2026-05-26T22:34:05.761Z] HISTORY saved /Users/bartosz/github/drive-mount/.git/pastepatch/history/2026-05-26T22-34-05-754Z-11598.json
+[2026-05-26T22:34:05.762Z] TOOL 1/9 {"tool":"replace_in_file","path":"mac/CloudDriveMount/Sources/CloudDriveMount/SettingsWindowController.swift","old":"<183 bytes>","new":"<237 bytes>"}
+[2026-05-26T22:34:05.763Z] TOOL 2/9 {"tool":"replace_in_file","path":"mac/CloudDriveMount/Sources/CloudDriveMount/SettingsWindowController.swift","old":"<349 bytes>","new":"<74 bytes>"}
+[2026-05-26T22:34:05.764Z] TOOL 3/9 {"tool":"replace_in_file","path":"mac/CloudDriveMount/Sources/CloudDriveMount/SettingsWindowController.swift","old":"<217 bytes>","new":"<147 bytes>"}
+[2026-05-26T22:34:05.765Z] TOOL 4/9 {"tool":"replace_in_file","path":"mac/CloudDriveMount/Sources/CloudDriveMount/SettingsWindowController.swift","old":"<495 bytes>","new":"<846 bytes>"}
+[2026-05-26T22:34:05.766Z] TOOL 5/9 {"tool":"replace_in_file","path":"mac/CloudDriveMount/Sources/CloudDriveMount/SettingsWindowController.swift","old":"<135 bytes>","new":"<134 bytes>"}
+[2026-05-26T22:34:05.767Z] TOOL 6/9 {"tool":"replace_in_file","path":"mac/CloudDriveMount/Sources/CloudDriveMount/RcloneManager.swift","old":"<146 bytes>","new":"<210 bytes>"}
+[2026-05-26T22:34:05.768Z] TOOL 7/9 {"tool":"replace_in_file","path":"mac/CloudDriveMount/Sources/CloudDriveMount/RcloneManager.swift","old":"<111 bytes>","new":"<185 bytes>"}
+[2026-05-26T22:34:05.768Z] TOOL 8/9 {"tool":"replace_in_file","path":"mac/CloudDriveMount/Sources/CloudDriveMount/RcloneManager.swift","old":"<195 bytes>","new":"<199 bytes>"}
+[2026-05-26T22:34:05.769Z] TOOL 9/9 {"tool":"replace_in_file","path":"mac/CloudDriveMount/Sources/CloudDriveMount/RcloneManager.swift","old":"<391 bytes>","new":"<595 bytes>"}
+[2026-05-26T22:34:05.770Z] EDIT complete dryRun=false
+[2026-05-26T22:38:27.875Z] HISTORY saved /Users/bartosz/github/drive-mount/.git/pastepatch/history/2026-05-26T22-38-27-867Z-11682.json
+[2026-05-26T22:38:27.875Z] TOOL 1/5 {"tool":"replace_in_file","path":"mac/CloudDriveMount/Sources/CloudDriveMount/SettingsWindowController.swift","old":"<92 bytes>","new":"<134 bytes>"}
+[2026-05-26T22:38:27.877Z] TOOL 2/5 {"tool":"replace_in_file","path":"mac/CloudDriveMount/Sources/CloudDriveMount/SettingsWindowController.swift","old":"<229 bytes>","new":"<265 bytes>"}
+[2026-05-26T22:38:27.878Z] TOOL 3/5 {"tool":"replace_in_file","path":"mac/CloudDriveMount/Sources/CloudDriveMount/SettingsWindowController.swift","old":"<216 bytes>","new":"<315 bytes>"}
+[2026-05-26T22:38:27.879Z] TOOL 4/5 {"tool":"replace_in_file","path":"mac/CloudDriveMount/Sources/CloudDriveMount/SettingsWindowController.swift","old":"<473 bytes>","new":"<901 bytes>"}
+[2026-05-26T22:38:27.880Z] TOOL 5/5 {"tool":"replace_in_file","path":"mac/CloudDriveMount/Sources/CloudDriveMount/RcloneManager.swift","old":"<417 bytes>","new":"<199 bytes>"}
+[2026-05-26T22:38:27.881Z] EDIT complete dryRun=false
+[2026-05-26T22:47:12.015Z] HISTORY saved /Users/bartosz/github/drive-mount/.git/pastepatch/history/2026-05-26T22-47-12-008Z-11818.json
+[2026-05-26T22:47:12.015Z] TOOL 1/5 {"tool":"replace_in_file","path":"mac/CloudDriveMount/Sources/CloudDriveMount/AppDelegate.swift","old":"<81 bytes>","new":"<105 bytes>"}
+[2026-05-26T22:47:12.017Z] TOOL 2/5 {"tool":"replace_in_file","path":"mac/CloudDriveMount/Sources/CloudDriveMount/AppDelegate.swift","old":"<86 bytes>","new":"<1372 bytes>"}
+[2026-05-26T22:47:12.018Z] TOOL 3/5 {"tool":"replace_in_file","path":"mac/CloudDriveMount/Sources/CloudDriveMount/SettingsWindowController.swift","old":"<237 bytes>","new":"<265 bytes>"}
+[2026-05-26T22:47:12.019Z] TOOL 4/5 {"tool":"replace_in_file","path":"mac/CloudDriveMount/Sources/CloudDriveMount/SettingsWindowController.swift","old":"<401 bytes>","new":"<240 bytes>"}
+[2026-05-26T22:47:12.020Z] TOOL 5/5 {"tool":"replace_in_file","path":"mac/CloudDriveMount/Sources/CloudDriveMount/RcloneManager.swift","old":"<202 bytes>","new":"<236 bytes>"}
+[2026-05-26T22:47:12.021Z] EDIT complete dryRun=false

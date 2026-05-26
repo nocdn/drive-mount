@@ -11,6 +11,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         RuntimeLog.info("applicationDidFinishLaunching")
         AppPreferences.registerDefaults()
         RuntimeLog.info("Preferences loaded. startAtLogin=\(AppPreferences.startAtLogin) startMinimized=\(AppPreferences.startMinimized)")
+        setupMainMenu()
         setupStatusItem()
 
         applyStartAtLoginPreference(showErrors: false)
@@ -35,6 +36,32 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         rcloneManager.cleanupTemporaryFiles()
         RuntimeLog.info("applicationShouldTerminate completed cleanup")
         return .terminateNow
+    }
+
+    private func setupMainMenu() {
+        RuntimeLog.info("Setting up main menu")
+
+        let mainMenu = NSMenu()
+
+        let appMenuItem = NSMenuItem()
+        mainMenu.addItem(appMenuItem)
+        let appMenu = NSMenu()
+        appMenuItem.submenu = appMenu
+        appMenu.addItem(NSMenuItem(title: "Quit Cloud Drive Mount", action: #selector(quitMenuItem), keyEquivalent: "q"))
+
+        let editMenuItem = NSMenuItem()
+        mainMenu.addItem(editMenuItem)
+        let editMenu = NSMenu(title: "Edit")
+        editMenuItem.submenu = editMenu
+        editMenu.addItem(NSMenuItem(title: "Undo", action: Selector(("undo:")), keyEquivalent: "z"))
+        editMenu.addItem(NSMenuItem(title: "Redo", action: Selector(("redo:")), keyEquivalent: "Z"))
+        editMenu.addItem(NSMenuItem.separator())
+        editMenu.addItem(NSMenuItem(title: "Cut", action: #selector(NSText.cut(_:)), keyEquivalent: "x"))
+        editMenu.addItem(NSMenuItem(title: "Copy", action: #selector(NSText.copy(_:)), keyEquivalent: "c"))
+        editMenu.addItem(NSMenuItem(title: "Paste", action: #selector(NSText.paste(_:)), keyEquivalent: "v"))
+        editMenu.addItem(NSMenuItem(title: "Select All", action: #selector(NSText.selectAll(_:)), keyEquivalent: "a"))
+
+        NSApp.mainMenu = mainMenu
     }
 
     private func setupStatusItem() {

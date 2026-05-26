@@ -4,11 +4,15 @@ import Security
 enum AppPreferences {
     private static let startAtLoginKey = "StartAtLogin"
     private static let startMinimizedKey = "StartMinimized"
+    private static let selectedProviderKey = "SelectedProvider"
+    private static let b2BucketsKey = "B2Buckets"
+    private static let googleDriveSettingsKey = "GoogleDriveSettings"
 
     static func registerDefaults() {
         UserDefaults.standard.register(defaults: [
             startAtLoginKey: true,
-            startMinimizedKey: true
+            startMinimizedKey: true,
+            selectedProviderKey: CloudProvider.backblazeB2.rawValue
         ])
     }
 
@@ -20,6 +24,45 @@ enum AppPreferences {
     static var startMinimized: Bool {
         get { UserDefaults.standard.bool(forKey: startMinimizedKey) }
         set { UserDefaults.standard.set(newValue, forKey: startMinimizedKey) }
+    }
+
+    static var selectedProvider: CloudProvider {
+        get {
+            let rawValue = UserDefaults.standard.string(forKey: selectedProviderKey) ?? CloudProvider.backblazeB2.rawValue
+            return CloudProvider(rawValue: rawValue) ?? .backblazeB2
+        }
+        set { UserDefaults.standard.set(newValue.rawValue, forKey: selectedProviderKey) }
+    }
+
+    static var b2Buckets: [BucketMount] {
+        get {
+            guard let data = UserDefaults.standard.data(forKey: b2BucketsKey) else { return [] }
+            return (try? JSONDecoder().decode([BucketMount].self, from: data)) ?? []
+        }
+        set {
+            if let data = try? JSONEncoder().encode(newValue) {
+                UserDefaults.standard.set(data, forKey: b2BucketsKey)
+            }
+        }
+    }
+
+    static var googleDriveSettings: GoogleDriveSettings {
+        get {
+            guard let data = UserDefaults.standard.data(forKey: googleDriveSettingsKey),
+                  var settings = try? JSONDecoder().decode(GoogleDriveSettings.self, from: data) else {
+                return GoogleDriveSettings()
+            }
+
+            settings.remoteName = CloudProvider.defaultGoogleDriveRemoteName
+            return settings
+        }
+        set {
+            var normalized = newValue
+            normalized.remoteName = CloudProvider.defaultGoogleDriveRemoteName
+            if let data = try? JSONEncoder().encode(normalized) {
+                UserDefaults.standard.set(data, forKey: googleDriveSettingsKey)
+            }
+        }
     }
 }
 

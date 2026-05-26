@@ -5,9 +5,19 @@ final class SettingsWindowController: NSWindowController, NSWindowDelegate {
     var onMacFuseHelpRequested: (() -> Void)?
 
     private let rcloneManager: RcloneManager
+    private let rootStack = NSStackView()
+    private let providerPopup = NSPopUpButton()
+    private let b2OptionsStack = NSStackView()
+    private let googleDriveOptionsStack = NSStackView()
     private let keyIdField = NSTextField()
     private let keyField = NSSecureTextField()
     private let bucketStack = NSStackView()
+    private let googleDriveRemotePathField = NSTextField()
+    private let googleDriveRootFolderIdField = NSTextField()
+    private let googleDriveMountPathField = NSTextField()
+    private let googleDriveConnectHelp = NSTextField(wrappingLabelWithString: "Click Connect Google Drive and sign in through the browser. After it connects, use Save and Mount All. Google Drive will mount as a disk named Google Drive under ~/Drives/Google Drive.")
+    private let connectGoogleDriveButton = NSButton(title: "Connect Google Drive", target: nil, action: nil)
+    private let testGoogleDriveConnectionButton = NSButton(title: "Test Connection", target: nil, action: nil)
     private let mountButton = NSButton(title: "Save and Mount All", target: nil, action: nil)
     private let unmountButton = NSButton(title: "Unmount All", target: nil, action: nil)
     private let startAtLoginCheckbox = NSButton(checkboxWithTitle: "Start at login", target: nil, action: nil)
@@ -19,7 +29,7 @@ final class SettingsWindowController: NSWindowController, NSWindowDelegate {
         RuntimeLog.info("SettingsWindowController init starting")
 
         let window = NSWindow(
-            contentRect: NSRect(x: 0, y: 0, width: 540, height: 560),
+            contentRect: NSRect(x: 0, y: 0, width: 540, height: 660),
             styleMask: [.titled, .closable, .miniaturizable, .resizable],
             backing: .buffered,
             defer: false
@@ -31,9 +41,10 @@ final class SettingsWindowController: NSWindowController, NSWindowDelegate {
         super.init(window: window)
         window.delegate = self
         buildInterface()
-        loadSavedCredentials()
+        loadSavedSettings()
         wireRcloneManager()
-        addBucketRow()
+        updateProviderPanels()
+        refreshGoogleDriveConnectionUi()
         updateMountedState(false)
         RuntimeLog.info("SettingsWindowController init completed frame=\(window.frame)")
     }
@@ -44,6 +55,7 @@ final class SettingsWindowController: NSWindowController, NSWindowDelegate {
 
     func windowShouldClose(_ sender: NSWindow) -> Bool {
         RuntimeLog.info("Settings window close requested; hiding window")
+        saveVisibleSettings()
         sender.orderOut(nil)
         return false
     }
@@ -52,10 +64,11 @@ final class SettingsWindowController: NSWindowController, NSWindowDelegate {
         RuntimeLog.info("Building settings interface")
         guard let contentView = window?.contentView else { return }
 
-        let root = NSStackView()
+        let root = rootStack
         root.orientation = .vertical
         root.spacing = 10
         root.alignment = .leading
+        root.detachesHiddenViews = true
         root.translatesAutoresizingMaskIntoConstraints = false
         contentView.addSubview(root)
 
@@ -66,13 +79,26 @@ final class SettingsWindowController: NSWindowController, NSWindowDelegate {
             root.bottomAnchor.constraint(equalTo: contentView.bottomAnchor, constant: -16)
         ])
 
-        let keyIdRow = makeFieldRow(label: "B2 Application Key ID", field: keyIdField)
-        root.addArrangedSubview(keyIdRow)
-        keyIdRow.widthAnchor.constraint(equalTo: root.widthAnchor).isActive = true
+        providerPopup.addItems(withTitles: ["B2", "Google Drive"])
+        providerPopup.target = self
+        providerPopup.action = #selector(providerChanged)
+        let providerRow = makeFieldRow(label: "Provider", field: providerPopup)
+        root.addArrangedSubview(providerRow)
+        providerRow.widthAnchor.constraint(equalTo: root.widthAnchor).isActive = true
 
-        let keyRow = makeFieldRow(label: "B2 Application Key", field: keyField)
-        root.addArrangedSubview(keyRow)
-        keyRow.widthAnchor.constraint(equalTo: root.widthAnchor).isActive = true
+        b2OptionsStack.orientation = .vertical
+        b2OptionsStack.spacing = 10
+        b2OptionsStack.alignment = .leading
+        root.addArrangedSubview(b2OptionsStack)
+        b2OptionsStack.widthAnchor.constraint(equalTo: root.widthAnchor).isActive = true
+        buildB2Options()
+
+        googleDriveOptionsStack.orientation = .vertical
+        googleDriveOptionsStack.spacing = 10
+        googleDriveOptionsStack.alignment = .leading
+        root.addArrangedSubview(googleDriveOptionsStack)
+        googleDriveOptionsStack.widthAnchor.constraint(equalTo: root.widthAnchor).isActive = true
+        buildGoogleDriveOptions()
 
         let macFuseRow = NSStackView()
         macFuseRow.orientation = .horizontal
@@ -84,28 +110,6 @@ final class SettingsWindowController: NSWindowController, NSWindowDelegate {
         macFuseRow.addArrangedSubview(macFuseHelp)
         macFuseRow.addArrangedSubview(macFuseStatus)
         root.addArrangedSubview(macFuseRow)
-        root.setCustomSpacing(16, after: macFuseRow)
-
-        let bucketsLabel = makeLabel("Buckets")
-        root.addArrangedSubview(bucketsLabel)
-        root.setCustomSpacing(3, after: bucketsLabel)
-
-        let bucketsDescription = makeDescription("Each bucket mounts to a local folder.")
-        root.addArrangedSubview(bucketsDescription)
-
-        bucketStack.orientation = .vertical
-        bucketStack.spacing = 4
-        bucketStack.alignment = .leading
-        root.addArrangedSubview(bucketStack)
-        bucketStack.widthAnchor.constraint(equalTo: root.widthAnchor).isActive = true
-
-        let addBucketRow = NSStackView()
-        addBucketRow.orientation = .horizontal
-        addBucketRow.alignment = .centerY
-        let addBucketButton = NSButton(title: "+ Add Bucket", target: self, action: #selector(addBucketButtonClicked))
-        addBucketRow.addArrangedSubview(addBucketButton)
-        root.addArrangedSubview(addBucketRow)
-        root.setCustomSpacing(14, after: addBucketRow)
 
         startAtLoginCheckbox.state = AppPreferences.startAtLogin ? .on : .off
         startAtLoginCheckbox.target = self
@@ -153,6 +157,62 @@ final class SettingsWindowController: NSWindowController, NSWindowDelegate {
         RuntimeLog.info("Settings interface built")
     }
 
+    private func buildB2Options() {
+        let keyIdRow = makeFieldRow(label: "B2 Application Key ID", field: keyIdField)
+        b2OptionsStack.addArrangedSubview(keyIdRow)
+        keyIdRow.widthAnchor.constraint(equalTo: b2OptionsStack.widthAnchor).isActive = true
+
+        let keyRow = makeFieldRow(label: "B2 Application Key", field: keyField)
+        b2OptionsStack.addArrangedSubview(keyRow)
+        keyRow.widthAnchor.constraint(equalTo: b2OptionsStack.widthAnchor).isActive = true
+
+        let bucketsLabel = makeLabel("Buckets")
+        b2OptionsStack.addArrangedSubview(bucketsLabel)
+        b2OptionsStack.setCustomSpacing(3, after: bucketsLabel)
+
+        let bucketsDescription = makeDescription("Each bucket mounts to a local folder.")
+        b2OptionsStack.addArrangedSubview(bucketsDescription)
+
+        bucketStack.orientation = .vertical
+        bucketStack.spacing = 4
+        bucketStack.alignment = .leading
+        b2OptionsStack.addArrangedSubview(bucketStack)
+        bucketStack.widthAnchor.constraint(equalTo: b2OptionsStack.widthAnchor).isActive = true
+
+        let addBucketRow = NSStackView()
+        addBucketRow.orientation = .horizontal
+        addBucketRow.alignment = .centerY
+        let addBucketButton = NSButton(title: "+ Add Bucket", target: self, action: #selector(addBucketButtonClicked))
+        addBucketRow.addArrangedSubview(addBucketButton)
+        b2OptionsStack.addArrangedSubview(addBucketRow)
+        b2OptionsStack.setCustomSpacing(14, after: addBucketRow)
+    }
+
+    private func buildGoogleDriveOptions() {
+        let remotePathRow = makeFieldRow(label: "Google Drive Folder Path (optional)", field: googleDriveRemotePathField)
+        googleDriveOptionsStack.addArrangedSubview(remotePathRow)
+        remotePathRow.widthAnchor.constraint(equalTo: googleDriveOptionsStack.widthAnchor).isActive = true
+
+        let rootFolderIdRow = makeFieldRow(label: "Google Drive Root Folder ID (optional)", field: googleDriveRootFolderIdField)
+        googleDriveOptionsStack.addArrangedSubview(rootFolderIdRow)
+        rootFolderIdRow.widthAnchor.constraint(equalTo: googleDriveOptionsStack.widthAnchor).isActive = true
+
+        googleDriveOptionsStack.addArrangedSubview(googleDriveConnectHelp)
+
+        let googleButtonRow = NSStackView()
+        googleButtonRow.orientation = .horizontal
+        googleButtonRow.spacing = 8
+        googleButtonRow.alignment = .centerY
+        connectGoogleDriveButton.target = self
+        connectGoogleDriveButton.action = #selector(connectGoogleDriveClicked)
+        testGoogleDriveConnectionButton.target = self
+        testGoogleDriveConnectionButton.action = #selector(testGoogleDriveConnectionClicked)
+        googleButtonRow.addArrangedSubview(connectGoogleDriveButton)
+        googleButtonRow.addArrangedSubview(testGoogleDriveConnectionButton)
+        googleDriveOptionsStack.addArrangedSubview(googleButtonRow)
+        googleDriveOptionsStack.setCustomSpacing(14, after: googleButtonRow)
+    }
+
     private func wireRcloneManager() {
         rcloneManager.onLog = { [weak self] line in
             self?.appendLog(line)
@@ -162,26 +222,46 @@ final class SettingsWindowController: NSWindowController, NSWindowDelegate {
         }
     }
 
-    private func loadSavedCredentials() {
+    private func loadSavedSettings() {
         do {
-            guard let credentials = try B2CredentialStore.load() else { return }
-            keyIdField.stringValue = credentials.applicationKeyId
-            keyField.stringValue = credentials.applicationKey
-            RuntimeLog.info("Loaded saved B2 credentials from Keychain")
+            if let credentials = try B2CredentialStore.load() {
+                keyIdField.stringValue = credentials.applicationKeyId
+                keyField.stringValue = credentials.applicationKey
+                RuntimeLog.info("Loaded saved B2 credentials from Keychain")
+            }
         } catch {
             RuntimeLog.error("Failed to load saved B2 credentials: \(error.localizedDescription)")
             appendError(error.localizedDescription)
         }
+
+        providerPopup.selectItem(at: AppPreferences.selectedProvider == .googleDrive ? 1 : 0)
+
+        let savedBuckets = AppPreferences.b2Buckets
+        if savedBuckets.isEmpty {
+            addBucketRow()
+        } else {
+            for bucket in savedBuckets {
+                addBucketRow(bucketName: bucket.bucketName, mountPath: bucket.mountPath)
+            }
+        }
+
+        let googleDrive = AppPreferences.googleDriveSettings
+        googleDriveRemotePathField.stringValue = googleDrive.remotePath
+        googleDriveRootFolderIdField.stringValue = googleDrive.rootFolderId
+    }
+
+    private func saveVisibleSettings() {
+        AppPreferences.selectedProvider = selectedProvider()
+        AppPreferences.b2Buckets = collectBuckets(allowEmpty: false)
+        AppPreferences.googleDriveSettings = readGoogleDriveSettings()
     }
 
     private func makeLabel(_ text: String) -> NSTextField {
-        let label = NSTextField(labelWithString: text)
-        return label
+        NSTextField(labelWithString: text)
     }
 
     private func makeDescription(_ text: String) -> NSTextField {
-        let label = NSTextField(wrappingLabelWithString: text)
-        return label
+        NSTextField(wrappingLabelWithString: text)
     }
 
     private func configurePreferenceCheckbox(_ checkbox: NSButton) {
@@ -191,7 +271,7 @@ final class SettingsWindowController: NSWindowController, NSWindowDelegate {
         checkbox.font = NSFont.systemFont(ofSize: NSFont.systemFontSize)
     }
 
-    private func makeFieldRow(label: String, field: NSTextField) -> NSView {
+    private func makeFieldRow(label: String, field: NSControl) -> NSView {
         let row = NSStackView()
         row.orientation = .vertical
         row.spacing = 3
@@ -206,12 +286,61 @@ final class SettingsWindowController: NSWindowController, NSWindowDelegate {
         return row
     }
 
+    private func makeMountFolderRow(label: String, field: NSTextField) -> NSView {
+        let row = NSStackView()
+        row.orientation = .vertical
+        row.spacing = 3
+        row.alignment = .leading
+
+        let labelView = NSTextField(labelWithString: label)
+        let inputRow = NSStackView()
+        inputRow.orientation = .horizontal
+        inputRow.spacing = 6
+        inputRow.alignment = .centerY
+        field.heightAnchor.constraint(equalToConstant: 24).isActive = true
+        let browseButton = NSButton(title: "Browse", target: self, action: #selector(browseGoogleDriveMountFolder))
+        browseButton.widthAnchor.constraint(equalToConstant: 70).isActive = true
+        inputRow.addArrangedSubview(field)
+        inputRow.addArrangedSubview(browseButton)
+
+        row.addArrangedSubview(labelView)
+        row.addArrangedSubview(inputRow)
+        inputRow.widthAnchor.constraint(equalTo: row.widthAnchor).isActive = true
+        return row
+    }
+
+    private func selectedProvider() -> CloudProvider {
+        providerPopup.indexOfSelectedItem == 1 ? .googleDrive : .backblazeB2
+    }
+
+    private func updateProviderPanels() {
+        let provider = selectedProvider()
+        b2OptionsStack.isHidden = provider != .backblazeB2
+        googleDriveOptionsStack.isHidden = provider != .googleDrive
+        rootStack.layoutSubtreeIfNeeded()
+        resizeWindowToFitCurrentProvider(animated: true)
+    }
+
+    private func refreshGoogleDriveConnectionUi() {
+        let connected = rcloneManager.isGoogleDriveConfigured(readGoogleDriveSettings())
+        googleDriveConnectHelp.isHidden = connected
+        connectGoogleDriveButton.title = connected ? "Disconnect Google Drive" : "Connect Google Drive"
+        testGoogleDriveConnectionButton.isHidden = !connected
+    }
+
+    @objc private func providerChanged() {
+        saveVisibleSettings()
+        updateProviderPanels()
+        refreshGoogleDriveConnectionUi()
+    }
+
     @objc private func showMacFuseHelp() {
         onMacFuseHelpRequested?()
     }
 
     @objc private func addBucketButtonClicked() {
         addBucketRow()
+        saveVisibleSettings()
     }
 
     @objc private func startAtLoginChanged() {
@@ -226,6 +355,20 @@ final class SettingsWindowController: NSWindowController, NSWindowDelegate {
         AppPreferences.startMinimized = enabled
     }
 
+    @objc private func browseGoogleDriveMountFolder() {
+        let panel = NSOpenPanel()
+        panel.canChooseDirectories = true
+        panel.canChooseFiles = false
+        panel.canCreateDirectories = true
+        panel.allowsMultipleSelection = false
+        panel.prompt = "Choose"
+
+        if panel.runModal() == .OK, let url = panel.url {
+            googleDriveMountPathField.stringValue = url.path
+            saveVisibleSettings()
+        }
+    }
+
     private func addBucketRow(bucketName: String = "", mountPath: String = "") {
         let row = BucketRowView(bucketName: bucketName, mountPath: mountPath.isEmpty ? defaultMountPath(for: bucketName) : mountPath)
         row.onRemove = { [weak self, weak row] in
@@ -236,6 +379,10 @@ final class SettingsWindowController: NSWindowController, NSWindowDelegate {
             } else {
                 row.clear()
             }
+            self.saveVisibleSettings()
+        }
+        row.onChanged = { [weak self] in
+            self?.saveVisibleSettings()
         }
         bucketStack.addArrangedSubview(row)
         growWindowForBucketCount()
@@ -246,14 +393,107 @@ final class SettingsWindowController: NSWindowController, NSWindowDelegate {
         return folder.isEmpty ? "~/Drives/" : "~/Drives/\(folder)"
     }
 
+    private func readGoogleDriveSettings() -> GoogleDriveSettings {
+        GoogleDriveSettings(
+            remoteName: CloudProvider.defaultGoogleDriveRemoteName,
+            remotePath: normalizeGoogleDrivePath(googleDriveRemotePathField.stringValue),
+            rootFolderId: googleDriveRootFolderIdField.stringValue.trimmingCharacters(in: .whitespacesAndNewlines),
+            mountPath: defaultGoogleDriveDiskMountPath()
+        )
+    }
+
+    private func defaultGoogleDriveDiskMountPath() -> String {
+        FileManager.default.homeDirectoryForCurrentUser
+            .appendingPathComponent("Drives")
+            .appendingPathComponent("Google Drive")
+            .path
+    }
+
+    private func normalizeGoogleDrivePath(_ value: String) -> String {
+        var path = value.trimmingCharacters(in: .whitespacesAndNewlines).replacingOccurrences(of: "\\", with: "/")
+        while path.hasPrefix("/") || path.hasPrefix(":") {
+            path.removeFirst()
+        }
+        return path
+    }
+
+    @objc private func connectGoogleDriveClicked() {
+        saveVisibleSettings()
+        let googleDrive = readGoogleDriveSettings()
+        let isConnected = rcloneManager.isGoogleDriveConfigured(googleDrive)
+
+        connectGoogleDriveButton.isEnabled = false
+        testGoogleDriveConnectionButton.isEnabled = false
+        connectGoogleDriveButton.title = isConnected ? "Disconnecting..." : "Connecting..."
+
+        Task { @MainActor in
+            defer {
+                connectGoogleDriveButton.isEnabled = true
+                testGoogleDriveConnectionButton.isEnabled = true
+                refreshGoogleDriveConnectionUi()
+            }
+
+            do {
+                if isConnected {
+                    appendInfo("Disconnecting Google Drive.")
+                    try rcloneManager.disconnectGoogleDrive(googleDrive)
+                    appendInfo("Google Drive is disconnected.")
+                } else {
+                    appendInfo("Starting Google Drive authorization. Complete the sign-in in your browser.")
+                    try rcloneManager.configureGoogleDrive(googleDrive)
+                    appendInfo("Google Drive is connected. You can now click Save and Mount All.")
+                }
+            } catch {
+                RuntimeLog.error("Google Drive connect/disconnect failed: \(error.localizedDescription)")
+                appendError(error.localizedDescription)
+            }
+        }
+    }
+
+    @objc private func testGoogleDriveConnectionClicked() {
+        saveVisibleSettings()
+        let googleDrive = readGoogleDriveSettings()
+
+        guard rcloneManager.isGoogleDriveConfigured(googleDrive) else {
+            appendError("Google Drive is not connected. Click Connect Google Drive first.")
+            refreshGoogleDriveConnectionUi()
+            return
+        }
+
+        connectGoogleDriveButton.isEnabled = false
+        testGoogleDriveConnectionButton.isEnabled = false
+        testGoogleDriveConnectionButton.title = "Testing..."
+        appendInfo("Testing Google Drive connection.")
+
+        Task { @MainActor in
+            defer {
+                connectGoogleDriveButton.isEnabled = true
+                testGoogleDriveConnectionButton.isEnabled = true
+                testGoogleDriveConnectionButton.title = "Test Connection"
+                refreshGoogleDriveConnectionUi()
+            }
+
+            do {
+                try rcloneManager.testGoogleDriveConnection(googleDrive)
+                appendInfo("Google Drive connection test succeeded.")
+            } catch {
+                RuntimeLog.error("Google Drive connection test failed: \(error.localizedDescription)")
+                appendError("Google Drive connection test failed. \(error.localizedDescription)")
+            }
+        }
+    }
+
     @objc private func mountAll() {
         do {
+            saveVisibleSettings()
             let buckets = collectBuckets()
-            RuntimeLog.info("Mount requested from UI. bucketCount=\(buckets.count)")
-            let credentials = try saveCredentials()
-            try rcloneManager.mount(applicationKeyId: credentials.applicationKeyId, applicationKey: credentials.applicationKey, buckets: buckets)
+            let googleDrive = readGoogleDriveSettings()
+            RuntimeLog.info("Mount requested from UI. bucketCount=\(buckets.count) googleDriveDisk=\(!googleDrive.mountPath.isEmpty)")
+            let credentials = try loadOrSaveCredentialsIfNeeded(buckets: buckets)
+            try rcloneManager.mount(applicationKeyId: credentials.applicationKeyId, applicationKey: credentials.applicationKey, buckets: buckets, googleDrive: googleDrive)
             appendInfo("Saved settings")
-            appendInfo("Mount requested for \(buckets.count) bucket(s).")
+            appendInfo("Mount requested.")
+            refreshGoogleDriveConnectionUi()
         } catch {
             RuntimeLog.error("Mount failed from UI: \(error.localizedDescription)")
             appendError(error.localizedDescription)
@@ -261,6 +501,18 @@ final class SettingsWindowController: NSWindowController, NSWindowDelegate {
                 onMacFuseHelpRequested?()
             }
         }
+    }
+
+    private func loadOrSaveCredentialsIfNeeded(buckets: [BucketMount]) throws -> B2Credentials {
+        let hasB2Rows = buckets.contains {
+            !$0.bucketName.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty || !$0.mountPath.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
+        }
+
+        if hasB2Rows {
+            return try saveCredentials()
+        }
+
+        return B2Credentials(applicationKeyId: keyIdField.stringValue.trimmingCharacters(in: .whitespacesAndNewlines), applicationKey: keyField.stringValue.trimmingCharacters(in: .whitespacesAndNewlines))
     }
 
     private func saveCredentials() throws -> B2Credentials {
@@ -281,7 +533,7 @@ final class SettingsWindowController: NSWindowController, NSWindowDelegate {
     @objc private func unmountAll() {
         RuntimeLog.info("Unmount requested from UI")
         rcloneManager.unmountAll()
-        appendInfo("Unmounted all buckets.")
+        appendInfo("Unmounted all.")
     }
 
     @objc private func clearLogs() {
@@ -326,21 +578,36 @@ final class SettingsWindowController: NSWindowController, NSWindowDelegate {
     }
 
     private func growWindowForBucketCount() {
-        guard let window else { return }
-        let desiredHeight = CGFloat(560 + max(0, bucketStack.arrangedSubviews.count - 1) * 30)
-        guard window.frame.height < desiredHeight else { return }
+        resizeWindowToFitCurrentProvider(animated: true)
+    }
 
-        var frame = window.frame
-        let delta = desiredHeight - frame.height
+    private func resizeWindowToFitCurrentProvider(animated: Bool) {
+        guard let window else { return }
+
+        let desiredHeight: CGFloat
+        if selectedProvider() == .googleDrive {
+            desiredHeight = 560
+        } else {
+            desiredHeight = CGFloat(660 + max(0, bucketStack.arrangedSubviews.count - 1) * 30)
+        }
+
+        let minimumHeight: CGFloat = 520
+        let targetHeight = max(minimumHeight, desiredHeight)
+        let currentFrame = window.frame
+        guard abs(currentFrame.height - targetHeight) > 1 else { return }
+
+        var frame = currentFrame
+        let delta = targetHeight - frame.height
         frame.origin.y -= delta
-        frame.size.height = desiredHeight
-        window.setFrame(frame, display: true, animate: true)
+        frame.size.height = targetHeight
+        window.setFrame(frame, display: true, animate: animated)
     }
 }
 
 @MainActor
 private final class BucketRowView: NSView {
     var onRemove: (() -> Void)?
+    var onChanged: (() -> Void)?
 
     private let bucketField = NSTextField()
     private let mountPathField = NSTextField()
@@ -369,6 +636,7 @@ private final class BucketRowView: NSView {
         mountPathManuallyEdited = false
         mountPathField.stringValue = "~/Drives/"
         updateFieldWidths()
+        onChanged?()
     }
 
     private func buildInterface() {
@@ -440,6 +708,7 @@ private final class BucketRowView: NSView {
             mountPathManuallyEdited = true
             mountPathField.stringValue = url.path
             updateFieldWidths()
+            onChanged?()
         }
     }
 
@@ -462,5 +731,6 @@ extension BucketRowView: NSTextFieldDelegate {
         }
 
         updateFieldWidths()
+        onChanged?()
     }
 }
