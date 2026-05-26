@@ -7,6 +7,8 @@ namespace CloudDriveMount;
 
 public class RcloneManager : IDisposable
 {
+    private sealed record MountSpec(string Label, string RemotePath, string DriveLetter, string VolumeName, string VfsCacheMode);
+
     private readonly Dictionary<string, Process> _processes = new(StringComparer.OrdinalIgnoreCase);
     private readonly HashSet<int> _intentionalStops = new();
     private readonly string _configPath;
@@ -111,24 +113,142 @@ public class RcloneManager : IDisposable
         return false;
     }
 
-    public void EnsureConfig(AppSettings settings)
+    public bool IsGoogleDriveConfigured(GoogleDriveSettings googleDrive)
     {
-        var dir = Path.GetDirectoryName(_configPath);
-        if (!string.IsNullOrEmpty(dir))
-            Directory.CreateDirectory(dir);
+        return HasConfigSection(GetGoogleDriveRemoteName(googleDrive));
+    }
 
-        var sb = new StringBuilder();
-        sb.AppendLine("[b2remote]");
-        sb.AppendLine("type = b2");
-        sb.AppendLine($"account = {settings.ApplicationKeyId}");
-        sb.AppendLine($"key = {settings.ApplicationKey}");
-        File.WriteAllText(_configPath, sb.ToString(), Encoding.UTF8);
-        LogService.Info("rclone config written to: " + _configPath);
+    public bool ConfigureGoogleDrive(GoogleDriveSettings googleDrive)
+    {
+        var rclonePath = FindRclone();
+        if (rclonePath is null)
+        {
+            OnError?.Invoke("rclone.exe not found. Please install rclone and ensure it is in your PATH.");
+            OnError?.Invoke("Searched: app directory, PATH, LocalAppData\\rclone, Program Files\\rclone.");
+            return false;
+        }
+
+        var remoteName = GetGoogleDriveRemoteName(googleDrive);
+        if (!IsValidRcloneRemoteName(remoteName))
+        {
+            OnError?.Invoke("Google Drive remote name cannot contain a colon, square bracket, or line break.");
+            return false;
+        }
+
+        EnsureConfigDirectory();
+        var originalConfigLines = File.Exists(_configPath)
+            ? File.ReadAllLines(_configPath, Encoding.UTF8).ToList()
+            : new List<string>();
+        RemoveConfigSection(remoteName);
+
+        var args = new List<string>
+        {
+            "config",
+            "create",
+            remoteName,
+            "drive",
+            "scope",
+            "drive",
+            "config_is_local",
+            "true",
+            "--no-output"
+        };
+
+        if (!string.IsNullOrWhiteSpace(googleDrive.RootFolderId))
+        {
+            args.Add("root_folder_id");
+            args.Add(googleDrive.RootFolderId.Trim());
+        }
+
+        args.Add("--config");
+        args.Add(_configPath);
+
+        OnStatusChanged?.Invoke("Starting Google Drive authorization.");
+        OnStatusChanged?.Invoke("A browser window should open. Sign in and allow access to complete the rclone setup.");
+
+        var ok = RunRcloneToCompletion(rclonePath, args, "Google Drive authorization");
+        if (!ok)
+        {
+            File.WriteAllLines(_configPath, originalConfigLines, Encoding.UTF8);
+            return false;
+        }
+
+        if (!HasConfigSection(remoteName))
+        {
+            File.WriteAllLines(_configPath, originalConfigLines, Encoding.UTF8);
+            OnError?.Invoke("Google Drive authorization completed, but the rclone remote was not found in the app config.");
+            return false;
+        }
+
+        OnStatusChanged?.Invoke("Google Drive is configured in " + _configPath + ".");
+        return true;
+    }
+
+    public bool DisconnectGoogleDrive(GoogleDriveSettings googleDrive)
+    {
+        var remoteName = GetGoogleDriveRemoteName(googleDrive);
+        if (!IsValidRcloneRemoteName(remoteName))
+        {
+            OnError?.Invoke("Google Drive remote name cannot contain a colon, square bracket, or line break.");
+            return false;
+        }
+
+        try
+        {
+            RemoveConfigSection(remoteName);
+            OnStatusChanged?.Invoke("Google Drive remote has been removed from the app rclone config.");
+            return true;
+        }
+        catch (Exception ex)
+        {
+            LogService.Error("Failed to disconnect Google Drive: " + ex);
+            OnError?.Invoke("Failed to disconnect Google Drive: " + ex.Message);
+            return false;
+        }
+    }
+
+    public bool TestGoogleDriveConnection(GoogleDriveSettings googleDrive)
+    {
+        var rclonePath = FindRclone();
+        if (rclonePath is null)
+        {
+            OnError?.Invoke("rclone.exe not found. Please install rclone and ensure it is in your PATH.");
+            OnError?.Invoke("Searched: app directory, PATH, LocalAppData\\rclone, Program Files\\rclone.");
+            return false;
+        }
+
+        var remoteName = GetGoogleDriveRemoteName(googleDrive);
+        if (!HasConfigSection(remoteName))
+        {
+            OnError?.Invoke("Google Drive is not configured yet. Click Connect Google Drive first.");
+            return false;
+        }
+
+        var remotePath = BuildGoogleDriveRemotePath(googleDrive);
+        var args = new List<string>
+        {
+            "lsd",
+            remotePath,
+            "--config",
+            _configPath
+        };
+
+        OnStatusChanged?.Invoke("Testing Google Drive connection using " + remotePath + ".");
+
+        var ok = RunRcloneToCompletion(rclonePath, args, "Google Drive connection test");
+        if (ok)
+            OnStatusChanged?.Invoke("Google Drive connection test completed successfully.");
+
+        return ok;
     }
 
     public bool Mount(AppSettings settings)
     {
-        LogService.Info("Mount requested. BucketCount=" + settings.Buckets.Count);
+        settings.Buckets ??= new List<BucketMount>();
+        settings.GoogleDrive ??= new GoogleDriveSettings();
+        settings.GoogleDrive.RemoteName = CloudProvider.DefaultGoogleDriveRemoteName;
+
+        LogService.Info("Mount requested. BucketCount=" + settings.Buckets.Count + " GoogleDrive=" + settings.GoogleDrive.RemoteName);
 
         var rclonePath = FindRclone();
         if (rclonePath is null)
@@ -149,72 +269,150 @@ public class RcloneManager : IDisposable
 
         OnStatusChanged?.Invoke("WinFsp is installed.");
 
-        if (string.IsNullOrWhiteSpace(settings.ApplicationKeyId) || string.IsNullOrWhiteSpace(settings.ApplicationKey))
+        var mountSpecs = new List<MountSpec>();
+        var validationOk = true;
+
+        var hasB2Input = settings.Buckets.Count > 0;
+
+        if (hasB2Input)
         {
-            LogService.Error("B2 credentials not configured.");
-            OnError?.Invoke("Backblaze B2 credentials are not configured.");
-            OnError?.Invoke("Enter your Application Key ID and Application Key in Settings, then click Save and Mount All.");
-            return false;
+            if (string.IsNullOrWhiteSpace(settings.ApplicationKeyId) || string.IsNullOrWhiteSpace(settings.ApplicationKey))
+            {
+                LogService.Error("B2 credentials not configured.");
+                OnError?.Invoke("Backblaze B2 credentials are not configured.");
+                OnError?.Invoke("Enter your Application Key ID and Application Key in Settings, then click Save and Mount All.");
+                validationOk = false;
+            }
+            else if (settings.Buckets.Count == 0)
+            {
+                OnError?.Invoke("At least one B2 bucket and drive letter is required.");
+                validationOk = false;
+            }
+            else
+            {
+                EnsureB2Config(settings);
+                OnStatusChanged?.Invoke($"B2 rclone config written to: {_configPath}");
+
+                foreach (var bucket in settings.Buckets)
+                {
+                    var bucketName = bucket.BucketName.Trim();
+                    var driveLetter = NormalizeDriveLetter(bucket.DriveLetter);
+                    mountSpecs.Add(new MountSpec(
+                        Label: "B2 " + bucketName,
+                        RemotePath: "b2remote:" + bucketName,
+                        DriveLetter: driveLetter,
+                        VolumeName: bucketName,
+                        VfsCacheMode: "writes"));
+                }
+            }
         }
 
-        if (settings.Buckets.Count == 0)
+        var googleDrive = settings.GoogleDrive;
+        if (!string.IsNullOrWhiteSpace(googleDrive.DriveLetter))
         {
-            OnError?.Invoke("At least one bucket and drive letter is required.");
-            return false;
+            var remoteName = GetGoogleDriveRemoteName(googleDrive);
+            if (!IsValidRcloneRemoteName(remoteName))
+            {
+                OnError?.Invoke("Google Drive remote name cannot contain a colon, square bracket, or line break.");
+                validationOk = false;
+            }
+            else if (!HasConfigSection(remoteName))
+            {
+                OnError?.Invoke("Google Drive is not configured yet. Select Google Drive and click Connect Google Drive first.");
+                validationOk = false;
+            }
+            else
+            {
+                var driveLetter = NormalizeDriveLetter(googleDrive.DriveLetter);
+                var remotePath = BuildGoogleDriveRemotePath(googleDrive);
+                mountSpecs.Add(new MountSpec(
+                    Label: "Google Drive",
+                    RemotePath: remotePath,
+                    DriveLetter: driveLetter,
+                    VolumeName: string.IsNullOrWhiteSpace(googleDrive.RemotePath) ? "Google Drive" : googleDrive.RemotePath.Trim(),
+                    VfsCacheMode: "full"));
+            }
         }
 
-        EnsureConfig(settings);
-        OnStatusChanged?.Invoke($"rclone config written to: {_configPath}");
+        if (!validationOk)
+            return false;
+
+        if (mountSpecs.Count == 0)
+        {
+            OnError?.Invoke("Configure at least one B2 bucket or Google Drive mount before mounting.");
+            return false;
+        }
 
         Unmount();
 
         var success = true;
-        foreach (var bucket in settings.Buckets)
+        foreach (var mount in mountSpecs)
         {
-            success &= MountBucket(rclonePath, bucket);
+            success &= MountRemote(rclonePath, mount);
         }
 
         return success;
     }
 
-    private bool MountBucket(string rclonePath, BucketMount bucket)
+    private void EnsureB2Config(AppSettings settings)
     {
-        var bucketName = bucket.BucketName.Trim();
-        var driveLetter = bucket.DriveLetter.Trim().ToUpperInvariant();
-        if (!driveLetter.EndsWith(":"))
-            driveLetter += ":";
+        var lines = new List<string>
+        {
+            "type = b2",
+            "account = " + settings.ApplicationKeyId,
+            "key = " + settings.ApplicationKey
+        };
 
-        var remotePath = $"b2remote:{bucketName}";
-        var volName = bucketName;
+        UpsertConfigSection("b2remote", lines);
+        LogService.Info("B2 rclone config written to: " + _configPath);
+    }
+
+    private bool MountRemote(string rclonePath, MountSpec mount)
+    {
+        var driveLetter = NormalizeDriveLetter(mount.DriveLetter);
+        var args = new List<string>
+        {
+            "mount",
+            mount.RemotePath,
+            driveLetter,
+            "--config",
+            _configPath,
+            "--vfs-cache-mode",
+            mount.VfsCacheMode,
+            "--volname",
+            mount.VolumeName,
+            "--links"
+        };
 
         var psi = new ProcessStartInfo
         {
             FileName = rclonePath,
-            Arguments = $"mount \"{remotePath}\" \"{driveLetter}\" --config \"{_configPath}\" --vfs-cache-mode writes --volname \"{volName}\" --links",
+            Arguments = BuildArguments(args),
             RedirectStandardOutput = true,
             RedirectStandardError = true,
             UseShellExecute = false,
             CreateNoWindow = true,
         };
 
-        LogService.Info("Starting rclone mount. Bucket=" + bucketName + " Drive=" + driveLetter + " Command=" + psi.FileName + " " + psi.Arguments);
+        LogService.Info("Starting rclone mount. Label=" + mount.Label + " Remote=" + mount.RemotePath + " Drive=" + driveLetter + " Command=" + psi.FileName + " " + psi.Arguments);
 
         try
         {
             var process = new Process { StartInfo = psi, EnableRaisingEvents = true };
-            process.Exited += (_, _) => HandleProcessExited(process, bucketName, driveLetter);
+            process.Exited += (_, _) => HandleProcessExited(process, mount.Label, driveLetter);
             process.OutputDataReceived += (_, e) =>
             {
                 if (!string.IsNullOrWhiteSpace(e.Data))
                 {
-                    LogService.Debug("[rclone stdout] [" + bucketName + "] " + e.Data);
-                    OnStatusChanged?.Invoke("[" + bucketName + "] " + e.Data);
+                    var safeLine = RedactSensitiveLine(e.Data);
+                    LogService.Debug("[rclone stdout] [" + mount.Label + "] " + safeLine);
+                    OnStatusChanged?.Invoke("[" + mount.Label + "] " + safeLine);
                 }
             };
             process.ErrorDataReceived += (_, e) =>
             {
                 if (!string.IsNullOrWhiteSpace(e.Data))
-                    HandleStderrLine(e.Data, bucketName);
+                    HandleStderrLine(e.Data, mount.Label);
             };
 
             process.Start();
@@ -222,72 +420,136 @@ public class RcloneManager : IDisposable
             process.BeginErrorReadLine();
 
             _processes[driveLetter] = process;
-            LogService.Info("rclone process started. Bucket=" + bucketName + " Drive=" + driveLetter + " PID=" + process.Id);
-            OnStatusChanged?.Invoke($"Mounting bucket {bucketName} to {driveLetter}...");
+            LogService.Info("rclone process started. Label=" + mount.Label + " Drive=" + driveLetter + " PID=" + process.Id);
+            OnStatusChanged?.Invoke($"Mounting {mount.Label} to {driveLetter}...");
             return true;
         }
         catch (Exception ex)
         {
-            LogService.Error("Failed to start rclone for bucket " + bucketName + ": " + ex);
-            OnError?.Invoke($"Failed to start rclone for bucket {bucketName}: {ex.Message}");
+            LogService.Error("Failed to start rclone for " + mount.Label + ": " + ex);
+            OnError?.Invoke($"Failed to start rclone for {mount.Label}: {ex.Message}");
             return false;
         }
     }
 
-    private void HandleProcessExited(Process process, string bucketName, string driveLetter)
+    private bool RunRcloneToCompletion(string rclonePath, List<string> args, string label)
+    {
+        var psi = new ProcessStartInfo
+        {
+            FileName = rclonePath,
+            Arguments = BuildArguments(args),
+            RedirectStandardOutput = true,
+            RedirectStandardError = true,
+            UseShellExecute = false,
+            CreateNoWindow = true,
+        };
+
+        LogService.Info("Starting rclone command. Label=" + label + " Command=" + psi.FileName + " " + psi.Arguments);
+
+        try
+        {
+            using var process = new Process { StartInfo = psi, EnableRaisingEvents = true };
+            process.OutputDataReceived += (_, e) =>
+            {
+                if (!string.IsNullOrWhiteSpace(e.Data))
+                {
+                    var safeLine = RedactSensitiveLine(e.Data);
+                    LogService.Debug("[rclone stdout] [" + label + "] " + safeLine);
+                    OnStatusChanged?.Invoke("[" + label + "] " + safeLine);
+                }
+            };
+            process.ErrorDataReceived += (_, e) =>
+            {
+                if (!string.IsNullOrWhiteSpace(e.Data))
+                {
+                    var safeLine = RedactSensitiveLine(e.Data);
+                    LogService.Debug("[rclone stderr] [" + label + "] " + safeLine);
+                    if (LooksLikeRcloneError(safeLine))
+                        OnError?.Invoke("[" + label + "] " + safeLine);
+                    else
+                        OnStatusChanged?.Invoke("[" + label + "] " + safeLine);
+                }
+            };
+
+            process.Start();
+            process.BeginOutputReadLine();
+            process.BeginErrorReadLine();
+            process.WaitForExit();
+            process.WaitForExit();
+
+            if (process.ExitCode == 0)
+            {
+                LogService.Info("rclone command completed successfully. Label=" + label);
+                return true;
+            }
+
+            LogService.Error("rclone command exited with code " + process.ExitCode + ". Label=" + label);
+            OnError?.Invoke(label + " exited with code " + process.ExitCode + ".");
+            return false;
+        }
+        catch (Exception ex)
+        {
+            LogService.Error("Failed to run rclone command for " + label + ": " + ex);
+            OnError?.Invoke("Failed to run rclone command for " + label + ": " + ex.Message);
+            return false;
+        }
+    }
+
+    private void HandleProcessExited(Process process, string label, string driveLetter)
     {
         var code = process.ExitCode;
         if (_intentionalStops.Remove(process.Id))
         {
-            LogService.Info("Mount process stopped (unmounted). Bucket=" + bucketName + " Drive=" + driveLetter);
+            LogService.Info("Mount process stopped (unmounted). Label=" + label + " Drive=" + driveLetter);
             return;
         }
 
         if (code == 0)
         {
-            LogService.Info("Mount process exited normally. Bucket=" + bucketName + " Drive=" + driveLetter);
-            OnStatusChanged?.Invoke($"Mount process exited normally for {bucketName} ({driveLetter}).");
+            LogService.Info("Mount process exited normally. Label=" + label + " Drive=" + driveLetter);
+            OnStatusChanged?.Invoke($"Mount process exited normally for {label} ({driveLetter}).");
         }
         else
         {
-            LogService.Error("Mount process exited with code " + code + ". Bucket=" + bucketName + " Drive=" + driveLetter);
-            OnError?.Invoke($"Mount process exited with code {code} for {bucketName} ({driveLetter}).");
+            LogService.Error("Mount process exited with code " + code + ". Label=" + label + " Drive=" + driveLetter);
+            OnError?.Invoke($"Mount process exited with code {code} for {label} ({driveLetter}).");
         }
     }
 
-    private void HandleStderrLine(string line, string bucketName)
+    private void HandleStderrLine(string line, string label)
     {
-        LogService.Debug("[rclone stderr] [" + bucketName + "] " + line);
+        var safeLine = RedactSensitiveLine(line);
+        LogService.Debug("[rclone stderr] [" + label + "] " + safeLine);
 
-        if (line.Length > 20)
+        if (safeLine.Length > 20)
         {
-            var prefix = line.Substring(0, 20);
+            var prefix = safeLine.Substring(0, 20);
             if (prefix[4] == '/' && prefix[7] == '/' && prefix[10] == ' ' &&
                 prefix[13] == ':' && prefix[16] == ':' && prefix[19] == ' ')
             {
-                var rest = line.Substring(20);
+                var rest = safeLine.Substring(20);
                 if (rest.StartsWith("NOTICE") || rest.StartsWith("INFO"))
                 {
-                    OnStatusChanged?.Invoke("[" + bucketName + "] " + line);
+                    OnStatusChanged?.Invoke("[" + label + "] " + safeLine);
                     return;
                 }
 
                 if (rest.StartsWith("ERROR") || rest.StartsWith("CRITICAL") || rest.StartsWith("FATA"))
                 {
-                    OnError?.Invoke("[" + bucketName + "] " + line);
+                    OnError?.Invoke("[" + label + "] " + safeLine);
                     return;
                 }
             }
         }
 
-        if (line.StartsWith("The service rclone has been started.") ||
-            line.StartsWith("rclone has been started."))
+        if (safeLine.StartsWith("The service rclone has been started.") ||
+            safeLine.StartsWith("rclone has been started."))
         {
-            OnStatusChanged?.Invoke("[" + bucketName + "] " + line);
+            OnStatusChanged?.Invoke("[" + label + "] " + safeLine);
             return;
         }
 
-        OnError?.Invoke("[" + bucketName + "] " + line);
+        OnError?.Invoke("[" + label + "] " + safeLine);
     }
 
     public void Unmount()
@@ -320,9 +582,7 @@ public class RcloneManager : IDisposable
 
     public void UnmountDrive(string driveLetter)
     {
-        var drive = driveLetter.Trim().ToUpperInvariant();
-        if (!drive.EndsWith(":"))
-            drive += ":";
+        var drive = NormalizeDriveLetter(driveLetter);
 
         if (!_processes.TryGetValue(drive, out var process))
             return;
@@ -350,6 +610,204 @@ public class RcloneManager : IDisposable
         {
             process.Dispose();
         }
+    }
+
+    private void EnsureConfigDirectory()
+    {
+        var dir = Path.GetDirectoryName(_configPath);
+        if (!string.IsNullOrEmpty(dir))
+            Directory.CreateDirectory(dir);
+    }
+
+    private void UpsertConfigSection(string sectionName, IEnumerable<string> sectionLines)
+    {
+        EnsureConfigDirectory();
+
+        var lines = File.Exists(_configPath)
+            ? File.ReadAllLines(_configPath, Encoding.UTF8).ToList()
+            : new List<string>();
+
+        lines = RemoveSection(lines, sectionName);
+
+        if (lines.Count > 0 && !string.IsNullOrWhiteSpace(lines[^1]))
+            lines.Add(string.Empty);
+
+        lines.Add("[" + sectionName + "]");
+        lines.AddRange(sectionLines);
+
+        File.WriteAllLines(_configPath, lines, Encoding.UTF8);
+    }
+
+    private void RemoveConfigSection(string sectionName)
+    {
+        EnsureConfigDirectory();
+
+        if (!File.Exists(_configPath))
+            return;
+
+        var lines = File.ReadAllLines(_configPath, Encoding.UTF8).ToList();
+        lines = RemoveSection(lines, sectionName);
+        File.WriteAllLines(_configPath, lines, Encoding.UTF8);
+    }
+
+    private bool HasConfigSection(string sectionName)
+    {
+        if (!File.Exists(_configPath))
+            return false;
+
+        foreach (var line in File.ReadLines(_configPath, Encoding.UTF8))
+        {
+            if (TryReadSectionName(line, out var currentSection) &&
+                string.Equals(currentSection, sectionName, StringComparison.OrdinalIgnoreCase))
+            {
+                return true;
+            }
+        }
+
+        return false;
+    }
+
+    private static List<string> RemoveSection(List<string> lines, string sectionName)
+    {
+        var output = new List<string>();
+        var skip = false;
+
+        foreach (var line in lines)
+        {
+            if (TryReadSectionName(line, out var currentSection))
+                skip = string.Equals(currentSection, sectionName, StringComparison.OrdinalIgnoreCase);
+
+            if (!skip)
+                output.Add(line);
+        }
+
+        while (output.Count > 0 && string.IsNullOrWhiteSpace(output[^1]))
+            output.RemoveAt(output.Count - 1);
+
+        return output;
+    }
+
+    private static bool TryReadSectionName(string line, out string sectionName)
+    {
+        var trimmed = line.Trim();
+        if (trimmed.Length >= 3 && trimmed.StartsWith("[") && trimmed.EndsWith("]"))
+        {
+            sectionName = trimmed[1..^1];
+            return true;
+        }
+
+        sectionName = string.Empty;
+        return false;
+    }
+
+    private static string BuildGoogleDriveRemotePath(GoogleDriveSettings googleDrive)
+    {
+        var remoteName = GetGoogleDriveRemoteName(googleDrive);
+        var remotePath = NormalizeRemotePath(googleDrive.RemotePath);
+        return string.IsNullOrWhiteSpace(remotePath) ? remoteName + ":" : remoteName + ":" + remotePath;
+    }
+
+    private static string GetGoogleDriveRemoteName(GoogleDriveSettings googleDrive)
+    {
+        googleDrive.RemoteName = CloudProvider.DefaultGoogleDriveRemoteName;
+        return CloudProvider.DefaultGoogleDriveRemoteName;
+    }
+
+    private static string NormalizeRemotePath(string path)
+    {
+        var normalized = path.Trim().Replace('\\', '/');
+        while (normalized.StartsWith("/"))
+            normalized = normalized[1..];
+        while (normalized.StartsWith(":"))
+            normalized = normalized[1..];
+
+        return normalized;
+    }
+
+    private static string NormalizeDriveLetter(string driveLetter)
+    {
+        var drive = driveLetter.Trim().ToUpperInvariant();
+
+        if (drive.EndsWith(":/") || drive.EndsWith(":\\"))
+            drive = drive[..^2];
+        else if (drive.EndsWith(":"))
+            drive = drive[..^1];
+
+        if (!drive.EndsWith(":"))
+            drive += ":";
+
+        return drive;
+    }
+
+    private static bool IsValidRcloneRemoteName(string remoteName)
+    {
+        return !string.IsNullOrWhiteSpace(remoteName) &&
+               !remoteName.Contains(':') &&
+               !remoteName.Contains('[') &&
+               !remoteName.Contains(']') &&
+               !remoteName.Contains('\r') &&
+               !remoteName.Contains('\n');
+    }
+
+    private static bool LooksLikeRcloneError(string line)
+    {
+        return line.Contains(" ERROR ", StringComparison.OrdinalIgnoreCase) ||
+               line.Contains(" CRITICAL ", StringComparison.OrdinalIgnoreCase) ||
+               line.Contains(" FATAL ", StringComparison.OrdinalIgnoreCase) ||
+               line.Contains("Failed", StringComparison.OrdinalIgnoreCase) ||
+               line.Contains("error", StringComparison.OrdinalIgnoreCase);
+    }
+
+    private static string RedactSensitiveLine(string line)
+    {
+        var trimmedStart = line.TrimStart();
+        var leadingWhitespaceLength = line.Length - trimmedStart.Length;
+        var leadingWhitespace = leadingWhitespaceLength > 0 ? line[..leadingWhitespaceLength] : string.Empty;
+
+        var sensitiveKeys = new[]
+        {
+            "token",
+            "access_token",
+            "refresh_token",
+            "client_secret",
+            "service_account_credentials",
+            "key",
+            "account"
+        };
+
+        foreach (var key in sensitiveKeys)
+        {
+            if (trimmedStart.StartsWith(key + " =", StringComparison.OrdinalIgnoreCase) ||
+                trimmedStart.StartsWith(key + "=", StringComparison.OrdinalIgnoreCase))
+            {
+                return leadingWhitespace + key + " = <redacted>";
+            }
+        }
+
+        if (line.Contains("\"access_token\"", StringComparison.OrdinalIgnoreCase) ||
+            line.Contains("\"refresh_token\"", StringComparison.OrdinalIgnoreCase) ||
+            line.Contains("\"client_secret\"", StringComparison.OrdinalIgnoreCase))
+        {
+            return "<redacted sensitive output>";
+        }
+
+        return line;
+    }
+
+    private static string BuildArguments(IEnumerable<string> args)
+    {
+        return string.Join(" ", args.Select(QuoteArgument));
+    }
+
+    private static string QuoteArgument(string arg)
+    {
+        if (arg.Length == 0)
+            return "\"\"";
+
+        if (!arg.Any(char.IsWhiteSpace) && !arg.Contains('"'))
+            return arg;
+
+        return "\"" + arg.Replace("\"", "\\\"") + "\"";
     }
 
     public void Dispose()

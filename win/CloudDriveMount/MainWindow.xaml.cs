@@ -12,6 +12,7 @@ public partial class MainWindow : Window
     private readonly RcloneManager _rcloneManager;
     private AppSettings _settings;
     private TrayIconManager? _tray;
+    private bool _isLoadingProvider;
 
     public bool AllowClose { get; set; } = false;
 
@@ -35,9 +36,17 @@ public partial class MainWindow : Window
 
         _settings = _settingsService.Load();
         _settings.Buckets ??= new List<BucketMount>();
+        _settings.GoogleDrive ??= new GoogleDriveSettings();
+        _settings.SelectedProvider = CloudProvider.Normalize(_settings.SelectedProvider);
+        EnsureGoogleDriveDefaults();
 
         TxtKeyId.Text = _settings.ApplicationKeyId;
         TxtKey.Text = _settings.ApplicationKey;
+
+        TxtGoogleRemotePath.Text = _settings.GoogleDrive.RemotePath;
+        TxtGoogleRootFolderId.Text = _settings.GoogleDrive.RootFolderId;
+        TxtGoogleDriveLetter.Text = NormalizeDriveInput(_settings.GoogleDrive.DriveLetter);
+
         ChkStartOnLogin.IsChecked = StartupManager.IsSet();
         ChkStartMinimized.IsChecked = _settings.StartMinimized;
 
@@ -47,6 +56,12 @@ public partial class MainWindow : Window
             foreach (var bucket in _settings.Buckets)
                 AddBucketRow(bucket.BucketName, bucket.DriveLetter);
 
+        _isLoadingProvider = true;
+        CmbProvider.SelectedIndex = _settings.SelectedProvider == CloudProvider.GoogleDrive ? 1 : 0;
+        _isLoadingProvider = false;
+
+        UpdateProviderPanels();
+        RefreshGoogleDriveConnectionUi();
         UpdateSaveMountButton();
 
         var logMsg = "Cloud Drive Mount started. Log file: " + LogService.GetLogFilePath();
@@ -58,9 +73,7 @@ public partial class MainWindow : Window
 
     public void AttemptMount()
     {
-        if (!string.IsNullOrWhiteSpace(_settings.ApplicationKeyId) &&
-            !string.IsNullOrWhiteSpace(_settings.ApplicationKey) &&
-            _settings.Buckets.Count > 0)
+        if (HasAnyCompleteMount())
         {
             Dispatcher.BeginInvoke(() => BtnSaveMount_Click(null, null));
         }
@@ -94,7 +107,7 @@ public partial class MainWindow : Window
         var bucketLabel = new System.Windows.Controls.Label { Content = "Bucket:", Width = 50, Padding = new Thickness(0), VerticalAlignment = VerticalAlignment.Center };
         var bucketText = new System.Windows.Controls.TextBox { Width = 180, Height = 23, Text = bucketName, Margin = new Thickness(0, 0, 8, 0), Padding = new Thickness(3, 0, 3, 0), VerticalContentAlignment = VerticalAlignment.Center };
         var driveLabel = new System.Windows.Controls.Label { Content = "Drive:", Width = 40, Padding = new Thickness(0), VerticalAlignment = VerticalAlignment.Center };
-        var driveText = new System.Windows.Controls.TextBox { Width = 35, Height = 23, MaxLength = 2, Text = NormalizeDriveInput(driveLetter), Margin = new Thickness(0, 0, 8, 0), Padding = new Thickness(3, 0, 3, 0), VerticalContentAlignment = VerticalAlignment.Center };
+        var driveText = new System.Windows.Controls.TextBox { Width = 35, Height = 23, MaxLength = 3, Text = NormalizeDriveInput(driveLetter), Margin = new Thickness(0, 0, 8, 0), Padding = new Thickness(3, 0, 3, 0), VerticalContentAlignment = VerticalAlignment.Center };
         var saveButton = new System.Windows.Controls.Button { Content = "Save", Height = 23, Padding = new Thickness(6, 0, 6, 0), Margin = new Thickness(0, 0, 5, 0) };
         var removeButton = new System.Windows.Controls.Button { Content = "Remove", Height = 23, Padding = new Thickness(6, 0, 6, 0) };
 
@@ -111,15 +124,16 @@ public partial class MainWindow : Window
                 AddLog("[INFO] Removed drive " + driveToUnmount + ":");
             }
 
-            SaveSettings();
+            SaveSettings(validateMounts: true);
             UpdateSaveMountButton();
         };
         saveButton.Click += (_, _) =>
         {
-            if (SaveSettings())
+            if (SaveSettings(validateMounts: true))
             {
                 rowSaved = true;
                 savedDriveLetter = NormalizeDriveInput(driveText.Text);
+                driveText.Text = savedDriveLetter;
                 UpdateRemoveButton();
             }
         };
@@ -148,26 +162,56 @@ public partial class MainWindow : Window
         UpdateSaveMountButton();
     }
 
+    private void UpdateProviderPanels()
+    {
+        var provider = GetSelectedProvider();
+        B2OptionsPanel.Visibility = provider == CloudProvider.BackblazeB2 ? Visibility.Visible : Visibility.Collapsed;
+        GoogleDriveOptionsPanel.Visibility = provider == CloudProvider.GoogleDrive ? Visibility.Visible : Visibility.Collapsed;
+    }
+
+    private string GetSelectedProvider()
+    {
+        return CmbProvider.SelectedIndex == 1 ? CloudProvider.GoogleDrive : CloudProvider.BackblazeB2;
+    }
+
     private void UpdateSaveMountButton()
     {
-        BtnSaveMount.IsEnabled = BucketsPanel.Children.OfType<StackPanel>().Any(row =>
+        BtnSaveMount.IsEnabled = HasAnyCompleteMount();
+    }
+
+    private bool HasAnyCompleteMount()
+    {
+        var hasB2 = BucketsPanel.Children.OfType<StackPanel>().Any(row =>
         {
             var textBoxes = row.Children.OfType<System.Windows.Controls.TextBox>().ToList();
             return textBoxes.Count >= 2 &&
                    !string.IsNullOrWhiteSpace(textBoxes[0].Text) &&
                    !string.IsNullOrWhiteSpace(textBoxes[1].Text);
         });
+
+        var hasGoogleDrive = !string.IsNullOrWhiteSpace(TxtGoogleDriveLetter.Text);
+
+        return hasB2 || hasGoogleDrive;
     }
 
-    private bool SaveSettings()
+    private bool SaveSettings(bool validateMounts, bool logSuccess = true)
     {
         try
         {
+            _settings.SelectedProvider = GetSelectedProvider();
             _settings.ApplicationKeyId = TxtKeyId.Text.Trim();
             _settings.ApplicationKey = TxtKey.Text.Trim();
-            _settings.Buckets = CollectBucketMounts(requireAtLeastOne: false);
+            _settings.Buckets = validateMounts ? CollectBucketMounts(requireAtLeastOne: false) : ReadBucketRows();
+            _settings.GoogleDrive = ReadGoogleDriveSettings();
             _settings.StartOnLogin = ChkStartOnLogin.IsChecked == true;
             _settings.StartMinimized = ChkStartMinimized.IsChecked == true;
+            EnsureGoogleDriveDefaults();
+
+            if (validateMounts)
+            {
+                ValidateGoogleDriveSettings(_settings.GoogleDrive, requireCompleteMount: false);
+                ValidateDriveConflicts(_settings.Buckets, _settings.GoogleDrive);
+            }
 
             _settingsService.Save(_settings);
 
@@ -177,8 +221,12 @@ public partial class MainWindow : Window
             else
                 StartupManager.Unset();
 
-            AddLog("[INFO] Saved settings");
-            LogService.Info("Settings saved. BucketCount=" + _settings.Buckets.Count + " StartOnLogin=" + _settings.StartOnLogin);
+            if (logSuccess)
+            {
+                AddLog("[INFO] Saved settings");
+                LogService.Info("Settings saved. Provider=" + _settings.SelectedProvider + " BucketCount=" + _settings.Buckets.Count + " GoogleDrive=" + _settings.GoogleDrive.RemoteName + " StartOnLogin=" + _settings.StartOnLogin);
+            }
+
             return true;
         }
         catch (Exception ex)
@@ -187,6 +235,28 @@ public partial class MainWindow : Window
             LogService.Error(ex.ToString());
             return false;
         }
+    }
+
+    private List<BucketMount> ReadBucketRows()
+    {
+        var buckets = new List<BucketMount>();
+
+        foreach (StackPanel row in BucketsPanel.Children.OfType<StackPanel>())
+        {
+            var textBoxes = row.Children.OfType<System.Windows.Controls.TextBox>().ToList();
+            if (textBoxes.Count < 2)
+                continue;
+
+            var bucketText = textBoxes[0].Text.Trim();
+            var driveText = NormalizeDriveInput(textBoxes[1].Text);
+
+            if (string.IsNullOrWhiteSpace(bucketText) && string.IsNullOrWhiteSpace(driveText))
+                continue;
+
+            buckets.Add(new BucketMount { BucketName = bucketText, DriveLetter = driveText });
+        }
+
+        return buckets;
     }
 
     private List<BucketMount> CollectBucketMounts(bool requireAtLeastOne)
@@ -198,7 +268,12 @@ public partial class MainWindow : Window
             .Select(bucket => NormalizeDriveInput(bucket.DriveLetter) + ":")
             .Where(drive => drive.Length == 2)
             .ToHashSet(StringComparer.OrdinalIgnoreCase);
+        var configuredGoogleDrive = NormalizeDriveInput(_settings.GoogleDrive?.DriveLetter ?? string.Empty);
+        if (!string.IsNullOrWhiteSpace(configuredGoogleDrive))
+            configuredDrives.Add(configuredGoogleDrive + ":");
+
         var usedSystemDrives = DriveInfo.GetDrives()
+            .Where(drive => drive.Name.Length >= 2)
             .Select(drive => drive.Name.Substring(0, 2).ToUpperInvariant())
             .ToHashSet(StringComparer.OrdinalIgnoreCase);
 
@@ -240,10 +315,135 @@ public partial class MainWindow : Window
         return buckets;
     }
 
+    private GoogleDriveSettings ReadGoogleDriveSettings()
+    {
+        return new GoogleDriveSettings
+        {
+            RemoteName = CloudProvider.DefaultGoogleDriveRemoteName,
+            RemotePath = NormalizeGoogleDrivePath(TxtGoogleRemotePath.Text),
+            RootFolderId = TxtGoogleRootFolderId.Text.Trim(),
+            DriveLetter = NormalizeDriveInput(TxtGoogleDriveLetter.Text)
+        };
+    }
+
+    private void ValidateGoogleDriveSettings(GoogleDriveSettings googleDrive, bool requireCompleteMount)
+    {
+        googleDrive.RemoteName = CloudProvider.DefaultGoogleDriveRemoteName;
+
+        var hasDriveLetter = !string.IsNullOrWhiteSpace(googleDrive.DriveLetter);
+        var hasOptionalValues = !string.IsNullOrWhiteSpace(googleDrive.RemotePath) ||
+                                !string.IsNullOrWhiteSpace(googleDrive.RootFolderId);
+
+        if (!hasDriveLetter && !hasOptionalValues && !requireCompleteMount)
+            return;
+
+        if (requireCompleteMount && string.IsNullOrWhiteSpace(googleDrive.DriveLetter))
+            throw new InvalidOperationException("Drive letter is required for Google Drive.");
+
+        if (!string.IsNullOrWhiteSpace(googleDrive.DriveLetter) &&
+            (googleDrive.DriveLetter.Length != 1 || !char.IsLetter(googleDrive.DriveLetter[0])))
+        {
+            throw new InvalidOperationException("Google Drive letter must be a single letter, like G.");
+        }
+    }
+
+    private void ValidateDriveConflicts(List<BucketMount> buckets, GoogleDriveSettings googleDrive)
+    {
+        var seenDrives = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
+        var configuredDrives = _settings.Buckets
+            .Select(bucket => NormalizeDriveInput(bucket.DriveLetter) + ":")
+            .Where(drive => drive.Length == 2)
+            .ToHashSet(StringComparer.OrdinalIgnoreCase);
+        var configuredGoogleDrive = NormalizeDriveInput(_settings.GoogleDrive?.DriveLetter ?? string.Empty);
+        if (!string.IsNullOrWhiteSpace(configuredGoogleDrive))
+            configuredDrives.Add(configuredGoogleDrive + ":");
+
+        var usedSystemDrives = DriveInfo.GetDrives()
+            .Where(drive => drive.Name.Length >= 2)
+            .Select(drive => drive.Name.Substring(0, 2).ToUpperInvariant())
+            .ToHashSet(StringComparer.OrdinalIgnoreCase);
+
+        foreach (var bucket in buckets)
+        {
+            var drive = NormalizeDriveInput(bucket.DriveLetter);
+            if (string.IsNullOrWhiteSpace(drive))
+                continue;
+
+            var driveWithColon = drive + ":";
+            if (!seenDrives.Add(driveWithColon))
+                throw new InvalidOperationException("Drive letter " + driveWithColon + " is used more than once.");
+        }
+
+        var googleDriveLetter = NormalizeDriveInput(googleDrive.DriveLetter);
+        if (!string.IsNullOrWhiteSpace(googleDriveLetter))
+        {
+            var driveWithColon = googleDriveLetter + ":";
+            if (!seenDrives.Add(driveWithColon))
+                throw new InvalidOperationException("Drive letter " + driveWithColon + " is used by both B2 and Google Drive.");
+
+            if (usedSystemDrives.Contains(driveWithColon) && !configuredDrives.Contains(driveWithColon))
+                throw new InvalidOperationException("Drive letter " + driveWithColon + " is already in use by Windows.");
+        }
+    }
+
+    private void ValidateMountRequest()
+    {
+        var b2HasAny = _settings.Buckets.Count > 0;
+
+        var b2Complete = !string.IsNullOrWhiteSpace(_settings.ApplicationKeyId) &&
+                         !string.IsNullOrWhiteSpace(_settings.ApplicationKey) &&
+                         _settings.Buckets.Any(bucket => !string.IsNullOrWhiteSpace(bucket.BucketName) && !string.IsNullOrWhiteSpace(bucket.DriveLetter));
+
+        if (b2HasAny && !b2Complete)
+            throw new InvalidOperationException("B2 requires an Application Key ID, Application Key, and at least one complete bucket mount row.");
+
+        var googleComplete = !string.IsNullOrWhiteSpace(_settings.GoogleDrive.RemoteName) &&
+                             !string.IsNullOrWhiteSpace(_settings.GoogleDrive.DriveLetter);
+
+        if (googleComplete)
+            ValidateGoogleDriveSettings(_settings.GoogleDrive, requireCompleteMount: true);
+
+        if (!b2Complete && !googleComplete)
+            throw new InvalidOperationException("Configure at least one B2 bucket or Google Drive mount before mounting.");
+    }
+
+    private void RefreshGoogleDriveConnectionUi()
+    {
+        if (!IsInitialized)
+            return;
+
+        var googleDrive = ReadGoogleDriveSettings();
+        var connected = _rcloneManager.IsGoogleDriveConfigured(googleDrive);
+
+        TxtGoogleConnectHelp.Visibility = connected ? Visibility.Collapsed : Visibility.Visible;
+        BtnConnectGoogleDrive.Content = connected ? "Disconnect Google Drive" : "Connect Google Drive";
+        BtnTestGoogleDriveConnection.Visibility = connected ? Visibility.Visible : Visibility.Collapsed;
+    }
+
+    private void EnsureGoogleDriveDefaults()
+    {
+        _settings.GoogleDrive ??= new GoogleDriveSettings();
+        _settings.GoogleDrive.RemoteName = CloudProvider.DefaultGoogleDriveRemoteName;
+    }
+
+    private static string NormalizeGoogleDrivePath(string value)
+    {
+        var path = value.Trim().Replace('\\', '/');
+        while (path.StartsWith("/"))
+            path = path[1..];
+        while (path.StartsWith(":"))
+            path = path[1..];
+
+        return path;
+    }
+
     private static string NormalizeDriveInput(string value)
     {
         var drive = value.Trim().ToUpperInvariant();
-        if (drive.EndsWith(":"))
+
+        if (drive.EndsWith(":/") || drive.EndsWith(":\\"))
+            drive = drive[..^2];
+        else if (drive.EndsWith(":"))
             drive = drive[..^1];
 
         return drive;
@@ -255,11 +455,15 @@ public partial class MainWindow : Window
         UpdateSaveMountButton();
     }
 
-    private void BtnSaveMount_Click(object? sender, RoutedEventArgs? e)
+    private async void BtnConnectGoogleDrive_Click(object sender, RoutedEventArgs e)
     {
+        _settings.SelectedProvider = CloudProvider.GoogleDrive;
+        _settings.GoogleDrive = ReadGoogleDriveSettings();
+        EnsureGoogleDriveDefaults();
+
         try
         {
-            _settings.Buckets = CollectBucketMounts(requireAtLeastOne: true);
+            ValidateGoogleDriveSettings(_settings.GoogleDrive, requireCompleteMount: false);
         }
         catch (Exception ex)
         {
@@ -268,15 +472,129 @@ public partial class MainWindow : Window
             return;
         }
 
-        if (SaveSettings())
+        SaveSettings(validateMounts: false, logSuccess: false);
+
+        var isConnected = _rcloneManager.IsGoogleDriveConfigured(_settings.GoogleDrive);
+
+        BtnConnectGoogleDrive.IsEnabled = false;
+        BtnTestGoogleDriveConnection.IsEnabled = false;
+        BtnConnectGoogleDrive.Content = isConnected ? "Disconnecting..." : "Connecting...";
+
+        try
         {
-            var ok = _rcloneManager.Mount(_settings);
-            if (!ok)
+            if (isConnected)
             {
-                AddLog("[ERROR] Mount failed to start. See log above for details.");
-                LogService.Error("Mount failed to start.");
+                var driveToUnmount = NormalizeDriveInput(_settings.GoogleDrive.DriveLetter);
+                if (!string.IsNullOrWhiteSpace(driveToUnmount))
+                    _rcloneManager.UnmountDrive(driveToUnmount);
+
+                AddLog("[INFO] Disconnecting Google Drive.");
+                var ok = await Task.Run(() => _rcloneManager.DisconnectGoogleDrive(_settings.GoogleDrive));
+                if (ok)
+                {
+                    AddLog("[INFO] Google Drive is disconnected.");
+                    LogService.Info("Google Drive disconnected. Remote=" + _settings.GoogleDrive.RemoteName);
+                }
+                else
+                {
+                    AddLog("[ERROR] Google Drive disconnect failed. See the log above for details.");
+                    LogService.Error("Google Drive disconnect failed.");
+                }
+            }
+            else
+            {
+                AddLog("[INFO] Starting Google Drive authorization. Complete the sign-in in your browser.");
+                var ok = await Task.Run(() => _rcloneManager.ConfigureGoogleDrive(_settings.GoogleDrive));
+                if (ok)
+                {
+                    AddLog("[INFO] Google Drive is connected. You can now click Save and Mount All.");
+                    LogService.Info("Google Drive connected. Remote=" + _settings.GoogleDrive.RemoteName);
+                }
+                else
+                {
+                    AddLog("[ERROR] Google Drive authorization failed. See the log above for details.");
+                    LogService.Error("Google Drive authorization failed.");
+                }
             }
         }
+        finally
+        {
+            BtnConnectGoogleDrive.IsEnabled = true;
+            BtnTestGoogleDriveConnection.IsEnabled = true;
+            RefreshGoogleDriveConnectionUi();
+        }
+    }
+
+    private async void BtnTestGoogleDriveConnection_Click(object sender, RoutedEventArgs e)
+    {
+        _settings.SelectedProvider = CloudProvider.GoogleDrive;
+        _settings.GoogleDrive = ReadGoogleDriveSettings();
+        EnsureGoogleDriveDefaults();
+
+        if (!SaveSettings(validateMounts: false, logSuccess: false))
+            return;
+
+        if (!_rcloneManager.IsGoogleDriveConfigured(_settings.GoogleDrive))
+        {
+            AddLog("[ERROR] Google Drive is not connected. Click Connect Google Drive first.");
+            RefreshGoogleDriveConnectionUi();
+            return;
+        }
+
+        BtnConnectGoogleDrive.IsEnabled = false;
+        BtnTestGoogleDriveConnection.IsEnabled = false;
+        BtnTestGoogleDriveConnection.Content = "Testing...";
+        AddLog("[INFO] Testing Google Drive connection.");
+
+        try
+        {
+            var ok = await Task.Run(() => _rcloneManager.TestGoogleDriveConnection(_settings.GoogleDrive));
+            if (ok)
+            {
+                AddLog("[INFO] Google Drive connection test succeeded.");
+                LogService.Info("Google Drive connection test succeeded.");
+            }
+            else
+            {
+                AddLog("[ERROR] Google Drive connection test failed. See the log above for details.");
+                LogService.Error("Google Drive connection test failed.");
+            }
+        }
+        finally
+        {
+            BtnConnectGoogleDrive.IsEnabled = true;
+            BtnTestGoogleDriveConnection.IsEnabled = true;
+            BtnTestGoogleDriveConnection.Content = "Test Connection";
+            RefreshGoogleDriveConnectionUi();
+        }
+    }
+
+    private void BtnSaveMount_Click(object? sender, RoutedEventArgs? e)
+    {
+        if (!SaveSettings(validateMounts: true))
+            return;
+
+        TxtGoogleDriveLetter.Text = NormalizeDriveInput(TxtGoogleDriveLetter.Text);
+
+        try
+        {
+            ValidateMountRequest();
+        }
+        catch (Exception ex)
+        {
+            AddLog("[ERROR] " + ex.Message);
+            LogService.Error(ex.ToString());
+            return;
+        }
+
+        var ok = _rcloneManager.Mount(_settings);
+        if (!ok)
+        {
+            AddLog("[ERROR] Mount failed to start. See log above for details.");
+            LogService.Error("Mount failed to start.");
+        }
+
+        RefreshGoogleDriveConnectionUi();
     }
 
     private void BtnUnmount_Click(object sender, RoutedEventArgs e)
@@ -304,10 +622,30 @@ public partial class MainWindow : Window
         TxtLog.Clear();
     }
 
+    private void CmbProvider_SelectionChanged(object sender, SelectionChangedEventArgs e)
+    {
+        if (_isLoadingProvider)
+            return;
+
+        UpdateProviderPanels();
+        SaveSettings(validateMounts: false, logSuccess: false);
+        RefreshGoogleDriveConnectionUi();
+        UpdateSaveMountButton();
+    }
+
+    private void AnyMountField_Changed(object sender, TextChangedEventArgs e)
+    {
+        if (!IsInitialized)
+            return;
+
+        UpdateSaveMountButton();
+    }
+
     private void Window_Closing(object? sender, System.ComponentModel.CancelEventArgs e)
     {
         if (!AllowClose)
         {
+            SaveSettings(validateMounts: false, logSuccess: false);
             e.Cancel = true;
             Hide();
         }
@@ -316,6 +654,9 @@ public partial class MainWindow : Window
     private void Window_StateChanged(object? sender, EventArgs e)
     {
         if (WindowState == WindowState.Minimized)
+        {
+            SaveSettings(validateMounts: false, logSuccess: false);
             Hide();
+        }
     }
 }

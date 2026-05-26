@@ -27,6 +27,11 @@ public class SettingsService
             var json = File.ReadAllText(settingsPath);
             var settings = JsonSerializer.Deserialize<AppSettings>(json) ?? new AppSettings();
             settings.Buckets ??= new List<BucketMount>();
+            settings.GoogleDrive ??= new GoogleDriveSettings();
+            settings.SelectedProvider = CloudProvider.Normalize(settings.SelectedProvider);
+
+            if (string.IsNullOrWhiteSpace(settings.GoogleDrive.RemoteName))
+                settings.GoogleDrive.RemoteName = CloudProvider.DefaultGoogleDriveRemoteName;
 
             // Migrate the earlier single-bucket settings format if present.
             if (settings.Buckets.Count == 0)
@@ -55,6 +60,13 @@ public class SettingsService
 
     public void Save(AppSettings settings)
     {
+        settings.Buckets ??= new List<BucketMount>();
+        settings.GoogleDrive ??= new GoogleDriveSettings();
+        settings.SelectedProvider = CloudProvider.Normalize(settings.SelectedProvider);
+
+        if (string.IsNullOrWhiteSpace(settings.GoogleDrive.RemoteName))
+            settings.GoogleDrive.RemoteName = CloudProvider.DefaultGoogleDriveRemoteName;
+
         Directory.CreateDirectory(AppDataFolder);
         var json = JsonSerializer.Serialize(settings, new JsonSerializerOptions { WriteIndented = true });
         File.WriteAllText(SettingsPath, json);

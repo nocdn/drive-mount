@@ -2,7 +2,7 @@
         xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
         xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
         Title="Cloud Drive Mount - Settings"
-        Height="580"
+        Height="625"
         Width="560"
         Closing="Window_Closing"
         StateChanged="Window_StateChanged">
@@ -13,19 +13,45 @@
         </Grid.RowDefinitions>
 
         <StackPanel Grid.Row="0">
-            <Label Content="B2 Application Key ID" Padding="0,0,0,2"/>
-            <TextBox x:Name="TxtKeyId" Height="23" Margin="0,0,0,8" Padding="3,0" VerticalContentAlignment="Center"/>
+            <Label Content="Provider" Padding="0,0,0,2"/>
+            <ComboBox x:Name="CmbProvider" Height="23" Margin="0,0,0,8" SelectionChanged="CmbProvider_SelectionChanged">
+                <ComboBoxItem Content="B2"/>
+                <ComboBoxItem Content="Google Drive"/>
+            </ComboBox>
 
-            <Label Content="B2 Application Key" Padding="0,0,0,2"/>
-            <TextBox x:Name="TxtKey" Height="23" Margin="0,0,0,10" Padding="3,0" VerticalContentAlignment="Center"/>
+            <StackPanel x:Name="B2OptionsPanel">
+                <Label Content="B2 Application Key ID" Padding="0,0,0,2"/>
+                <TextBox x:Name="TxtKeyId" Height="23" Margin="0,0,0,8" Padding="3,0" VerticalContentAlignment="Center" TextChanged="AnyMountField_Changed"/>
 
-            <Label Content="Buckets" Padding="0,0,0,2"/>
-            <TextBlock Margin="0,0,0,6" Text="Each bucket is mounted directly to its own drive letter." TextWrapping="Wrap"/>
-            <ScrollViewer Margin="0,0,0,0" VerticalScrollBarVisibility="Auto" MaxHeight="140">
-                <StackPanel x:Name="BucketsPanel"/>
-            </ScrollViewer>
+                <Label Content="B2 Application Key" Padding="0,0,0,2"/>
+                <TextBox x:Name="TxtKey" Height="23" Margin="0,0,0,10" Padding="3,0" VerticalContentAlignment="Center" TextChanged="AnyMountField_Changed"/>
 
-            <Button x:Name="BtnAddBucket" Content="+ Add Bucket" Click="BtnAddBucket_Click" Margin="0,8,0,8" HorizontalAlignment="Left" Padding="8,2"/>
+                <Label Content="Buckets" Padding="0,0,0,2"/>
+                <TextBlock Margin="0,0,0,6" Text="Each bucket is mounted directly to its own drive letter." TextWrapping="Wrap"/>
+                <ScrollViewer Margin="0,0,0,0" VerticalScrollBarVisibility="Auto" MaxHeight="140">
+                    <StackPanel x:Name="BucketsPanel"/>
+                </ScrollViewer>
+
+                <Button x:Name="BtnAddBucket" Content="+ Add Bucket" Click="BtnAddBucket_Click" Margin="0,8,0,8" HorizontalAlignment="Left" Padding="8,2"/>
+            </StackPanel>
+
+            <StackPanel x:Name="GoogleDriveOptionsPanel" Visibility="Collapsed">
+                <Label Content="Google Drive Folder Path (optional)" Padding="0,0,0,2"/>
+                <TextBox x:Name="TxtGoogleRemotePath" Height="23" Margin="0,0,0,8" Padding="3,0" VerticalContentAlignment="Center" TextChanged="AnyMountField_Changed"/>
+
+                <Label Content="Google Drive Root Folder ID (optional)" Padding="0,0,0,2"/>
+                <TextBox x:Name="TxtGoogleRootFolderId" Height="23" Margin="0,0,0,8" Padding="3,0" VerticalContentAlignment="Center" TextChanged="AnyMountField_Changed"/>
+
+                <Label Content="Drive Letter" Padding="0,0,0,2"/>
+                <TextBox x:Name="TxtGoogleDriveLetter" Height="23" Width="35" MaxLength="3" HorizontalAlignment="Left" Margin="0,0,0,8" Padding="3,0" VerticalContentAlignment="Center" TextChanged="AnyMountField_Changed"/>
+
+                <TextBlock x:Name="TxtGoogleConnectHelp" Margin="0,0,0,8" Text="Click Connect Google Drive and sign in through the browser. After it connects, use Save and Mount All." TextWrapping="Wrap"/>
+
+                <StackPanel Orientation="Horizontal" Margin="0,0,0,8">
+                    <Button x:Name="BtnConnectGoogleDrive" Content="Connect Google Drive" Click="BtnConnectGoogleDrive_Click" Margin="0,0,5,0" HorizontalAlignment="Left" Padding="8,2"/>
+                    <Button x:Name="BtnTestGoogleDriveConnection" Content="Test Connection" Click="BtnTestGoogleDriveConnection_Click" Visibility="Collapsed" HorizontalAlignment="Left" Padding="8,2"/>
+                </StackPanel>
+            </StackPanel>
 
             <CheckBox x:Name="ChkStartOnLogin" Content="Start at login" Margin="0,0,0,5"/>
             <CheckBox x:Name="ChkStartMinimized" Content="Start minimized to tray" Margin="0,0,0,8"/>
