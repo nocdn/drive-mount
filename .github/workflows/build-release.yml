@@ -9,7 +9,51 @@ permissions:
   contents: write
 
 jobs:
-  build-release:
+  metadata:
+    runs-on: ubuntu-latest
+    outputs:
+      run_number: ${{ steps.metadata.outputs.run_number }}
+      short_sha: ${{ steps.metadata.outputs.short_sha }}
+      package_version: ${{ steps.metadata.outputs.package_version }}
+      windows_package_version: ${{ steps.metadata.outputs.windows_package_version }}
+      tag_name: ${{ steps.metadata.outputs.tag_name }}
+      release_name: ${{ steps.metadata.outputs.release_name }}
+      setup_name: ${{ steps.metadata.outputs.setup_name }}
+      msi_name: ${{ steps.metadata.outputs.msi_name }}
+      portable_zip_name: ${{ steps.metadata.outputs.portable_zip_name }}
+      mac_arm64_zip_name: ${{ steps.metadata.outputs.mac_arm64_zip_name }}
+      mac_x64_zip_name: ${{ steps.metadata.outputs.mac_x64_zip_name }}
+
+    steps:
+      - name: Compute build metadata
+        id: metadata
+        shell: bash
+        run: |
+          short_sha="${GITHUB_SHA::7}"
+          version="${GITHUB_RUN_NUMBER}"
+          windows_package_version="0.0.${GITHUB_RUN_NUMBER}"
+          tag_name="v$version"
+          release_name="v$version"
+          setup_name="CloudDriveMount-$version-x64-setup.exe"
+          msi_name="CloudDriveMount-$version-x64.msi"
+          portable_zip_name="CloudDriveMount-$version-x64-portable.zip"
+          mac_arm64_zip_name="CloudDriveMount-macos-arm64.zip"
+          mac_x64_zip_name="CloudDriveMount-macos-x64.zip"
+
+          echo "run_number=${GITHUB_RUN_NUMBER}" >> "$GITHUB_OUTPUT"
+          echo "short_sha=$short_sha" >> "$GITHUB_OUTPUT"
+          echo "package_version=$version" >> "$GITHUB_OUTPUT"
+          echo "windows_package_version=$windows_package_version" >> "$GITHUB_OUTPUT"
+          echo "tag_name=$tag_name" >> "$GITHUB_OUTPUT"
+          echo "release_name=$release_name" >> "$GITHUB_OUTPUT"
+          echo "setup_name=$setup_name" >> "$GITHUB_OUTPUT"
+          echo "msi_name=$msi_name" >> "$GITHUB_OUTPUT"
+          echo "portable_zip_name=$portable_zip_name" >> "$GITHUB_OUTPUT"
+          echo "mac_arm64_zip_name=$mac_arm64_zip_name" >> "$GITHUB_OUTPUT"
+          echo "mac_x64_zip_name=$mac_x64_zip_name" >> "$GITHUB_OUTPUT"
+
+  build-windows:
+    needs: metadata
     runs-on: windows-2022
     env:
       DOTNET_NOLOGO: true
@@ -29,66 +73,163 @@ jobs:
         with:
           dotnet-version: 10.0.x
 
-      - name: Compute build metadata
-        id: metadata
-        shell: pwsh
-        run: |
-          $shortSha = "${env:GITHUB_SHA}".Substring(0, 7)
-          $version = "0.0.${env:GITHUB_RUN_NUMBER}"
-          $tagName = "v$version"
-          $releaseName = "v$version"
-          $setupName = "CloudDriveMount-$version-x64-setup.exe"
-          $msiName = "CloudDriveMount-$version-x64.msi"
-          $portableZipName = "CloudDriveMount-$version-x64-portable.zip"
-
-          "short_sha=$shortSha" >> $env:GITHUB_OUTPUT
-          "package_version=$version" >> $env:GITHUB_OUTPUT
-          "tag_name=$tagName" >> $env:GITHUB_OUTPUT
-          "release_name=$releaseName" >> $env:GITHUB_OUTPUT
-          "setup_name=$setupName" >> $env:GITHUB_OUTPUT
-          "msi_name=$msiName" >> $env:GITHUB_OUTPUT
-          "portable_zip_name=$portableZipName" >> $env:GITHUB_OUTPUT
-
       - name: Build installer
         shell: pwsh
         run: |
-          dotnet build $env:InstallerProject -c $env:Configuration -p:PackageVersion=${{ steps.metadata.outputs.package_version }}
+          dotnet build $env:InstallerProject -c $env:Configuration -p:PackageVersion=${{ needs.metadata.outputs.windows_package_version }}
 
       - name: Prepare release assets
         shell: pwsh
         run: |
           New-Item -ItemType Directory -Path release -Force | Out-Null
 
-          Copy-Item $env:BootstrapperOutput (Join-Path release '${{ steps.metadata.outputs.setup_name }}') -Force
-          Copy-Item $env:InstallerOutput (Join-Path release '${{ steps.metadata.outputs.msi_name }}') -Force
+          Copy-Item $env:BootstrapperOutput (Join-Path release '${{ needs.metadata.outputs.setup_name }}') -Force
+          Copy-Item $env:InstallerOutput (Join-Path release '${{ needs.metadata.outputs.msi_name }}') -Force
 
           if (Test-Path $env:AppPayloadOutput) {
-            Compress-Archive -Path (Join-Path $env:AppPayloadOutput '*') -DestinationPath (Join-Path release '${{ steps.metadata.outputs.portable_zip_name }}') -Force
+            Compress-Archive -Path (Join-Path $env:AppPayloadOutput '*') -DestinationPath (Join-Path release '${{ needs.metadata.outputs.portable_zip_name }}') -Force
           }
           else {
             throw "App payload folder not found: $env:AppPayloadOutput"
           }
 
-      - name: Generate release notes
-        shell: pwsh
+      - name: Upload Windows release assets
+        uses: actions/upload-artifact@v7
+        with:
+          name: release-windows
+          path: |
+            release/*.exe
+            release/*.msi
+            release/*.zip
+          if-no-files-found: error
+
+  build-macos:
+    needs: metadata
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - runner: macos-15
+            uname: arm64
+            asset_name: CloudDriveMount-macos-arm64.zip
+          - runner: macos-15-intel
+            uname: x86_64
+            asset_name: CloudDriveMount-macos-x64.zip
+    runs-on: ${{ matrix.runner }}
+
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@v6
+
+      - name: Confirm runner architecture
+        shell: bash
         run: |
-          @(
-            "## Cloud Drive Mount ${{ steps.metadata.outputs.release_name }}",
-            "",
-            "Commit: ``${{ github.sha }}``",
-            "Branch: ``${{ github.ref_name }}``",
-            "",
-            "### Assets",
-            "- ``${{ steps.metadata.outputs.setup_name }}`` - Recommended installer; installs WinFsp if needed, then Cloud Drive Mount",
-            "- ``${{ steps.metadata.outputs.msi_name }}`` - App MSI only; requires WinFsp to already be installed",
-            "- ``${{ steps.metadata.outputs.portable_zip_name }}`` - Portable app files"
-          ) | Set-Content -Path release-notes.md
+          actual_arch="$(uname -m)"
+          echo "Runner architecture: $actual_arch"
+          if [[ "$actual_arch" != "${{ matrix.uname }}" ]]; then
+            echo "Expected ${{ matrix.uname }}, got $actual_arch" >&2
+            exit 1
+          fi
+
+      - name: Build macOS app bundle
+        shell: bash
+        env:
+          APP_VERSION: ${{ needs.metadata.outputs.package_version }}
+          APP_BUILD: ${{ github.run_number }}
+        run: bash mac/CloudDriveMount/scripts/build-app.sh
+
+      - name: Verify macOS app bundle
+        shell: bash
+        run: |
+          app_dir="mac/CloudDriveMount/.build/app/Cloud Drive Mount.app"
+          executable="$app_dir/Contents/MacOS/CloudDriveMount"
+          bundled_rclone="$app_dir/Contents/Resources/rclone"
+
+          test -d "$app_dir"
+          test -x "$executable"
+          test -x "$bundled_rclone"
+
+          plutil -lint "$app_dir/Contents/Info.plist"
+          bundle_executable="$(/usr/libexec/PlistBuddy -c 'Print :CFBundleExecutable' "$app_dir/Contents/Info.plist")"
+          if [[ "$bundle_executable" != "CloudDriveMount" ]]; then
+            echo "Unexpected CFBundleExecutable: $bundle_executable" >&2
+            exit 1
+          fi
+
+          app_arch="$(lipo -archs "$executable")"
+          rclone_arch="$(lipo -archs "$bundled_rclone")"
+          echo "CloudDriveMount architecture: $app_arch"
+          echo "rclone architecture: $rclone_arch"
+          if [[ "$app_arch" != "${{ matrix.uname }}" ]]; then
+            echo "Unexpected CloudDriveMount architecture: $app_arch" >&2
+            exit 1
+          fi
+          if [[ "$rclone_arch" != "${{ matrix.uname }}" ]]; then
+            echo "Unexpected rclone architecture: $rclone_arch" >&2
+            exit 1
+          fi
+
+          codesign --verify --deep --strict --verbose=2 "$app_dir"
+
+      - name: Zip macOS app bundle
+        shell: bash
+        run: |
+          mkdir -p release
+          ditto -c -k --keepParent \
+            "mac/CloudDriveMount/.build/app/Cloud Drive Mount.app" \
+            "release/${{ matrix.asset_name }}"
+          unzip -t "release/${{ matrix.asset_name }}"
+          ditto -x -k "release/${{ matrix.asset_name }}" release/verify-unzip
+          codesign --verify --deep --strict --verbose=2 "release/verify-unzip/Cloud Drive Mount.app"
+
+      - name: Upload macOS release asset
+        uses: actions/upload-artifact@v7
+        with:
+          name: release-macos-${{ matrix.uname }}
+          path: release/${{ matrix.asset_name }}
+          if-no-files-found: error
+
+  publish-release:
+    needs:
+      - metadata
+      - build-windows
+      - build-macos
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Download release assets
+        uses: actions/download-artifact@v7
+        with:
+          pattern: release-*
+          path: release
+          merge-multiple: true
+
+      - name: Generate release notes
+        shell: bash
+        run: |
+          cat > release-notes.md <<'EOF'
+          ## Cloud Drive Mount ${{ needs.metadata.outputs.release_name }}
+
+          Commit: `${{ github.sha }}`
+          Branch: `${{ github.ref_name }}`
+          GitHub Actions run: `#${{ needs.metadata.outputs.run_number }}`
+          Published app version: `${{ needs.metadata.outputs.package_version }}`
+
+          ### Assets
+          - `${{ needs.metadata.outputs.setup_name }}` - Recommended Windows installer; installs WinFsp if needed, then Cloud Drive Mount
+          - `${{ needs.metadata.outputs.msi_name }}` - Windows app MSI only; requires WinFsp to already be installed
+          - `${{ needs.metadata.outputs.portable_zip_name }}` - Portable Windows app files
+          - `${{ needs.metadata.outputs.mac_arm64_zip_name }}` - macOS app bundle for Apple Silicon Macs
+          - `${{ needs.metadata.outputs.mac_x64_zip_name }}` - macOS app bundle for Intel Macs
+
+          ### macOS security note
+          The macOS app is not Developer ID signed or notarized. On first launch, macOS may block it; after trying to open it, go to System Settings > Privacy & Security and choose Open Anyway/Open for Cloud Drive Mount. Only do this if you trust this release.
+          EOF
 
       - name: Upload workflow artifacts
         uses: actions/upload-artifact@v7
-        if: ${{ !env.ACT }}
         with:
-          name: CloudDriveMount-${{ steps.metadata.outputs.package_version }}-${{ steps.metadata.outputs.short_sha }}
+          name: CloudDriveMount-${{ needs.metadata.outputs.package_version }}-${{ needs.metadata.outputs.short_sha }}
           path: |
             release/*.exe
             release/*.msi
@@ -97,11 +238,11 @@ jobs:
           if-no-files-found: error
 
       - name: Publish GitHub release
-        uses: softprops/action-gh-release@v2
+        uses: softprops/action-gh-release@v3
         with:
-          tag_name: ${{ steps.metadata.outputs.tag_name }}
+          tag_name: ${{ needs.metadata.outputs.tag_name }}
           target_commitish: ${{ github.sha }}
-          name: ${{ steps.metadata.outputs.release_name }}
+          name: ${{ needs.metadata.outputs.release_name }}
           body_path: release-notes.md
           prerelease: false
           make_latest: true
