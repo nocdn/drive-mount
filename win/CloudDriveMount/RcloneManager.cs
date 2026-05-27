@@ -1,5 +1,6 @@
 using System.Diagnostics;
 using System.IO;
+using System.Runtime.InteropServices;
 using System.Text;
 using Microsoft.Win32;
 
@@ -8,6 +9,7 @@ namespace CloudDriveMount;
 public class RcloneManager : IDisposable
 {
     private sealed record MountSpec(string Label, string RemotePath, string DriveLetter, string VolumeName, string VfsCacheMode);
+    private sealed record DriveMountInfo(bool Exists, string VolumeLabel, string FileSystemName);
 
     private readonly Dictionary<string, Process> _processes = new(StringComparer.OrdinalIgnoreCase);
     private readonly HashSet<int> _intentionalStops = new();
@@ -111,6 +113,47 @@ public class RcloneManager : IDisposable
 
         LogService.Error("WinFsp not found.");
         return false;
+    }
+
+    public void CleanupExistingAppProcesses()
+    {
+        var rclonePath = FindRclone();
+        if (rclonePath is null)
+        {
+            LogService.Info("Skipping stale rclone cleanup because rclone.exe was not found.");
+            return;
+        }
+
+        foreach (var process in Process.GetProcessesByName("rclone"))
+        {
+            try
+            {
+                if (!IsAppRcloneProcess(process, rclonePath))
+                    continue;
+
+                LogService.Info("Killing stale app rclone process PID=" + process.Id);
+                OnStatusChanged?.Invoke("Stopping stale rclone process PID=" + process.Id + ".");
+                process.Kill(entireProcessTree: true);
+                if (!process.WaitForExit(5000))
+                {
+                    LogService.Error("Timed out waiting for stale rclone process to exit. PID=" + process.Id);
+                    OnError?.Invoke("Timed out waiting for stale rclone process to exit. PID=" + process.Id + ".");
+                }
+                else
+                {
+                    LogService.Info("Stale app rclone process terminated. PID=" + process.Id);
+                }
+            }
+            catch (Exception ex)
+            {
+                LogService.Error("Failed to stop stale rclone process PID=" + process.Id + ": " + ex.Message);
+                OnError?.Invoke("Failed to stop stale rclone process PID=" + process.Id + ": " + ex.Message);
+            }
+            finally
+            {
+                process.Dispose();
+            }
+        }
     }
 
     public bool IsGoogleDriveConfigured(GoogleDriveSettings googleDrive)
@@ -370,6 +413,24 @@ public class RcloneManager : IDisposable
     private bool MountRemote(string rclonePath, MountSpec mount)
     {
         var driveLetter = NormalizeDriveLetter(mount.DriveLetter);
+        var existingDrive = GetDriveMountInfo(driveLetter);
+        if (existingDrive.Exists &&
+            string.Equals(existingDrive.FileSystemName, "FUSE-rclone", StringComparison.OrdinalIgnoreCase))
+        {
+            existingDrive = WaitForDriveToRelease(driveLetter, TimeSpan.FromSeconds(5));
+        }
+
+        if (existingDrive.Exists)
+        {
+            var details = string.IsNullOrWhiteSpace(existingDrive.FileSystemName)
+                ? existingDrive.VolumeLabel
+                : existingDrive.VolumeLabel + " (" + existingDrive.FileSystemName + ")";
+            if (string.IsNullOrWhiteSpace(details))
+                details = "another volume";
+            OnError?.Invoke($"Drive {driveLetter} is already in use by {details}. Unmount it or choose another drive letter.");
+            return false;
+        }
+
         var args = new List<string>
         {
             "mount",
@@ -737,6 +798,84 @@ public class RcloneManager : IDisposable
             drive += ":";
 
         return drive;
+    }
+
+    [DllImport("kernel32.dll", CharSet = CharSet.Unicode, SetLastError = true)]
+    private static extern bool GetVolumeInformation(
+        string lpRootPathName,
+        StringBuilder lpVolumeNameBuffer,
+        int nVolumeNameSize,
+        out uint lpVolumeSerialNumber,
+        out uint lpMaximumComponentLength,
+        out uint lpFileSystemFlags,
+        StringBuilder lpFileSystemNameBuffer,
+        int nFileSystemNameSize);
+
+    private static DriveMountInfo GetDriveMountInfo(string driveLetter)
+    {
+        var rootPath = NormalizeDriveLetter(driveLetter) + "\\";
+        if (!Directory.Exists(rootPath))
+            return new DriveMountInfo(false, string.Empty, string.Empty);
+
+        var volumeName = new StringBuilder(261);
+        var fileSystemName = new StringBuilder(261);
+        var ok = GetVolumeInformation(
+            rootPath,
+            volumeName,
+            volumeName.Capacity,
+            out _,
+            out _,
+            out _,
+            fileSystemName,
+            fileSystemName.Capacity);
+
+        return ok
+            ? new DriveMountInfo(true, volumeName.ToString(), fileSystemName.ToString())
+            : new DriveMountInfo(true, string.Empty, string.Empty);
+    }
+
+    private static DriveMountInfo WaitForDriveToRelease(string driveLetter, TimeSpan timeout)
+    {
+        var deadline = DateTime.UtcNow.Add(timeout);
+        var info = GetDriveMountInfo(driveLetter);
+
+        while (info.Exists && DateTime.UtcNow < deadline)
+        {
+            Thread.Sleep(100);
+            info = GetDriveMountInfo(driveLetter);
+        }
+
+        return info;
+    }
+
+    private static bool IsAppRcloneProcess(Process process, string rclonePath)
+    {
+        if (process.HasExited)
+            return false;
+
+        string? processPath = null;
+        try
+        {
+            processPath = process.MainModule?.FileName;
+        }
+        catch
+        {
+            return false;
+        }
+
+        if (string.IsNullOrWhiteSpace(processPath))
+            return false;
+
+        var knownAppRclonePaths = new[]
+        {
+            rclonePath,
+            Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.ProgramFiles), "Cloud Drive Mount", "rclone.exe"),
+            Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.ProgramFilesX86), "Cloud Drive Mount", "rclone.exe")
+        };
+
+        return knownAppRclonePaths.Any(path =>
+            !string.IsNullOrWhiteSpace(path) &&
+            Path.GetFullPath(processPath).Equals(Path.GetFullPath(path), StringComparison.OrdinalIgnoreCase));
     }
 
     private static bool IsValidRcloneRemoteName(string remoteName)

@@ -60,7 +60,8 @@
                 <Button x:Name="BtnSaveMount" Content="Save and Mount All" Click="BtnSaveMount_Click" Margin="0,0,5,0" Padding="10,3"/>
                 <Button x:Name="BtnUnmount" Content="Unmount All" Click="BtnUnmount_Click" Margin="0,0,5,0" Padding="10,3"/>
                 <Button x:Name="BtnOpenLogs" Content="Open Log Folder" Click="BtnOpenLogs_Click" Margin="0,0,5,0" Padding="10,3"/>
-                <Button x:Name="BtnClearLogs" Content="Clear Logs" Click="BtnClearLogs_Click" Padding="10,3"/>
+                <Button x:Name="BtnClearLogs" Content="Clear Logs" Click="BtnClearLogs_Click" Margin="0,0,5,0" Padding="10,3"/>
+                <Button x:Name="BtnRestart" Content="Restart" Click="BtnRestart_Click" Padding="10,3"/>
             </StackPanel>
 
             <Label Content="Logs" Padding="0,0,0,2"/>

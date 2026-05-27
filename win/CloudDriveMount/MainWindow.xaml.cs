@@ -13,6 +13,8 @@ public partial class MainWindow : Window
     private AppSettings _settings;
     private TrayIconManager? _tray;
     private bool _isLoadingProvider;
+    private string _lastTrayErrorMessage = string.Empty;
+    private DateTime _lastTrayErrorAt = DateTime.MinValue;
 
     public bool AllowClose { get; set; } = false;
 
@@ -31,7 +33,8 @@ public partial class MainWindow : Window
         {
             AddLog("[ERROR] " + msg);
             LogService.Error(msg);
-            _tray?.ShowBalloonTip("Cloud Drive Mount Error", msg, ToolTipIcon.Error);
+            if (ShouldShowTrayError(msg))
+                _tray?.ShowBalloonTip("Cloud Drive Mount Error", msg, ToolTipIcon.Error);
         });
 
         _settings = _settingsService.Load();
@@ -71,6 +74,18 @@ public partial class MainWindow : Window
 
     public void SetTrayIcon(TrayIconManager tray) => _tray = tray;
 
+    public void ShowSettingsWindow()
+    {
+        Show();
+        WindowState = WindowState.Normal;
+        Activate();
+    }
+
+    public void CleanupExistingAppProcesses()
+    {
+        _rcloneManager.CleanupExistingAppProcesses();
+    }
+
     public void AttemptMount()
     {
         if (HasAnyCompleteMount())
@@ -92,6 +107,60 @@ public partial class MainWindow : Window
         TxtLog.AppendText(line + Environment.NewLine);
         TxtLog.CaretIndex = TxtLog.Text.Length;
         TxtLog.ScrollToEnd();
+    }
+
+    private bool ShouldShowTrayError(string message)
+    {
+        var now = DateTime.Now;
+        var trimmed = StripRcloneLabel(message).Trim();
+
+        if (IsRcloneErrorDetailLine(trimmed))
+            return false;
+
+        if (string.Equals(message, _lastTrayErrorMessage, StringComparison.Ordinal) &&
+            (now - _lastTrayErrorAt).TotalSeconds < 60)
+        {
+            return false;
+        }
+
+        if (message.Contains("Mount process exited with code", StringComparison.OrdinalIgnoreCase) &&
+            (now - _lastTrayErrorAt).TotalSeconds < 10)
+        {
+            return false;
+        }
+
+        _lastTrayErrorMessage = message;
+        _lastTrayErrorAt = now;
+        return true;
+    }
+
+    private static string StripRcloneLabel(string message)
+    {
+        var trimmed = message.TrimStart();
+        if (!trimmed.StartsWith("["))
+            return trimmed;
+
+        var end = trimmed.IndexOf(']');
+        return end >= 0 && end + 1 < trimmed.Length ? trimmed[(end + 1)..].TrimStart() : trimmed;
+    }
+
+    private static bool IsRcloneErrorDetailLine(string line)
+    {
+        if (line.Equals("Details:", StringComparison.OrdinalIgnoreCase) ||
+            line.Equals("[", StringComparison.Ordinal) ||
+            line.Equals("]", StringComparison.Ordinal) ||
+            line.Equals("{", StringComparison.Ordinal) ||
+            line.Equals("}", StringComparison.Ordinal) ||
+            line.Equals("},", StringComparison.Ordinal) ||
+            line.Equals("],", StringComparison.Ordinal))
+        {
+            return true;
+        }
+
+        return line.StartsWith("\"", StringComparison.Ordinal) ||
+               line.StartsWith("@type", StringComparison.OrdinalIgnoreCase) ||
+               line.StartsWith("metadata", StringComparison.OrdinalIgnoreCase) ||
+               line.StartsWith(", rateLimitExceeded", StringComparison.OrdinalIgnoreCase);
     }
 
     private void AddBucketRow(string bucketName = "", string driveLetter = "")
@@ -619,7 +688,71 @@ public partial class MainWindow : Window
 
     private void BtnClearLogs_Click(object sender, RoutedEventArgs e)
     {
+        LogService.Clear();
         TxtLog.Clear();
+    }
+
+    private void BtnRestart_Click(object sender, RoutedEventArgs e)
+    {
+        BtnRestart.IsEnabled = false;
+        AddLog("[INFO] Restarting Cloud Drive Mount.");
+
+        if (!SaveSettings(validateMounts: false, logSuccess: false))
+        {
+            BtnRestart.IsEnabled = true;
+            return;
+        }
+
+        if (!StartRestartHelper())
+        {
+            BtnRestart.IsEnabled = true;
+            return;
+        }
+
+        _rcloneManager.Unmount();
+        _rcloneManager.CleanupExistingAppProcesses();
+        TxtLog.Clear();
+
+        AllowClose = true;
+        System.Windows.Application.Current.Shutdown();
+    }
+
+    private bool StartRestartHelper()
+    {
+        var exePath = Process.GetCurrentProcess().MainModule?.FileName;
+        if (string.IsNullOrWhiteSpace(exePath))
+        {
+            AddLog("[ERROR] Could not restart: current executable path was not found.");
+            return false;
+        }
+
+        var command = "Wait-Process -Id " + Process.GetCurrentProcess().Id +
+                      "; Start-Process -FilePath '" + exePath.Replace("'", "''") +
+                      "' -ArgumentList '--show-window','--clean-restart'";
+
+        try
+        {
+            Process.Start(new ProcessStartInfo
+            {
+                FileName = "powershell.exe",
+                Arguments = "-NoProfile -ExecutionPolicy Bypass -WindowStyle Hidden -Command " + QuoteProcessArgument(command),
+                UseShellExecute = false,
+                CreateNoWindow = true
+            });
+
+            return true;
+        }
+        catch (Exception ex)
+        {
+            AddLog("[ERROR] Could not start restart helper: " + ex.Message);
+            LogService.Error("Could not start restart helper: " + ex);
+            return false;
+        }
+    }
+
+    private static string QuoteProcessArgument(string value)
+    {
+        return "\"" + value.Replace("\"", "\\\"") + "\"";
     }
 
     private void CmbProvider_SelectionChanged(object sender, SelectionChangedEventArgs e)

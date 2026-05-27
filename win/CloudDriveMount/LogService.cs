@@ -49,6 +49,25 @@ public class LogService
     public static void Error(string message) => Write("ERROR", message);
     public static void Debug(string message) => Write("DEBUG", message);
 
+    public static void Clear()
+    {
+        lock (Lock)
+        {
+            try
+            {
+                Directory.CreateDirectory(LogDir);
+                File.WriteAllText(LogFile, string.Empty);
+
+                if (File.Exists(OldLogFile))
+                    File.Delete(OldLogFile);
+            }
+            catch
+            {
+                // Logging should never crash the app
+            }
+        }
+    }
+
     public static string GetLogDirectory() => LogDir;
     public static string GetLogFilePath() => LogFile;
 }
