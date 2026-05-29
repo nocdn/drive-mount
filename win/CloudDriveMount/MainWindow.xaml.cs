@@ -40,14 +40,25 @@ public partial class MainWindow : Window
         _settings = _settingsService.Load();
         _settings.Buckets ??= new List<BucketMount>();
         _settings.GoogleDrive ??= new GoogleDriveSettings();
+        _settings.Seedbox ??= new SeedboxSettings();
         _settings.SelectedProvider = CloudProvider.Normalize(_settings.SelectedProvider);
         EnsureGoogleDriveDefaults();
+        EnsureSeedboxDefaults();
 
-        TxtKeyId.Text = _settings.ApplicationKeyId;
-        TxtKey.Text = _settings.ApplicationKey;
+        var b2Credentials = WindowsSecureStore.LoadB2Credentials();
+        TxtKeyId.Text = b2Credentials?.ApplicationKeyId ?? string.Empty;
+        TxtKey.Text = b2Credentials?.ApplicationKey ?? string.Empty;
 
         TxtGoogleRemotePath.Text = _settings.GoogleDrive.RemotePath;
         TxtGoogleRootFolderId.Text = _settings.GoogleDrive.RootFolderId;
+
+        TxtSeedboxHost.Text = CloudProvider.NormalizeSeedboxHost(_settings.Seedbox.Host);
+        TxtSeedboxUsername.Text = _settings.Seedbox.Username;
+        TxtSeedboxPort.Text = _settings.Seedbox.Port.ToString();
+        TxtSeedboxRemotePath.Text = _settings.Seedbox.RemotePath;
+        TxtSeedboxDriveLetter.Text = NormalizeDriveInput(_settings.Seedbox.DriveLetter);
+        ChkSeedboxReadOnly.IsChecked = _settings.Seedbox.ReadOnly;
+        ChkSeedboxAllowUnverified.IsChecked = _settings.Seedbox.AllowUnverifiedCertificate;
 
         ChkStartOnLogin.IsChecked = StartupManager.IsSet();
         ChkStartMinimized.IsChecked = _settings.StartMinimized;
@@ -59,11 +70,17 @@ public partial class MainWindow : Window
                 AddBucketRow(bucket.BucketName, bucket.DriveLetter);
 
         _isLoadingProvider = true;
-        CmbProvider.SelectedIndex = _settings.SelectedProvider == CloudProvider.GoogleDrive ? 1 : 0;
+        CmbProvider.SelectedIndex = _settings.SelectedProvider switch
+        {
+            CloudProvider.GoogleDrive => 1,
+            CloudProvider.Seedbox => 2,
+            _ => 0
+        };
         _isLoadingProvider = false;
 
         UpdateProviderPanels();
         RefreshGoogleDriveConnectionUi();
+        RefreshSeedboxConnectionUi();
         UpdateSaveMountButton();
 
         var logMsg = "Cloud Drive Mount started. Log file: " + LogService.GetLogFilePath();
@@ -235,11 +252,17 @@ public partial class MainWindow : Window
         var provider = GetSelectedProvider();
         B2OptionsPanel.Visibility = provider == CloudProvider.BackblazeB2 ? Visibility.Visible : Visibility.Collapsed;
         GoogleDriveOptionsPanel.Visibility = provider == CloudProvider.GoogleDrive ? Visibility.Visible : Visibility.Collapsed;
+        SeedboxOptionsPanel.Visibility = provider == CloudProvider.Seedbox ? Visibility.Visible : Visibility.Collapsed;
     }
 
     private string GetSelectedProvider()
     {
-        return CmbProvider.SelectedIndex == 1 ? CloudProvider.GoogleDrive : CloudProvider.BackblazeB2;
+        return CmbProvider.SelectedIndex switch
+        {
+            1 => CloudProvider.GoogleDrive,
+            2 => CloudProvider.Seedbox,
+            _ => CloudProvider.BackblazeB2
+        };
     }
 
     private void UpdateSaveMountButton()
@@ -261,26 +284,40 @@ public partial class MainWindow : Window
         var hasGoogleDrive = _rcloneManager.IsGoogleDriveConfigured(googleDrive) ||
                              (includeSelectedGoogleDrive && GetSelectedProvider() == CloudProvider.GoogleDrive);
 
-        return hasB2 || hasGoogleDrive;
+        var seedbox = ReadSeedboxSettings();
+        var hasSeedbox = HasCompleteSeedboxSettings(seedbox) &&
+                         (_rcloneManager.IsSeedboxConfigured(seedbox) ||
+                          !string.IsNullOrEmpty(PwdSeedboxPassword.Password) ||
+                          !string.IsNullOrEmpty(WindowsSecureStore.LoadSeedboxPassword()) ||
+                          GetSelectedProvider() == CloudProvider.Seedbox);
+
+        return hasB2 || hasGoogleDrive || hasSeedbox;
     }
 
     private bool SaveSettings(bool validateMounts, bool logSuccess = true)
     {
         try
         {
+            NormalizeSeedboxHostInUi();
             _settings.SelectedProvider = GetSelectedProvider();
-            _settings.ApplicationKeyId = TxtKeyId.Text.Trim();
-            _settings.ApplicationKey = TxtKey.Text.Trim();
+            WindowsSecureStore.SaveB2Credentials(TxtKeyId.Text.Trim(), TxtKey.Text.Trim());
+            if (!string.IsNullOrEmpty(PwdSeedboxPassword.Password))
+                WindowsSecureStore.SaveSeedboxPassword(PwdSeedboxPassword.Password);
+            _settings.ApplicationKeyId = string.Empty;
+            _settings.ApplicationKey = string.Empty;
             _settings.Buckets = validateMounts ? CollectBucketMounts(requireAtLeastOne: false) : ReadBucketRows();
             _settings.GoogleDrive = ReadGoogleDriveSettings();
+            _settings.Seedbox = ReadSeedboxSettings();
             _settings.StartOnLogin = ChkStartOnLogin.IsChecked == true;
             _settings.StartMinimized = ChkStartMinimized.IsChecked == true;
             EnsureGoogleDriveDefaults();
+            EnsureSeedboxDefaults();
 
             if (validateMounts)
             {
                 ValidateGoogleDriveSettings(_settings.GoogleDrive, requireCompleteMount: false);
-                ValidateDriveConflicts(_settings.Buckets, _settings.GoogleDrive);
+                ValidateSeedboxSettings(_settings.Seedbox, requireCompleteMount: false);
+                ValidateDriveConflicts(_settings.Buckets, _settings.GoogleDrive, _settings.Seedbox);
             }
 
             _settingsService.Save(_settings);
@@ -294,7 +331,7 @@ public partial class MainWindow : Window
             if (logSuccess)
             {
                 AddLog("[INFO] Saved settings");
-                LogService.Info("Settings saved. Provider=" + _settings.SelectedProvider + " BucketCount=" + _settings.Buckets.Count + " GoogleDrive=" + _settings.GoogleDrive.RemoteName + " StartOnLogin=" + _settings.StartOnLogin);
+                LogService.Info("Settings saved. Provider=" + _settings.SelectedProvider + " BucketCount=" + _settings.Buckets.Count + " GoogleDrive=" + _settings.GoogleDrive.RemoteName + " Seedbox=" + _settings.Seedbox.RemoteName + " StartOnLogin=" + _settings.StartOnLogin);
             }
 
             return true;
@@ -341,6 +378,9 @@ public partial class MainWindow : Window
         var configuredGoogleDrive = NormalizeDriveInput(_settings.GoogleDrive?.DriveLetter ?? string.Empty);
         if (!string.IsNullOrWhiteSpace(configuredGoogleDrive))
             configuredDrives.Add(configuredGoogleDrive + ":");
+        var configuredSeedboxDrive = NormalizeDriveInput(_settings.Seedbox?.DriveLetter ?? string.Empty);
+        if (!string.IsNullOrWhiteSpace(configuredSeedboxDrive))
+            configuredDrives.Add(configuredSeedboxDrive + ":");
 
         var usedSystemDrives = DriveInfo.GetDrives()
             .Where(drive => drive.Name.Length >= 2)
@@ -399,6 +439,22 @@ public partial class MainWindow : Window
         };
     }
 
+    private SeedboxSettings ReadSeedboxSettings()
+    {
+        var port = int.TryParse(TxtSeedboxPort.Text.Trim(), out var parsedPort) ? parsedPort : 21;
+        return new SeedboxSettings
+        {
+            RemoteName = CloudProvider.DefaultSeedboxRemoteName,
+            Host = CloudProvider.NormalizeSeedboxHost(TxtSeedboxHost.Text),
+            Username = TxtSeedboxUsername.Text.Trim(),
+            Port = port,
+            RemotePath = NormalizeRemotePath(TxtSeedboxRemotePath.Text),
+            DriveLetter = NormalizeDriveInput(TxtSeedboxDriveLetter.Text),
+            ReadOnly = ChkSeedboxReadOnly.IsChecked != false,
+            AllowUnverifiedCertificate = ChkSeedboxAllowUnverified.IsChecked != false
+        };
+    }
+
     private void ValidateGoogleDriveSettings(GoogleDriveSettings googleDrive, bool requireCompleteMount)
     {
         googleDrive.RemoteName = CloudProvider.DefaultGoogleDriveRemoteName;
@@ -416,7 +472,48 @@ public partial class MainWindow : Window
         }
     }
 
-    private void ValidateDriveConflicts(List<BucketMount> buckets, GoogleDriveSettings googleDrive)
+    private void ValidateSeedboxSettings(SeedboxSettings seedbox, bool requireCompleteMount)
+    {
+        seedbox.RemoteName = CloudProvider.DefaultSeedboxRemoteName;
+        seedbox.RemotePath = NormalizeRemotePath(seedbox.RemotePath);
+        seedbox.DriveLetter = NormalizeDriveInput(seedbox.DriveLetter);
+
+        var hasAnyInput = HasAnySeedboxInput(seedbox);
+        if (!hasAnyInput && !requireCompleteMount)
+            return;
+
+        if (string.IsNullOrWhiteSpace(seedbox.Host))
+            throw new InvalidOperationException("Seedbox host is required.");
+
+        if (string.IsNullOrWhiteSpace(seedbox.Username))
+            throw new InvalidOperationException("Seedbox username is required.");
+
+        if (seedbox.Port <= 0 || seedbox.Port > 65535)
+            throw new InvalidOperationException("Seedbox port must be between 1 and 65535.");
+
+        if (string.IsNullOrWhiteSpace(seedbox.DriveLetter))
+            throw new InvalidOperationException("Seedbox drive letter is required.");
+
+        if (seedbox.DriveLetter.Length != 1 || !char.IsLetter(seedbox.DriveLetter[0]))
+            throw new InvalidOperationException("Seedbox drive letter must be a single letter, like S.");
+    }
+
+    private static bool HasAnySeedboxInput(SeedboxSettings seedbox)
+    {
+        return !string.IsNullOrWhiteSpace(seedbox.Host) ||
+               !string.IsNullOrWhiteSpace(seedbox.Username);
+    }
+
+    private static bool HasCompleteSeedboxSettings(SeedboxSettings seedbox)
+    {
+        return !string.IsNullOrWhiteSpace(seedbox.Host) &&
+               !string.IsNullOrWhiteSpace(seedbox.Username) &&
+               !string.IsNullOrWhiteSpace(seedbox.DriveLetter) &&
+               seedbox.Port > 0 &&
+               seedbox.Port <= 65535;
+    }
+
+    private void ValidateDriveConflicts(List<BucketMount> buckets, GoogleDriveSettings googleDrive, SeedboxSettings seedbox)
     {
         var seenDrives = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
         var configuredDrives = _settings.Buckets
@@ -426,6 +523,9 @@ public partial class MainWindow : Window
         var configuredGoogleDrive = NormalizeDriveInput(_settings.GoogleDrive?.DriveLetter ?? string.Empty);
         if (!string.IsNullOrWhiteSpace(configuredGoogleDrive))
             configuredDrives.Add(configuredGoogleDrive + ":");
+        var configuredSeedboxDrive = NormalizeDriveInput(_settings.Seedbox?.DriveLetter ?? string.Empty);
+        if (!string.IsNullOrWhiteSpace(configuredSeedboxDrive))
+            configuredDrives.Add(configuredSeedboxDrive + ":");
 
         var usedSystemDrives = DriveInfo.GetDrives()
             .Where(drive => drive.Name.Length >= 2)
@@ -453,14 +553,26 @@ public partial class MainWindow : Window
             if (usedSystemDrives.Contains(driveWithColon) && !configuredDrives.Contains(driveWithColon))
                 throw new InvalidOperationException("Drive letter " + driveWithColon + " is already in use by Windows.");
         }
+
+        var seedboxDrive = NormalizeDriveInput(seedbox.DriveLetter);
+        if (!string.IsNullOrWhiteSpace(seedboxDrive) && HasAnySeedboxInput(seedbox))
+        {
+            var driveWithColon = seedboxDrive + ":";
+            if (!seenDrives.Add(driveWithColon))
+                throw new InvalidOperationException("Drive letter " + driveWithColon + " is used by more than one mount.");
+
+            if (usedSystemDrives.Contains(driveWithColon) && !configuredDrives.Contains(driveWithColon))
+                throw new InvalidOperationException("Drive letter " + driveWithColon + " is already in use by Windows.");
+        }
     }
 
     private void ValidateMountRequest()
     {
         var b2HasAny = _settings.Buckets.Count > 0;
 
-        var b2Complete = !string.IsNullOrWhiteSpace(_settings.ApplicationKeyId) &&
-                         !string.IsNullOrWhiteSpace(_settings.ApplicationKey) &&
+        var b2Credentials = WindowsSecureStore.LoadB2Credentials();
+        var b2Complete = !string.IsNullOrWhiteSpace(b2Credentials?.ApplicationKeyId) &&
+                         !string.IsNullOrWhiteSpace(b2Credentials?.ApplicationKey) &&
                          _settings.Buckets.Any(bucket => !string.IsNullOrWhiteSpace(bucket.BucketName) && !string.IsNullOrWhiteSpace(bucket.DriveLetter));
 
         if (b2HasAny && !b2Complete)
@@ -476,8 +588,21 @@ public partial class MainWindow : Window
         if (googleComplete)
             ValidateGoogleDriveSettings(_settings.GoogleDrive, requireCompleteMount: true);
 
-        if (!b2Complete && !googleComplete)
-            throw new InvalidOperationException("Configure at least one B2 bucket or Google Drive mount before mounting.");
+        var seedboxSelected = _settings.SelectedProvider == CloudProvider.Seedbox;
+        var seedboxHasAny = HasAnySeedboxInput(_settings.Seedbox);
+        var seedboxComplete = HasCompleteSeedboxSettings(_settings.Seedbox) &&
+                              (_rcloneManager.IsSeedboxConfigured(_settings.Seedbox) ||
+                               !string.IsNullOrEmpty(PwdSeedboxPassword.Password) ||
+                               !string.IsNullOrEmpty(WindowsSecureStore.LoadSeedboxPassword()));
+
+        if ((seedboxSelected || seedboxHasAny) && !seedboxComplete)
+            throw new InvalidOperationException("Seedbox requires host, username, port, drive letter, and a saved FTPS password. Click Test Connection first.");
+
+        if (seedboxComplete)
+            ValidateSeedboxSettings(_settings.Seedbox, requireCompleteMount: true);
+
+        if (!b2Complete && !googleComplete && !seedboxComplete)
+            throw new InvalidOperationException("Configure at least one B2 bucket, Google Drive, or Seedbox mount before mounting.");
     }
 
     private void RefreshGoogleDriveConnectionUi()
@@ -493,6 +618,19 @@ public partial class MainWindow : Window
         BtnTestGoogleDriveConnection.Visibility = connected ? Visibility.Visible : Visibility.Collapsed;
     }
 
+    private void RefreshSeedboxConnectionUi()
+    {
+        if (!IsInitialized)
+            return;
+
+        var seedbox = ReadSeedboxSettings();
+        var connected = _rcloneManager.IsSeedboxConfigured(seedbox);
+        BtnForgetSeedbox.Visibility = connected ? Visibility.Visible : Visibility.Collapsed;
+        TxtSeedboxConnectHelp.Text = connected
+            ? "Seedbox FTPS is configured. Use Save and Mount All to mount it."
+            : "Use your Ultra.cc FTP/SFTP connection details. Host is usually your server name, port is 21, and Remote Folder is usually downloads.";
+    }
+
     private void EnsureGoogleDriveDefaults()
     {
         _settings.GoogleDrive ??= new GoogleDriveSettings();
@@ -500,7 +638,32 @@ public partial class MainWindow : Window
         _settings.GoogleDrive.DriveLetter = CloudProvider.DefaultGoogleDriveLetter;
     }
 
+    private void NormalizeSeedboxHostInUi()
+    {
+        var normalized = CloudProvider.NormalizeSeedboxHost(TxtSeedboxHost.Text);
+        if (!string.Equals(TxtSeedboxHost.Text, normalized, StringComparison.Ordinal))
+            TxtSeedboxHost.Text = normalized;
+    }
+
+    private void EnsureSeedboxDefaults()
+    {
+        _settings.Seedbox ??= new SeedboxSettings();
+        _settings.Seedbox.RemoteName = CloudProvider.DefaultSeedboxRemoteName;
+        _settings.Seedbox.Host = CloudProvider.NormalizeSeedboxHost(_settings.Seedbox.Host);
+        _settings.Seedbox.RemotePath = NormalizeRemotePath(_settings.Seedbox.RemotePath);
+        if (_settings.Seedbox.Port <= 0 || _settings.Seedbox.Port > 65535)
+            _settings.Seedbox.Port = 21;
+        if (string.IsNullOrWhiteSpace(_settings.Seedbox.DriveLetter))
+            _settings.Seedbox.DriveLetter = CloudProvider.DefaultSeedboxLetter;
+        _settings.Seedbox.DriveLetter = NormalizeDriveInput(_settings.Seedbox.DriveLetter);
+    }
+
     private static string NormalizeGoogleDrivePath(string value)
+    {
+        return NormalizeRemotePath(value);
+    }
+
+    private static string NormalizeRemotePath(string value)
     {
         var path = value.Trim().Replace('\\', '/');
         while (path.StartsWith("/"))
@@ -519,6 +682,22 @@ public partial class MainWindow : Window
     private void BtnAddBucket_Click(object sender, RoutedEventArgs e)
     {
         AddBucketRow();
+        UpdateSaveMountButton();
+    }
+
+    private void SeedboxPassword_Changed(object sender, RoutedEventArgs e)
+    {
+        if (!IsInitialized)
+            return;
+
+        UpdateSaveMountButton();
+    }
+
+    private void AnySeedboxOption_Changed(object sender, RoutedEventArgs e)
+    {
+        if (!IsInitialized)
+            return;
+
         UpdateSaveMountButton();
     }
 
@@ -636,6 +815,83 @@ public partial class MainWindow : Window
         }
     }
 
+    private async void BtnTestSeedboxConnection_Click(object sender, RoutedEventArgs e)
+    {
+        NormalizeSeedboxHostInUi();
+        _settings.SelectedProvider = CloudProvider.Seedbox;
+        _settings.Seedbox = ReadSeedboxSettings();
+        EnsureSeedboxDefaults();
+
+        try
+        {
+            ValidateSeedboxSettings(_settings.Seedbox, requireCompleteMount: true);
+        }
+        catch (Exception ex)
+        {
+            AddLog("[ERROR] " + ex.Message);
+            LogService.Error(ex.ToString());
+            return;
+        }
+
+        if (!SaveSettings(validateMounts: false, logSuccess: false))
+            return;
+
+        var password = !string.IsNullOrEmpty(PwdSeedboxPassword.Password)
+            ? PwdSeedboxPassword.Password
+            : WindowsSecureStore.LoadSeedboxPassword();
+
+        BtnTestSeedboxConnection.IsEnabled = false;
+        BtnForgetSeedbox.IsEnabled = false;
+        BtnTestSeedboxConnection.Content = "Testing...";
+        AddLog("[INFO] Testing Seedbox FTPS connection.");
+
+        try
+        {
+            var seedbox = _settings.Seedbox;
+            var ok = await Task.Run(() => _rcloneManager.TestSeedboxConnection(seedbox, password));
+            if (ok)
+            {
+                if (!string.IsNullOrEmpty(PwdSeedboxPassword.Password))
+                {
+                    WindowsSecureStore.SaveSeedboxPassword(PwdSeedboxPassword.Password);
+                    PwdSeedboxPassword.Clear();
+                }
+
+                AddLog("[INFO] Seedbox connection test succeeded.");
+                LogService.Info("Seedbox connection test succeeded.");
+            }
+            else
+            {
+                AddLog("[ERROR] Seedbox connection test failed. See the log above for details.");
+                LogService.Error("Seedbox connection test failed.");
+            }
+        }
+        finally
+        {
+            BtnTestSeedboxConnection.IsEnabled = true;
+            BtnForgetSeedbox.IsEnabled = true;
+            BtnTestSeedboxConnection.Content = "Test Connection";
+            RefreshSeedboxConnectionUi();
+            UpdateSaveMountButton();
+        }
+    }
+
+    private void BtnForgetSeedbox_Click(object sender, RoutedEventArgs e)
+    {
+        _settings.Seedbox = ReadSeedboxSettings();
+        var driveToUnmount = NormalizeDriveInput(_settings.Seedbox.DriveLetter);
+        if (!string.IsNullOrWhiteSpace(driveToUnmount))
+            _rcloneManager.UnmountDrive(driveToUnmount);
+
+        var ok = _rcloneManager.DisconnectSeedbox(_settings.Seedbox);
+        WindowsSecureStore.DeleteSeedboxPassword();
+        PwdSeedboxPassword.Clear();
+
+        AddLog(ok ? "[INFO] Seedbox is disconnected." : "[ERROR] Seedbox disconnect failed. See the log above for details.");
+        RefreshSeedboxConnectionUi();
+        UpdateSaveMountButton();
+    }
+
     private void BtnSaveMount_Click(object? sender, RoutedEventArgs? e)
     {
         if (!SaveSettings(validateMounts: true))
@@ -660,6 +916,7 @@ public partial class MainWindow : Window
         }
 
         RefreshGoogleDriveConnectionUi();
+        RefreshSeedboxConnectionUi();
     }
 
     private void BtnUnmount_Click(object sender, RoutedEventArgs e)
@@ -759,6 +1016,7 @@ public partial class MainWindow : Window
         UpdateProviderPanels();
         SaveSettings(validateMounts: false, logSuccess: false);
         RefreshGoogleDriveConnectionUi();
+        RefreshSeedboxConnectionUi();
         UpdateSaveMountButton();
     }
 

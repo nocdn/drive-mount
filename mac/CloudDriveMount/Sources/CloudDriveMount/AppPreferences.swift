@@ -7,6 +7,7 @@ enum AppPreferences {
     private static let selectedProviderKey = "SelectedProvider"
     private static let b2BucketsKey = "B2Buckets"
     private static let googleDriveSettingsKey = "GoogleDriveSettings"
+    private static let seedboxSettingsKey = "SeedboxSettings"
 
     static func registerDefaults() {
         UserDefaults.standard.register(defaults: [
@@ -63,6 +64,58 @@ enum AppPreferences {
                 UserDefaults.standard.set(data, forKey: googleDriveSettingsKey)
             }
         }
+    }
+
+    static var seedboxSettings: SeedboxSettings {
+        get {
+            guard let data = UserDefaults.standard.data(forKey: seedboxSettingsKey),
+                  var settings = try? JSONDecoder().decode(SeedboxSettings.self, from: data) else {
+                var settings = SeedboxSettings()
+                settings.mountPath = defaultSeedboxMountPath()
+                return settings
+            }
+
+            settings.remoteName = CloudProvider.defaultSeedboxRemoteName
+            settings.host = SeedboxSettings.normalizeHost(settings.host)
+            settings.remotePath = normalizeRemotePath(settings.remotePath)
+            if settings.port <= 0 || settings.port > 65535 {
+                settings.port = 21
+            }
+            if settings.mountPath.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
+                settings.mountPath = defaultSeedboxMountPath()
+            }
+            return settings
+        }
+        set {
+            var normalized = newValue
+            normalized.remoteName = CloudProvider.defaultSeedboxRemoteName
+            normalized.host = SeedboxSettings.normalizeHost(normalized.host)
+            normalized.remotePath = normalizeRemotePath(normalized.remotePath)
+            if normalized.port <= 0 || normalized.port > 65535 {
+                normalized.port = 21
+            }
+            if normalized.mountPath.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
+                normalized.mountPath = defaultSeedboxMountPath()
+            }
+            if let data = try? JSONEncoder().encode(normalized) {
+                UserDefaults.standard.set(data, forKey: seedboxSettingsKey)
+            }
+        }
+    }
+
+    private static func defaultSeedboxMountPath() -> String {
+        FileManager.default.homeDirectoryForCurrentUser
+            .appendingPathComponent("Drives")
+            .appendingPathComponent("Seedbox")
+            .path
+    }
+
+    private static func normalizeRemotePath(_ path: String) -> String {
+        var normalized = path.trimmingCharacters(in: .whitespacesAndNewlines).replacingOccurrences(of: "\\", with: "/")
+        while normalized.hasPrefix("/") || normalized.hasPrefix(":") {
+            normalized.removeFirst()
+        }
+        return normalized
     }
 }
 
@@ -140,6 +193,93 @@ enum B2CredentialStore {
         let addStatus = SecItemAdd(addQuery as CFDictionary, nil)
         guard addStatus == errSecSuccess else {
             throw B2CredentialStoreError.keychainSaveFailed(addStatus)
+        }
+    }
+
+    private static func keychainQuery() -> [String: Any] {
+        [
+            kSecClass as String: kSecClassGenericPassword,
+            kSecAttrService as String: service,
+            kSecAttrAccount as String: account
+        ]
+    }
+}
+
+enum SeedboxCredentialStoreError: LocalizedError {
+    case invalidSavedPassword
+    case keychainReadFailed(OSStatus)
+    case keychainSaveFailed(OSStatus)
+
+    var errorDescription: String? {
+        switch self {
+        case .invalidSavedPassword:
+            return "Saved Seedbox password could not be read."
+        case .keychainReadFailed(let status):
+            return "Could not read saved Seedbox password from Keychain (status \(status))."
+        case .keychainSaveFailed(let status):
+            return "Could not save Seedbox password to Keychain (status \(status))."
+        }
+    }
+}
+
+enum SeedboxCredentialStore {
+    private static let service = "com.bartek.clouddrivemount.seedboxcredentials"
+    private static let account = "seedbox-ftps"
+
+    static func loadPassword() throws -> String? {
+        var query = keychainQuery()
+        query[kSecReturnData as String] = true
+        query[kSecMatchLimit as String] = kSecMatchLimitOne
+
+        var item: CFTypeRef?
+        let status = SecItemCopyMatching(query as CFDictionary, &item)
+
+        if status == errSecItemNotFound {
+            return nil
+        }
+
+        guard status == errSecSuccess else {
+            throw SeedboxCredentialStoreError.keychainReadFailed(status)
+        }
+
+        guard let data = item as? Data,
+              let password = String(data: data, encoding: .utf8) else {
+            throw SeedboxCredentialStoreError.invalidSavedPassword
+        }
+
+        return password
+    }
+
+    static func savePassword(_ password: String) throws {
+        guard !password.isEmpty else { return }
+
+        let data = Data(password.utf8)
+        let query = keychainQuery()
+        let update = [kSecValueData as String: data]
+
+        let updateStatus = SecItemUpdate(query as CFDictionary, update as CFDictionary)
+        if updateStatus == errSecSuccess {
+            return
+        }
+
+        guard updateStatus == errSecItemNotFound else {
+            throw SeedboxCredentialStoreError.keychainSaveFailed(updateStatus)
+        }
+
+        var addQuery = query
+        addQuery[kSecValueData as String] = data
+        addQuery[kSecAttrAccessible as String] = kSecAttrAccessibleAfterFirstUnlockThisDeviceOnly
+
+        let addStatus = SecItemAdd(addQuery as CFDictionary, nil)
+        guard addStatus == errSecSuccess else {
+            throw SeedboxCredentialStoreError.keychainSaveFailed(addStatus)
+        }
+    }
+
+    static func deletePassword() throws {
+        let status = SecItemDelete(keychainQuery() as CFDictionary)
+        guard status == errSecSuccess || status == errSecItemNotFound else {
+            throw SeedboxCredentialStoreError.keychainSaveFailed(status)
         }
     }
 

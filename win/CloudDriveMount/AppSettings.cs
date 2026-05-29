@@ -4,14 +4,21 @@ public static class CloudProvider
 {
     public const string BackblazeB2 = "B2";
     public const string GoogleDrive = "GoogleDrive";
+    public const string Seedbox = "Seedbox";
     public const string DefaultGoogleDriveRemoteName = "gdrive";
     public const string DefaultGoogleDriveLetter = "G";
+    public const string DefaultSeedboxRemoteName = "seedbox";
+    public const string DefaultSeedboxLetter = "S";
 
     public static string Normalize(string? provider)
     {
-        return string.Equals(provider, GoogleDrive, StringComparison.OrdinalIgnoreCase)
-            ? GoogleDrive
-            : BackblazeB2;
+        if (string.Equals(provider, GoogleDrive, StringComparison.OrdinalIgnoreCase))
+            return GoogleDrive;
+
+        if (string.Equals(provider, Seedbox, StringComparison.OrdinalIgnoreCase))
+            return Seedbox;
+
+        return BackblazeB2;
     }
 
     public static bool IsReservedGoogleDriveLetter(string? driveLetter)
@@ -33,6 +40,24 @@ public static class CloudProvider
 
         return drive;
     }
+
+    public static string NormalizeSeedboxHost(string? host)
+    {
+        var normalized = (host ?? string.Empty).Trim();
+        foreach (var prefix in new[] { "https://", "http://", "ftps://", "ftp://" })
+        {
+            if (!normalized.StartsWith(prefix, StringComparison.OrdinalIgnoreCase))
+                continue;
+
+            normalized = normalized[prefix.Length..].Trim();
+            break;
+        }
+
+        while (normalized.EndsWith('/'))
+            normalized = normalized[..^1].TrimEnd();
+
+        return normalized.Trim();
+    }
 }
 
 public class BucketMount
@@ -49,6 +74,18 @@ public class GoogleDriveSettings
     public string DriveLetter { get; set; } = CloudProvider.DefaultGoogleDriveLetter;
 }
 
+public class SeedboxSettings
+{
+    public string RemoteName { get; set; } = CloudProvider.DefaultSeedboxRemoteName;
+    public string Host { get; set; } = string.Empty;
+    public string Username { get; set; } = string.Empty;
+    public int Port { get; set; } = 21;
+    public string RemotePath { get; set; } = "downloads";
+    public string DriveLetter { get; set; } = CloudProvider.DefaultSeedboxLetter;
+    public bool AllowUnverifiedCertificate { get; set; } = true;
+    public bool ReadOnly { get; set; } = true;
+}
+
 public class AppSettings
 {
     public string SelectedProvider { get; set; } = CloudProvider.BackblazeB2;
@@ -58,6 +95,7 @@ public class AppSettings
     public List<BucketMount> Buckets { get; set; } = new();
 
     public GoogleDriveSettings GoogleDrive { get; set; } = new();
+    public SeedboxSettings Seedbox { get; set; } = new();
 
     public bool StartOnLogin { get; set; } = true;
     public bool StartMinimized { get; set; } = true;

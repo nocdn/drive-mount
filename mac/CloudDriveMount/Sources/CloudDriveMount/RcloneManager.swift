@@ -9,6 +9,7 @@ final class RcloneManager {
         var mountPath: String
         var volumeName: String
         var vfsCacheMode: String
+        var readOnly: Bool
     }
 
     private struct RunningProcess {
@@ -66,6 +67,10 @@ final class RcloneManager {
 
     func isGoogleDriveConfigured(_ googleDrive: GoogleDriveSettings) -> Bool {
         hasConfigSection(getGoogleDriveRemoteName(googleDrive))
+    }
+
+    func isSeedboxConfigured(_ seedbox: SeedboxSettings) -> Bool {
+        hasConfigSection(getSeedboxRemoteName(seedbox))
     }
 
     func cleanupExistingAppProcesses() {
@@ -152,14 +157,70 @@ final class RcloneManager {
         }
     }
 
-    func mount(applicationKeyId: String, applicationKey: String, buckets: [BucketMount], googleDrive: GoogleDriveSettings) throws {
+    func configureSeedbox(_ seedbox: SeedboxSettings, password: String) throws {
+        guard let rclonePath = findRclone() else { throw MountError.missingRclone }
+        let normalized = normalizeSeedbox(seedbox)
+        guard isValid(seedbox: normalized) else { throw MountError.missingSeedboxCredentials }
+        guard !password.isEmpty || hasConfigSection(getSeedboxRemoteName(normalized)) else { throw MountError.missingSeedboxCredentials }
+
+        if password.isEmpty {
+            logInfo("Using existing Seedbox rclone config.")
+            return
+        }
+
+        guard let obscuredPassword = obscurePassword(rclonePath: rclonePath, password: password) else {
+            throw MountError.missingSeedboxCredentials
+        }
+
+        let lines = [
+            "type = ftp",
+            "host = \(normalized.host)",
+            "user = \(normalized.username)",
+            "port = \(normalized.port)",
+            "pass = \(obscuredPassword)",
+            "explicit_tls = true",
+            "tls = false",
+            "no_check_certificate = \(normalized.allowUnverifiedCertificate ? "true" : "false")"
+        ]
+
+        try upsertConfigSection(getSeedboxRemoteName(normalized), lines: lines)
+        logInfo("Seedbox FTPS rclone config written to: \(configURL.path).")
+    }
+
+    func disconnectSeedbox(_ seedbox: SeedboxSettings) throws {
+        let normalized = normalizeSeedbox(seedbox)
+        let mountPath = expandPath(normalized.mountPath.isEmpty ? defaultSeedboxMountPath() : normalized.mountPath)
+        if !mountPath.isEmpty {
+            unmountDrive(mountPath: mountPath)
+        }
+
+        try removeConfigSection(getSeedboxRemoteName(normalized))
+        logInfo("Seedbox remote has been removed from the app rclone config.")
+    }
+
+    func testSeedboxConnection(_ seedbox: SeedboxSettings, password: String) throws {
+        guard let rclonePath = findRclone() else { throw MountError.missingRclone }
+        let normalized = normalizeSeedbox(seedbox)
+        try configureSeedbox(normalized, password: password)
+
+        let remotePath = buildSeedboxRemotePath(normalized)
+        logInfo("Testing Seedbox FTPS connection using \(remotePath).")
+        let ok = runRcloneToCompletion(rclonePath: rclonePath, args: ["lsd", remotePath, "--config", configURL.path], label: "Seedbox connection test")
+        if ok {
+            logInfo("Seedbox connection test completed successfully.")
+        } else {
+            throw MountError.seedboxNotConfigured
+        }
+    }
+
+    func mount(applicationKeyId: String, applicationKey: String, buckets: [BucketMount], googleDrive: GoogleDriveSettings, seedbox: SeedboxSettings) throws {
         guard Self.isMacFuseInstalled() else { throw MountError.missingMacFuse }
         guard let rclonePath = findRclone() else { throw MountError.missingRclone }
 
         try ensureConfigDirectory()
         try FileManager.default.createDirectory(at: cacheURL, withIntermediateDirectories: true)
 
-        let mountSpecs = try buildMountSpecs(applicationKeyId: applicationKeyId, applicationKey: applicationKey, buckets: buckets, googleDrive: googleDrive)
+        let mountSpecs = try buildMountSpecs(applicationKeyId: applicationKeyId, applicationKey: applicationKey, buckets: buckets, googleDrive: googleDrive, seedbox: seedbox)
         guard !mountSpecs.isEmpty else { throw MountError.missingBuckets }
 
         try validate(mountSpecs: mountSpecs)
@@ -189,7 +250,7 @@ final class RcloneManager {
         RuntimeLog.info("cleanupTemporaryFiles called; persistent app support files retained at \(appSupportURL.path)")
     }
 
-    private func buildMountSpecs(applicationKeyId: String, applicationKey: String, buckets: [BucketMount], googleDrive: GoogleDriveSettings) throws -> [MountSpec] {
+    private func buildMountSpecs(applicationKeyId: String, applicationKey: String, buckets: [BucketMount], googleDrive: GoogleDriveSettings, seedbox: SeedboxSettings) throws -> [MountSpec] {
         var specs: [MountSpec] = []
         let keyId = applicationKeyId.trimmingCharacters(in: .whitespacesAndNewlines)
         let key = applicationKey.trimmingCharacters(in: .whitespacesAndNewlines)
@@ -206,7 +267,7 @@ final class RcloneManager {
                 let bucketName = bucket.bucketName.trimmingCharacters(in: .whitespacesAndNewlines)
                 let mountPath = expandPath(bucket.mountPath)
                 guard !bucketName.isEmpty, !mountPath.isEmpty else { throw MountError.missingBuckets }
-                specs.append(MountSpec(label: "B2 \(bucketName)", remotePath: "b2remote:\(bucketName)", mountPath: mountPath, volumeName: bucketName, vfsCacheMode: "writes"))
+                specs.append(MountSpec(label: "B2 \(bucketName)", remotePath: "b2remote:\(bucketName)", mountPath: mountPath, volumeName: bucketName, vfsCacheMode: "writes", readOnly: false))
             }
         }
 
@@ -215,7 +276,27 @@ final class RcloneManager {
         if hasConfigSection(getGoogleDriveRemoteName(normalizedGoogleDrive)) {
             let googleMountPath = expandPath(normalizedGoogleDrive.mountPath.isEmpty ? defaultGoogleDriveMountPath() : normalizedGoogleDrive.mountPath)
             guard !googleMountPath.isEmpty else { throw MountError.missingGoogleDriveMountPath }
-            specs.append(MountSpec(label: "Google Drive", remotePath: buildGoogleDriveRemotePath(normalizedGoogleDrive), mountPath: googleMountPath, volumeName: "Google Drive", vfsCacheMode: "full"))
+            specs.append(MountSpec(label: "Google Drive", remotePath: buildGoogleDriveRemotePath(normalizedGoogleDrive), mountPath: googleMountPath, volumeName: "Google Drive", vfsCacheMode: "full", readOnly: false))
+        }
+
+        let normalizedSeedbox = normalizeSeedbox(seedbox)
+        if hasConfigSection(getSeedboxRemoteName(normalizedSeedbox)) || hasSeedboxSettings(normalizedSeedbox) {
+            guard isValid(seedbox: normalizedSeedbox) else { throw MountError.missingSeedboxCredentials }
+            if !hasConfigSection(getSeedboxRemoteName(normalizedSeedbox)) {
+                let savedPassword = (try? SeedboxCredentialStore.loadPassword()) ?? ""
+                try configureSeedbox(normalizedSeedbox, password: savedPassword)
+            }
+
+            let seedboxMountPath = expandPath(normalizedSeedbox.mountPath.isEmpty ? defaultSeedboxMountPath() : normalizedSeedbox.mountPath)
+            guard !seedboxMountPath.isEmpty else { throw MountError.missingSeedboxMountPath }
+            specs.append(MountSpec(
+                label: "Seedbox",
+                remotePath: buildSeedboxRemotePath(normalizedSeedbox),
+                mountPath: seedboxMountPath,
+                volumeName: "Seedbox",
+                vfsCacheMode: "full",
+                readOnly: normalizedSeedbox.readOnly
+            ))
         }
 
         return specs
@@ -294,7 +375,7 @@ final class RcloneManager {
 
         let process = Process()
         process.executableURL = URL(fileURLWithPath: rclonePath)
-        process.arguments = [
+        var args = [
             "mount",
             spec.remotePath,
             mountPath,
@@ -305,6 +386,10 @@ final class RcloneManager {
             "--links",
             "--log-level", "INFO"
         ]
+        if spec.readOnly {
+            args.append("--read-only")
+        }
+        process.arguments = args
 
         let output = Pipe()
         let error = Pipe()
@@ -368,6 +453,43 @@ final class RcloneManager {
             RuntimeLog.error("Failed to run rclone command label=\(label) error=\(error.localizedDescription)")
             logError("Failed to run \(label): \(error.localizedDescription)")
             return false
+        }
+    }
+
+    private func obscurePassword(rclonePath: String, password: String) -> String? {
+        let process = Process()
+        process.executableURL = URL(fileURLWithPath: rclonePath)
+        process.arguments = ["obscure", "-"]
+
+        let input = Pipe()
+        let output = Pipe()
+        let error = Pipe()
+        process.standardInput = input
+        process.standardOutput = output
+        process.standardError = error
+
+        do {
+            try process.run()
+            input.fileHandleForWriting.write(Data((password + "\n").utf8))
+            input.fileHandleForWriting.closeFile()
+            process.waitUntilExit()
+
+            let outputData = output.fileHandleForReading.readDataToEndOfFile()
+            let errorData = error.fileHandleForReading.readDataToEndOfFile()
+            let obscured = String(data: outputData, encoding: .utf8)?.trimmingCharacters(in: .whitespacesAndNewlines) ?? ""
+
+            guard process.terminationStatus == 0, !obscured.isEmpty else {
+                let errorText = String(data: errorData, encoding: .utf8) ?? ""
+                RuntimeLog.error("rclone obscure failed code=\(process.terminationStatus) error=\(Self.redactSensitiveLine(errorText))")
+                logError("Could not prepare the Seedbox password for rclone.")
+                return nil
+            }
+
+            return obscured
+        } catch {
+            RuntimeLog.error("Failed to run rclone obscure: \(error.localizedDescription)")
+            logError("Could not prepare the Seedbox password for rclone: \(error.localizedDescription)")
+            return nil
         }
     }
 
@@ -594,6 +716,45 @@ final class RcloneManager {
         CloudProvider.defaultGoogleDriveRemoteName
     }
 
+    private func buildSeedboxRemotePath(_ seedbox: SeedboxSettings) -> String {
+        let remoteName = getSeedboxRemoteName(seedbox)
+        let remotePath = normalizeRemotePath(seedbox.remotePath)
+        return remotePath.isEmpty ? "\(remoteName):" : "\(remoteName):\(remotePath)"
+    }
+
+    private func getSeedboxRemoteName(_ seedbox: SeedboxSettings) -> String {
+        CloudProvider.defaultSeedboxRemoteName
+    }
+
+    private func normalizeSeedbox(_ seedbox: SeedboxSettings) -> SeedboxSettings {
+        var normalized = seedbox
+        normalized.remoteName = CloudProvider.defaultSeedboxRemoteName
+        normalized.host = SeedboxSettings.normalizeHost(normalized.host)
+        normalized.username = normalized.username.trimmingCharacters(in: .whitespacesAndNewlines)
+        normalized.remotePath = normalizeRemotePath(normalized.remotePath)
+        if normalized.port <= 0 || normalized.port > 65535 {
+            normalized.port = 21
+        }
+        if normalized.mountPath.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
+            normalized.mountPath = defaultSeedboxMountPath()
+        }
+        return normalized
+    }
+
+    private func hasSeedboxSettings(_ seedbox: SeedboxSettings) -> Bool {
+        !seedbox.host.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty ||
+        !seedbox.username.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
+    }
+
+    private func isValid(seedbox: SeedboxSettings) -> Bool {
+        let normalized = normalizeSeedbox(seedbox)
+        return !normalized.host.isEmpty &&
+               !normalized.username.isEmpty &&
+               normalized.port > 0 &&
+               normalized.port <= 65535 &&
+               !expandPath(normalized.mountPath).isEmpty
+    }
+
     private func normalizeRemotePath(_ path: String) -> String {
         var normalized = path.trimmingCharacters(in: .whitespacesAndNewlines).replacingOccurrences(of: "\\", with: "/")
         while normalized.hasPrefix("/") || normalized.hasPrefix(":") {
@@ -606,6 +767,13 @@ final class RcloneManager {
         FileManager.default.homeDirectoryForCurrentUser
             .appendingPathComponent("Drives")
             .appendingPathComponent("Google Drive")
+            .path
+    }
+
+    private func defaultSeedboxMountPath() -> String {
+        FileManager.default.homeDirectoryForCurrentUser
+            .appendingPathComponent("Drives")
+            .appendingPathComponent("Seedbox")
             .path
     }
 
@@ -642,6 +810,8 @@ final class RcloneManager {
             "refresh_token",
             "client_secret",
             "service_account_credentials",
+            "pass",
+            "password",
             "key",
             "account"
         ]

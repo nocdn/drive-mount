@@ -10,6 +10,7 @@ final class SettingsWindowController: NSWindowController, NSWindowDelegate {
     private let providerPopup = NSPopUpButton()
     private let b2OptionsStack = NSStackView()
     private let googleDriveOptionsStack = NSStackView()
+    private let seedboxOptionsStack = NSStackView()
     private let keyIdField = NSTextField()
     private let keyField = NSSecureTextField()
     private let bucketStack = NSStackView()
@@ -18,6 +19,17 @@ final class SettingsWindowController: NSWindowController, NSWindowDelegate {
     private let googleDriveConnectHelp = NSTextField(wrappingLabelWithString: "Click Connect Google Drive and sign in through the browser. After it connects, use Save and Mount All. Google Drive will mount as a disk named Google Drive under ~/Drives/Google Drive.")
     private let connectGoogleDriveButton = NSButton(title: "Connect Google Drive", target: nil, action: nil)
     private let testGoogleDriveConnectionButton = NSButton(title: "Test Connection", target: nil, action: nil)
+    private let seedboxHostField = NSTextField()
+    private let seedboxUsernameField = NSTextField()
+    private let seedboxPasswordField = NSSecureTextField()
+    private let seedboxPortField = NSTextField()
+    private let seedboxRemotePathField = NSTextField()
+    private let seedboxMountPathField = NSTextField()
+    private let seedboxReadOnlyCheckbox = NSButton(checkboxWithTitle: "Mount read-only", target: nil, action: nil)
+    private let seedboxAllowUnverifiedCheckbox = NSButton(checkboxWithTitle: "Allow unverified FTPS certificate", target: nil, action: nil)
+    private let seedboxConnectHelp = NSTextField(wrappingLabelWithString: "Use your Ultra.cc FTP/SFTP connection details. Host is usually your server name, port is 21, and Remote Folder is usually downloads.")
+    private let testSeedboxConnectionButton = NSButton(title: "Test Connection", target: nil, action: nil)
+    private let forgetSeedboxButton = NSButton(title: "Forget Seedbox", target: nil, action: nil)
     private let mountButton = NSButton(title: "Save and Mount All", target: nil, action: nil)
     private let unmountButton = NSButton(title: "Unmount All", target: nil, action: nil)
     private let openLogsButton = NSButton(title: "Open Log Folder", target: nil, action: nil)
@@ -48,6 +60,7 @@ final class SettingsWindowController: NSWindowController, NSWindowDelegate {
         wireRcloneManager()
         updateProviderPanels()
         refreshGoogleDriveConnectionUi()
+        refreshSeedboxConnectionUi()
         updateMountedState(rcloneManager.isMounted)
         RuntimeLog.info("SettingsWindowController init completed frame=\(window.frame)")
     }
@@ -82,7 +95,7 @@ final class SettingsWindowController: NSWindowController, NSWindowDelegate {
             root.bottomAnchor.constraint(equalTo: contentView.bottomAnchor, constant: -16)
         ])
 
-        providerPopup.addItems(withTitles: ["B2", "Google Drive"])
+        providerPopup.addItems(withTitles: ["B2", "Google Drive", "Seedbox"])
         providerPopup.target = self
         providerPopup.action = #selector(providerChanged)
         let providerRow = makeFieldRow(label: "Provider", field: providerPopup)
@@ -102,6 +115,13 @@ final class SettingsWindowController: NSWindowController, NSWindowDelegate {
         root.addArrangedSubview(googleDriveOptionsStack)
         googleDriveOptionsStack.widthAnchor.constraint(equalTo: root.widthAnchor).isActive = true
         buildGoogleDriveOptions()
+
+        seedboxOptionsStack.orientation = .vertical
+        seedboxOptionsStack.spacing = 10
+        seedboxOptionsStack.alignment = .leading
+        root.addArrangedSubview(seedboxOptionsStack)
+        seedboxOptionsStack.widthAnchor.constraint(equalTo: root.widthAnchor).isActive = true
+        buildSeedboxOptions()
 
         let macFuseRow = NSStackView()
         macFuseRow.orientation = .horizontal
@@ -223,6 +243,62 @@ final class SettingsWindowController: NSWindowController, NSWindowDelegate {
         googleDriveOptionsStack.setCustomSpacing(14, after: googleButtonRow)
     }
 
+    private func buildSeedboxOptions() {
+        let hostRow = makeFieldRow(label: "Seedbox Host", field: seedboxHostField)
+        seedboxOptionsStack.addArrangedSubview(hostRow)
+        hostRow.widthAnchor.constraint(equalTo: seedboxOptionsStack.widthAnchor).isActive = true
+
+        let usernameRow = makeFieldRow(label: "Seedbox Username", field: seedboxUsernameField)
+        seedboxOptionsStack.addArrangedSubview(usernameRow)
+        usernameRow.widthAnchor.constraint(equalTo: seedboxOptionsStack.widthAnchor).isActive = true
+
+        let passwordRow = makeFieldRow(label: "FTPS Password", field: seedboxPasswordField)
+        seedboxOptionsStack.addArrangedSubview(passwordRow)
+        passwordRow.widthAnchor.constraint(equalTo: seedboxOptionsStack.widthAnchor).isActive = true
+
+        let portRow = makeFieldRow(label: "Port", field: seedboxPortField)
+        seedboxOptionsStack.addArrangedSubview(portRow)
+        portRow.widthAnchor.constraint(equalTo: seedboxOptionsStack.widthAnchor).isActive = true
+
+        let remotePathRow = makeFieldRow(label: "Remote Folder", field: seedboxRemotePathField)
+        seedboxOptionsStack.addArrangedSubview(remotePathRow)
+        remotePathRow.widthAnchor.constraint(equalTo: seedboxOptionsStack.widthAnchor).isActive = true
+
+        let mountPathRow = makeFieldRow(label: "Mount Folder", field: seedboxMountPathField)
+        seedboxOptionsStack.addArrangedSubview(mountPathRow)
+        mountPathRow.widthAnchor.constraint(equalTo: seedboxOptionsStack.widthAnchor).isActive = true
+
+        let browseButton = NSButton(title: "Browse", target: self, action: #selector(browseSeedboxMountPath))
+        seedboxOptionsStack.addArrangedSubview(browseButton)
+
+        seedboxReadOnlyCheckbox.state = .on
+        seedboxReadOnlyCheckbox.target = self
+        seedboxReadOnlyCheckbox.action = #selector(seedboxOptionChanged)
+        configurePreferenceCheckbox(seedboxReadOnlyCheckbox)
+        seedboxOptionsStack.addArrangedSubview(seedboxReadOnlyCheckbox)
+
+        seedboxAllowUnverifiedCheckbox.state = .on
+        seedboxAllowUnverifiedCheckbox.target = self
+        seedboxAllowUnverifiedCheckbox.action = #selector(seedboxOptionChanged)
+        configurePreferenceCheckbox(seedboxAllowUnverifiedCheckbox)
+        seedboxOptionsStack.addArrangedSubview(seedboxAllowUnverifiedCheckbox)
+
+        seedboxOptionsStack.addArrangedSubview(seedboxConnectHelp)
+
+        let seedboxButtonRow = NSStackView()
+        seedboxButtonRow.orientation = .horizontal
+        seedboxButtonRow.spacing = 8
+        seedboxButtonRow.alignment = .centerY
+        testSeedboxConnectionButton.target = self
+        testSeedboxConnectionButton.action = #selector(testSeedboxConnectionClicked)
+        forgetSeedboxButton.target = self
+        forgetSeedboxButton.action = #selector(forgetSeedboxClicked)
+        seedboxButtonRow.addArrangedSubview(testSeedboxConnectionButton)
+        seedboxButtonRow.addArrangedSubview(forgetSeedboxButton)
+        seedboxOptionsStack.addArrangedSubview(seedboxButtonRow)
+        seedboxOptionsStack.setCustomSpacing(14, after: seedboxButtonRow)
+    }
+
     private func wireRcloneManager() {
         rcloneManager.onLog = { [weak self] line in
             self?.appendLog(line)
@@ -244,7 +320,7 @@ final class SettingsWindowController: NSWindowController, NSWindowDelegate {
             appendError(error.localizedDescription)
         }
 
-        providerPopup.selectItem(at: AppPreferences.selectedProvider == .googleDrive ? 1 : 0)
+        providerPopup.selectItem(at: providerIndex(AppPreferences.selectedProvider))
 
         let savedBuckets = AppPreferences.b2Buckets
         if savedBuckets.isEmpty {
@@ -258,12 +334,30 @@ final class SettingsWindowController: NSWindowController, NSWindowDelegate {
         let googleDrive = AppPreferences.googleDriveSettings
         googleDriveRemotePathField.stringValue = googleDrive.remotePath
         googleDriveRootFolderIdField.stringValue = googleDrive.rootFolderId
+
+        let seedbox = AppPreferences.seedboxSettings
+        seedboxHostField.stringValue = SeedboxSettings.normalizeHost(seedbox.host)
+        seedboxUsernameField.stringValue = seedbox.username
+        seedboxPortField.stringValue = "\(seedbox.port)"
+        seedboxRemotePathField.stringValue = seedbox.remotePath
+        seedboxMountPathField.stringValue = seedbox.mountPath
+        seedboxReadOnlyCheckbox.state = seedbox.readOnly ? .on : .off
+        seedboxAllowUnverifiedCheckbox.state = seedbox.allowUnverifiedCertificate ? .on : .off
     }
 
     private func saveVisibleSettings() {
+        applyNormalizedSeedboxHostToUi()
         AppPreferences.selectedProvider = selectedProvider()
         AppPreferences.b2Buckets = collectBuckets(allowEmpty: false)
         AppPreferences.googleDriveSettings = readGoogleDriveSettings()
+        AppPreferences.seedboxSettings = readSeedboxSettings()
+    }
+
+    private func applyNormalizedSeedboxHostToUi() {
+        let normalized = SeedboxSettings.normalizeHost(seedboxHostField.stringValue)
+        if seedboxHostField.stringValue != normalized {
+            seedboxHostField.stringValue = normalized
+        }
     }
 
     private func makeLabel(_ text: String) -> NSTextField {
@@ -297,13 +391,32 @@ final class SettingsWindowController: NSWindowController, NSWindowDelegate {
     }
 
     private func selectedProvider() -> CloudProvider {
-        providerPopup.indexOfSelectedItem == 1 ? .googleDrive : .backblazeB2
+        switch providerPopup.indexOfSelectedItem {
+        case 1:
+            return .googleDrive
+        case 2:
+            return .seedbox
+        default:
+            return .backblazeB2
+        }
+    }
+
+    private func providerIndex(_ provider: CloudProvider) -> Int {
+        switch provider {
+        case .backblazeB2:
+            return 0
+        case .googleDrive:
+            return 1
+        case .seedbox:
+            return 2
+        }
     }
 
     private func updateProviderPanels() {
         let provider = selectedProvider()
         b2OptionsStack.isHidden = provider != .backblazeB2
         googleDriveOptionsStack.isHidden = provider != .googleDrive
+        seedboxOptionsStack.isHidden = provider != .seedbox
         rootStack.layoutSubtreeIfNeeded()
         resizeWindowToFitCurrentProvider(animated: true)
     }
@@ -315,10 +428,19 @@ final class SettingsWindowController: NSWindowController, NSWindowDelegate {
         testGoogleDriveConnectionButton.isHidden = !connected
     }
 
+    private func refreshSeedboxConnectionUi() {
+        let connected = rcloneManager.isSeedboxConfigured(readSeedboxSettings())
+        forgetSeedboxButton.isHidden = !connected
+        seedboxConnectHelp.stringValue = connected
+            ? "Seedbox FTPS is configured. Use Save and Mount All to mount it."
+            : "Use your Ultra.cc FTP/SFTP connection details. Host is usually your server name, port is 21, and Remote Folder is usually downloads."
+    }
+
     @objc private func providerChanged() {
         saveVisibleSettings()
         updateProviderPanels()
         refreshGoogleDriveConnectionUi()
+        refreshSeedboxConnectionUi()
     }
 
     @objc private func showMacFuseHelp() {
@@ -375,10 +497,31 @@ final class SettingsWindowController: NSWindowController, NSWindowDelegate {
         )
     }
 
+    private func readSeedboxSettings() -> SeedboxSettings {
+        let port = Int(seedboxPortField.stringValue.trimmingCharacters(in: .whitespacesAndNewlines)) ?? 21
+        return SeedboxSettings(
+            remoteName: CloudProvider.defaultSeedboxRemoteName,
+            host: SeedboxSettings.normalizeHost(seedboxHostField.stringValue),
+            username: seedboxUsernameField.stringValue.trimmingCharacters(in: .whitespacesAndNewlines),
+            port: port,
+            remotePath: normalizeGoogleDrivePath(seedboxRemotePathField.stringValue),
+            mountPath: seedboxMountPathField.stringValue.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty ? defaultSeedboxDiskMountPath() : seedboxMountPathField.stringValue.trimmingCharacters(in: .whitespacesAndNewlines),
+            allowUnverifiedCertificate: seedboxAllowUnverifiedCheckbox.state == .on,
+            readOnly: seedboxReadOnlyCheckbox.state == .on
+        )
+    }
+
     private func defaultGoogleDriveDiskMountPath() -> String {
         FileManager.default.homeDirectoryForCurrentUser
             .appendingPathComponent("Drives")
             .appendingPathComponent("Google Drive")
+            .path
+    }
+
+    private func defaultSeedboxDiskMountPath() -> String {
+        FileManager.default.homeDirectoryForCurrentUser
+            .appendingPathComponent("Drives")
+            .appendingPathComponent("Seedbox")
             .path
     }
 
@@ -456,23 +599,114 @@ final class SettingsWindowController: NSWindowController, NSWindowDelegate {
         }
     }
 
+    @objc private func browseSeedboxMountPath() {
+        let panel = NSOpenPanel()
+        panel.canChooseDirectories = true
+        panel.canChooseFiles = false
+        panel.canCreateDirectories = true
+        panel.allowsMultipleSelection = false
+        panel.prompt = "Choose"
+
+        if panel.runModal() == .OK, let url = panel.url {
+            seedboxMountPathField.stringValue = url.path
+            saveVisibleSettings()
+        }
+    }
+
+    @objc private func seedboxOptionChanged() {
+        saveVisibleSettings()
+    }
+
+    @objc private func testSeedboxConnectionClicked() {
+        applyNormalizedSeedboxHostToUi()
+        saveVisibleSettings()
+        let seedbox = readSeedboxSettings()
+
+        do {
+            try validateSeedbox(seedbox, requireCompleteMount: true)
+        } catch {
+            appendError(error.localizedDescription)
+            return
+        }
+
+        testSeedboxConnectionButton.isEnabled = false
+        forgetSeedboxButton.isEnabled = false
+        testSeedboxConnectionButton.title = "Testing..."
+        appendInfo("Testing Seedbox FTPS connection.")
+
+        Task { @MainActor in
+            defer {
+                testSeedboxConnectionButton.isEnabled = true
+                forgetSeedboxButton.isEnabled = true
+                testSeedboxConnectionButton.title = "Test Connection"
+                refreshSeedboxConnectionUi()
+            }
+
+            do {
+                let password = seedboxPasswordField.stringValue.isEmpty
+                    ? (try SeedboxCredentialStore.loadPassword() ?? "")
+                    : seedboxPasswordField.stringValue
+                try rcloneManager.testSeedboxConnection(seedbox, password: password)
+                if !seedboxPasswordField.stringValue.isEmpty {
+                    try SeedboxCredentialStore.savePassword(seedboxPasswordField.stringValue)
+                    seedboxPasswordField.stringValue = ""
+                }
+                appendInfo("Seedbox connection test succeeded.")
+            } catch {
+                RuntimeLog.error("Seedbox connection test failed: \(error.localizedDescription)")
+                appendError("Seedbox connection test failed. \(error.localizedDescription)")
+            }
+        }
+    }
+
+    @objc private func forgetSeedboxClicked() {
+        saveVisibleSettings()
+        let seedbox = readSeedboxSettings()
+
+        do {
+            try rcloneManager.disconnectSeedbox(seedbox)
+            try SeedboxCredentialStore.deletePassword()
+            seedboxPasswordField.stringValue = ""
+            appendInfo("Seedbox is disconnected.")
+            refreshSeedboxConnectionUi()
+        } catch {
+            RuntimeLog.error("Seedbox disconnect failed: \(error.localizedDescription)")
+            appendError("Seedbox disconnect failed. \(error.localizedDescription)")
+        }
+    }
+
     @objc private func mountAll() {
         do {
             saveVisibleSettings()
             let buckets = collectBuckets()
             let googleDrive = readGoogleDriveSettings()
+            let seedbox = readSeedboxSettings()
             if selectedProvider() == .googleDrive &&
                 buckets.isEmpty &&
                 !rcloneManager.isGoogleDriveConfigured(googleDrive) {
                 throw MountError.googleDriveNotConfigured
             }
+            if selectedProvider() == .seedbox {
+                try validateSeedbox(seedbox, requireCompleteMount: true)
+                if !rcloneManager.isSeedboxConfigured(seedbox) {
+                    let password = seedboxPasswordField.stringValue.isEmpty
+                        ? (try SeedboxCredentialStore.loadPassword() ?? "")
+                        : seedboxPasswordField.stringValue
+                    try rcloneManager.configureSeedbox(seedbox, password: password)
+                    if !seedboxPasswordField.stringValue.isEmpty {
+                        try SeedboxCredentialStore.savePassword(seedboxPasswordField.stringValue)
+                        seedboxPasswordField.stringValue = ""
+                    }
+                }
+            }
 
-            RuntimeLog.info("Mount requested from UI. bucketCount=\(buckets.count) googleDriveDisk=\(!googleDrive.mountPath.isEmpty)")
+            RuntimeLog.info("Mount requested from UI. bucketCount=\(buckets.count) googleDriveDisk=\(!googleDrive.mountPath.isEmpty) seedbox=\(!seedbox.host.isEmpty)")
             let credentials = try loadOrSaveCredentialsIfNeeded(buckets: buckets)
-            try rcloneManager.mount(applicationKeyId: credentials.applicationKeyId, applicationKey: credentials.applicationKey, buckets: buckets, googleDrive: googleDrive)
+            try rcloneManager.mount(applicationKeyId: credentials.applicationKeyId, applicationKey: credentials.applicationKey, buckets: buckets, googleDrive: googleDrive, seedbox: seedbox)
             appendInfo("Saved settings")
             appendInfo("Mount requested.")
             refreshGoogleDriveConnectionUi()
+            refreshSeedboxConnectionUi()
         } catch {
             RuntimeLog.error("Mount failed from UI: \(error.localizedDescription)")
             appendError(error.localizedDescription)
@@ -492,6 +726,28 @@ final class SettingsWindowController: NSWindowController, NSWindowDelegate {
         }
 
         return B2Credentials(applicationKeyId: keyIdField.stringValue.trimmingCharacters(in: .whitespacesAndNewlines), applicationKey: keyField.stringValue.trimmingCharacters(in: .whitespacesAndNewlines))
+    }
+
+    private func validateSeedbox(_ seedbox: SeedboxSettings, requireCompleteMount: Bool) throws {
+        let hasAnySeedboxInput = !seedbox.host.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty ||
+            !seedbox.username.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
+
+        if !hasAnySeedboxInput && !requireCompleteMount {
+            return
+        }
+
+        if seedbox.host.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty ||
+            seedbox.username.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
+            throw MountError.missingSeedboxCredentials
+        }
+
+        if seedbox.port <= 0 || seedbox.port > 65535 {
+            throw MountError.invalidSeedboxPort
+        }
+
+        if seedbox.mountPath.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
+            throw MountError.missingSeedboxMountPath
+        }
     }
 
     private func saveCredentials() throws -> B2Credentials {
@@ -593,6 +849,8 @@ final class SettingsWindowController: NSWindowController, NSWindowDelegate {
         let desiredHeight: CGFloat
         if selectedProvider() == .googleDrive {
             desiredHeight = 560
+        } else if selectedProvider() == .seedbox {
+            desiredHeight = 700
         } else {
             desiredHeight = CGFloat(660 + max(0, bucketStack.arrangedSubviews.count - 1) * 30)
         }

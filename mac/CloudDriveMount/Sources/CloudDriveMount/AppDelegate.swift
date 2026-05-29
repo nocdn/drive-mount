@@ -180,8 +180,12 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         let googleDrive = rcloneManager.isGoogleDriveConfigured(savedGoogleDrive)
             ? normalizedGoogleDriveForMount(savedGoogleDrive)
             : GoogleDriveSettings()
+        let savedSeedbox = AppPreferences.seedboxSettings
+        let seedbox = rcloneManager.isSeedboxConfigured(savedSeedbox)
+            ? normalizedSeedboxForMount(savedSeedbox)
+            : SeedboxSettings()
 
-        guard !buckets.isEmpty || !googleDrive.mountPath.isEmpty else {
+        guard !buckets.isEmpty || !googleDrive.mountPath.isEmpty || !seedbox.host.isEmpty else {
             RuntimeLog.info("No saved mounts configured for auto-mount")
             return
         }
@@ -194,26 +198,26 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
                 guard let savedCredentials = try B2CredentialStore.load() else {
                     RuntimeLog.error("Skipping B2 auto-mount because saved credentials were not found")
                     buckets = []
-                    if googleDrive.mountPath.isEmpty { return }
+                    if googleDrive.mountPath.isEmpty && seedbox.host.isEmpty { return }
                     credentials = B2Credentials(applicationKeyId: "", applicationKey: "")
-                    tryAutoMount(buckets: buckets, googleDrive: googleDrive, credentials: credentials)
+                    tryAutoMount(buckets: buckets, googleDrive: googleDrive, seedbox: seedbox, credentials: credentials)
                     return
                 }
                 credentials = savedCredentials
             } catch {
                 RuntimeLog.error("Skipping B2 auto-mount because credentials could not be loaded: \(error.localizedDescription)")
                 buckets = []
-                if googleDrive.mountPath.isEmpty { return }
+                if googleDrive.mountPath.isEmpty && seedbox.host.isEmpty { return }
             }
         }
 
-        tryAutoMount(buckets: buckets, googleDrive: googleDrive, credentials: credentials)
+        tryAutoMount(buckets: buckets, googleDrive: googleDrive, seedbox: seedbox, credentials: credentials)
     }
 
-    private func tryAutoMount(buckets: [BucketMount], googleDrive: GoogleDriveSettings, credentials: B2Credentials) {
+    private func tryAutoMount(buckets: [BucketMount], googleDrive: GoogleDriveSettings, seedbox: SeedboxSettings, credentials: B2Credentials) {
         do {
-            RuntimeLog.info("Auto-mounting saved mounts. bucketCount=\(buckets.count) googleDrive=\(!googleDrive.mountPath.isEmpty)")
-            try rcloneManager.mount(applicationKeyId: credentials.applicationKeyId, applicationKey: credentials.applicationKey, buckets: buckets, googleDrive: googleDrive)
+            RuntimeLog.info("Auto-mounting saved mounts. bucketCount=\(buckets.count) googleDrive=\(!googleDrive.mountPath.isEmpty) seedbox=\(!seedbox.host.isEmpty)")
+            try rcloneManager.mount(applicationKeyId: credentials.applicationKeyId, applicationKey: credentials.applicationKey, buckets: buckets, googleDrive: googleDrive, seedbox: seedbox)
         } catch {
             RuntimeLog.error("Auto-mount failed: \(error.localizedDescription)")
             errorNotifications.showError("Auto-mount failed. \(error.localizedDescription)")
@@ -228,6 +232,18 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
             normalized.mountPath = FileManager.default.homeDirectoryForCurrentUser
                 .appendingPathComponent("Drives")
                 .appendingPathComponent("Google Drive")
+                .path
+        }
+        return normalized
+    }
+
+    private func normalizedSeedboxForMount(_ seedbox: SeedboxSettings) -> SeedboxSettings {
+        var normalized = seedbox
+        normalized.remoteName = CloudProvider.defaultSeedboxRemoteName
+        if normalized.mountPath.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
+            normalized.mountPath = FileManager.default.homeDirectoryForCurrentUser
+                .appendingPathComponent("Drives")
+                .appendingPathComponent("Seedbox")
                 .path
         }
         return normalized

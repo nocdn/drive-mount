@@ -8,12 +8,13 @@ namespace CloudDriveMount;
 
 public class RcloneManager : IDisposable
 {
-    private sealed record MountSpec(string Label, string RemotePath, string DriveLetter, string VolumeName, string VfsCacheMode);
+    private sealed record MountSpec(string Label, string RemotePath, string DriveLetter, string VolumeName, string VfsCacheMode, bool ReadOnly);
     private sealed record DriveMountInfo(bool Exists, string VolumeLabel, string FileSystemName);
 
     private readonly Dictionary<string, Process> _processes = new(StringComparer.OrdinalIgnoreCase);
     private readonly HashSet<int> _intentionalStops = new();
     private readonly string _configPath;
+    private readonly string _protectedConfigPath;
 
     public event Action<string>? OnStatusChanged;
     public event Action<string>? OnError;
@@ -26,6 +27,7 @@ public class RcloneManager : IDisposable
             Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData),
             "CloudDriveMount");
         _configPath = Path.Combine(appData, "rclone.conf");
+        _protectedConfigPath = _configPath + ".dpapi";
     }
 
     public string? FindRclone()
@@ -161,6 +163,11 @@ public class RcloneManager : IDisposable
         return HasConfigSection(GetGoogleDriveRemoteName(googleDrive));
     }
 
+    public bool IsSeedboxConfigured(SeedboxSettings seedbox)
+    {
+        return HasConfigSection(GetSeedboxRemoteName(seedbox));
+    }
+
     public bool ConfigureGoogleDrive(GoogleDriveSettings googleDrive)
     {
         var rclonePath = FindRclone();
@@ -285,13 +292,116 @@ public class RcloneManager : IDisposable
         return ok;
     }
 
+    public bool ConfigureSeedbox(SeedboxSettings seedbox, string password)
+    {
+        var rclonePath = FindRclone();
+        if (rclonePath is null)
+        {
+            OnError?.Invoke("rclone.exe not found. Please install rclone and ensure it is in your PATH.");
+            OnError?.Invoke("Searched: app directory, PATH, LocalAppData\\rclone, Program Files\\rclone.");
+            return false;
+        }
+
+        NormalizeSeedboxSettings(seedbox);
+        var remoteName = GetSeedboxRemoteName(seedbox);
+        if (!ValidateSeedboxSettings(seedbox))
+            return false;
+
+        if (string.IsNullOrEmpty(password))
+        {
+            if (HasConfigSection(remoteName))
+            {
+                OnStatusChanged?.Invoke("Using existing Seedbox rclone config.");
+                return true;
+            }
+
+            OnError?.Invoke("Enter your Seedbox FTPS password before testing or mounting for the first time.");
+            return false;
+        }
+
+        var obscuredPassword = ObscurePassword(rclonePath, password);
+        if (obscuredPassword is null)
+            return false;
+
+        var lines = new List<string>
+        {
+            "type = ftp",
+            "host = " + seedbox.Host.Trim(),
+            "user = " + seedbox.Username.Trim(),
+            "port = " + seedbox.Port,
+            "pass = " + obscuredPassword,
+            "explicit_tls = true",
+            "tls = false",
+            "no_check_certificate = " + seedbox.AllowUnverifiedCertificate.ToString().ToLowerInvariant()
+        };
+
+        UpsertConfigSection(remoteName, lines);
+        OnStatusChanged?.Invoke("Seedbox FTPS rclone config written to: " + _configPath + ".");
+        return true;
+    }
+
+    public bool TestSeedboxConnection(SeedboxSettings seedbox, string password)
+    {
+        var rclonePath = FindRclone();
+        if (rclonePath is null)
+        {
+            OnError?.Invoke("rclone.exe not found. Please install rclone and ensure it is in your PATH.");
+            OnError?.Invoke("Searched: app directory, PATH, LocalAppData\\rclone, Program Files\\rclone.");
+            return false;
+        }
+
+        if (!ConfigureSeedbox(seedbox, password))
+            return false;
+
+        var remotePath = BuildSeedboxRemotePath(seedbox);
+        var args = new List<string>
+        {
+            "lsd",
+            remotePath,
+            "--config",
+            _configPath
+        };
+
+        OnStatusChanged?.Invoke("Testing Seedbox FTPS connection using " + remotePath + ".");
+        var ok = RunRcloneToCompletion(rclonePath, args, "Seedbox connection test");
+        if (ok)
+            OnStatusChanged?.Invoke("Seedbox connection test completed successfully.");
+
+        return ok;
+    }
+
+    public bool DisconnectSeedbox(SeedboxSettings seedbox)
+    {
+        var remoteName = GetSeedboxRemoteName(seedbox);
+        if (!IsValidRcloneRemoteName(remoteName))
+        {
+            OnError?.Invoke("Seedbox remote name cannot contain a colon, square bracket, or line break.");
+            return false;
+        }
+
+        try
+        {
+            RemoveConfigSection(remoteName);
+            OnStatusChanged?.Invoke("Seedbox remote has been removed from the app rclone config.");
+            return true;
+        }
+        catch (Exception ex)
+        {
+            LogService.Error("Failed to disconnect Seedbox: " + ex);
+            OnError?.Invoke("Failed to disconnect Seedbox: " + ex.Message);
+            return false;
+        }
+    }
+
     public bool Mount(AppSettings settings)
     {
         settings.Buckets ??= new List<BucketMount>();
         settings.GoogleDrive ??= new GoogleDriveSettings();
         settings.GoogleDrive.RemoteName = CloudProvider.DefaultGoogleDriveRemoteName;
+        settings.Seedbox ??= new SeedboxSettings();
+        NormalizeSeedboxSettings(settings.Seedbox);
 
-        LogService.Info("Mount requested. BucketCount=" + settings.Buckets.Count + " GoogleDrive=" + settings.GoogleDrive.RemoteName);
+        LogService.Info("Mount requested. BucketCount=" + settings.Buckets.Count + " GoogleDrive=" + settings.GoogleDrive.RemoteName + " Seedbox=" + settings.Seedbox.RemoteName);
 
         var rclonePath = FindRclone();
         if (rclonePath is null)
@@ -319,7 +429,8 @@ public class RcloneManager : IDisposable
 
         if (hasB2Input)
         {
-            if (string.IsNullOrWhiteSpace(settings.ApplicationKeyId) || string.IsNullOrWhiteSpace(settings.ApplicationKey))
+            var b2Credentials = WindowsSecureStore.LoadB2Credentials();
+            if (string.IsNullOrWhiteSpace(b2Credentials?.ApplicationKeyId) || string.IsNullOrWhiteSpace(b2Credentials?.ApplicationKey))
             {
                 LogService.Error("B2 credentials not configured.");
                 OnError?.Invoke("Backblaze B2 credentials are not configured.");
@@ -333,7 +444,7 @@ public class RcloneManager : IDisposable
             }
             else
             {
-                EnsureB2Config(settings);
+                EnsureB2Config(b2Credentials);
                 OnStatusChanged?.Invoke($"B2 rclone config written to: {_configPath}");
 
                 foreach (var bucket in settings.Buckets)
@@ -352,7 +463,8 @@ public class RcloneManager : IDisposable
                         RemotePath: "b2remote:" + bucketName,
                         DriveLetter: driveLetter,
                         VolumeName: bucketName,
-                        VfsCacheMode: "writes"));
+                        VfsCacheMode: "writes",
+                        ReadOnly: false));
                 }
             }
         }
@@ -384,7 +496,38 @@ public class RcloneManager : IDisposable
                     RemotePath: remotePath,
                     DriveLetter: driveLetter,
                     VolumeName: string.IsNullOrWhiteSpace(googleDrive.RemotePath) ? "Google Drive" : googleDrive.RemotePath.Trim(),
-                    VfsCacheMode: "full"));
+                    VfsCacheMode: "full",
+                    ReadOnly: false));
+            }
+        }
+
+        var seedbox = settings.Seedbox;
+        var seedboxSelected = string.Equals(settings.SelectedProvider, CloudProvider.Seedbox, StringComparison.OrdinalIgnoreCase);
+        var seedboxConfigured = HasConfigSection(GetSeedboxRemoteName(seedbox));
+        var hasSeedboxSettings = HasSeedboxSettings(seedbox);
+
+        if (seedboxConfigured && hasSeedboxSettings || seedboxSelected)
+        {
+            if (!ValidateSeedboxSettings(seedbox))
+            {
+                validationOk = false;
+            }
+            else if (!seedboxConfigured && !ConfigureSeedbox(seedbox, WindowsSecureStore.LoadSeedboxPassword()))
+            {
+                OnError?.Invoke("Seedbox is not configured yet. Enter the FTPS password and click Test Connection first.");
+                validationOk = false;
+            }
+            else
+            {
+                var driveLetter = NormalizeDriveLetter(seedbox.DriveLetter);
+                var remotePath = BuildSeedboxRemotePath(seedbox);
+                mountSpecs.Add(new MountSpec(
+                    Label: "Seedbox",
+                    RemotePath: remotePath,
+                    DriveLetter: driveLetter,
+                    VolumeName: string.IsNullOrWhiteSpace(seedbox.RemotePath) ? "Seedbox" : "Seedbox " + seedbox.RemotePath.Trim(),
+                    VfsCacheMode: "full",
+                    ReadOnly: seedbox.ReadOnly));
             }
         }
 
@@ -393,11 +536,12 @@ public class RcloneManager : IDisposable
 
         if (mountSpecs.Count == 0)
         {
-            OnError?.Invoke("Configure at least one B2 bucket or Google Drive mount before mounting.");
+            OnError?.Invoke("Configure at least one B2 bucket, Google Drive, or Seedbox mount before mounting.");
             return false;
         }
 
         Unmount();
+        EnsureConfigDirectory();
 
         var success = true;
         foreach (var mount in mountSpecs)
@@ -408,13 +552,13 @@ public class RcloneManager : IDisposable
         return success;
     }
 
-    private void EnsureB2Config(AppSettings settings)
+    private void EnsureB2Config(B2StoredCredentials credentials)
     {
         var lines = new List<string>
         {
             "type = b2",
-            "account = " + settings.ApplicationKeyId,
-            "key = " + settings.ApplicationKey
+            "account = " + credentials.ApplicationKeyId,
+            "key = " + credentials.ApplicationKey
         };
 
         UpsertConfigSection("b2remote", lines);
@@ -423,6 +567,7 @@ public class RcloneManager : IDisposable
 
     private bool MountRemote(string rclonePath, MountSpec mount)
     {
+        EnsureConfigDirectory();
         var driveLetter = NormalizeDriveLetter(mount.DriveLetter);
         var existingDrive = GetDriveMountInfo(driveLetter);
         if (existingDrive.Exists &&
@@ -455,6 +600,9 @@ public class RcloneManager : IDisposable
             mount.VolumeName,
             "--links"
         };
+
+        if (mount.ReadOnly)
+            args.Add("--read-only");
 
         var psi = new ProcessStartInfo
         {
@@ -650,6 +798,7 @@ public class RcloneManager : IDisposable
         }
 
         _processes.Clear();
+        ProtectConfigAtRest();
     }
 
     public void UnmountDrive(string driveLetter)
@@ -689,6 +838,42 @@ public class RcloneManager : IDisposable
         var dir = Path.GetDirectoryName(_configPath);
         if (!string.IsNullOrEmpty(dir))
             Directory.CreateDirectory(dir);
+
+        EnsureConfigMaterialized();
+    }
+
+    private void EnsureConfigMaterialized()
+    {
+        if (File.Exists(_configPath) || !File.Exists(_protectedConfigPath))
+            return;
+
+        try
+        {
+            var protectedBytes = File.ReadAllBytes(_protectedConfigPath);
+            var bytes = WindowsSecureStore.UnprotectBytes(protectedBytes);
+            File.WriteAllBytes(_configPath, bytes);
+        }
+        catch (Exception ex)
+        {
+            LogService.Error("Failed to unlock protected rclone config: " + ex.Message);
+        }
+    }
+
+    private void ProtectConfigAtRest()
+    {
+        try
+        {
+            if (!File.Exists(_configPath))
+                return;
+
+            var protectedBytes = WindowsSecureStore.ProtectBytes(File.ReadAllBytes(_configPath));
+            File.WriteAllBytes(_protectedConfigPath, protectedBytes);
+            File.Delete(_configPath);
+        }
+        catch (Exception ex)
+        {
+            LogService.Error("Failed to protect rclone config at rest: " + ex.Message);
+        }
     }
 
     private void UpsertConfigSection(string sectionName, IEnumerable<string> sectionLines)
@@ -724,6 +909,8 @@ public class RcloneManager : IDisposable
 
     private bool HasConfigSection(string sectionName)
     {
+        EnsureConfigDirectory();
+
         if (!File.Exists(_configPath))
             return false;
 
@@ -772,6 +959,45 @@ public class RcloneManager : IDisposable
         return false;
     }
 
+    private string? ObscurePassword(string rclonePath, string password)
+    {
+        var psi = new ProcessStartInfo
+        {
+            FileName = rclonePath,
+            Arguments = "obscure -",
+            RedirectStandardInput = true,
+            RedirectStandardOutput = true,
+            RedirectStandardError = true,
+            UseShellExecute = false,
+            CreateNoWindow = true,
+        };
+
+        try
+        {
+            using var process = new Process { StartInfo = psi };
+            process.Start();
+            process.StandardInput.WriteLine(password);
+            process.StandardInput.Close();
+
+            var output = process.StandardOutput.ReadToEnd().Trim();
+            var error = process.StandardError.ReadToEnd();
+            process.WaitForExit();
+
+            if (process.ExitCode == 0 && !string.IsNullOrWhiteSpace(output))
+                return output;
+
+            LogService.Error("rclone obscure failed. ExitCode=" + process.ExitCode + " Error=" + RedactSensitiveLine(error));
+            OnError?.Invoke("Could not prepare the Seedbox password for rclone.");
+            return null;
+        }
+        catch (Exception ex)
+        {
+            LogService.Error("Failed to run rclone obscure: " + ex);
+            OnError?.Invoke("Could not prepare the Seedbox password for rclone: " + ex.Message);
+            return null;
+        }
+    }
+
     private static string BuildGoogleDriveRemotePath(GoogleDriveSettings googleDrive)
     {
         var remoteName = GetGoogleDriveRemoteName(googleDrive);
@@ -785,15 +1011,80 @@ public class RcloneManager : IDisposable
         return CloudProvider.DefaultGoogleDriveRemoteName;
     }
 
+    private static string BuildSeedboxRemotePath(SeedboxSettings seedbox)
+    {
+        var remoteName = GetSeedboxRemoteName(seedbox);
+        var remotePath = NormalizeRemotePath(seedbox.RemotePath);
+        return string.IsNullOrWhiteSpace(remotePath) ? remoteName + ":" : remoteName + ":" + remotePath;
+    }
+
+    private static string GetSeedboxRemoteName(SeedboxSettings seedbox)
+    {
+        seedbox.RemoteName = CloudProvider.DefaultSeedboxRemoteName;
+        return CloudProvider.DefaultSeedboxRemoteName;
+    }
+
     private static string NormalizeRemotePath(string path)
     {
-        var normalized = path.Trim().Replace('\\', '/');
+        var normalized = (path ?? string.Empty).Trim().Replace('\\', '/');
         while (normalized.StartsWith("/"))
             normalized = normalized[1..];
         while (normalized.StartsWith(":"))
             normalized = normalized[1..];
 
         return normalized;
+    }
+
+    private static void NormalizeSeedboxSettings(SeedboxSettings seedbox)
+    {
+        seedbox.RemoteName = CloudProvider.DefaultSeedboxRemoteName;
+        seedbox.Host = CloudProvider.NormalizeSeedboxHost(seedbox.Host);
+        seedbox.Username = seedbox.Username.Trim();
+        seedbox.RemotePath = NormalizeRemotePath(seedbox.RemotePath);
+        seedbox.DriveLetter = string.IsNullOrWhiteSpace(seedbox.DriveLetter)
+            ? CloudProvider.DefaultSeedboxLetter
+            : CloudProvider.NormalizeDriveLetterInput(seedbox.DriveLetter);
+        if (seedbox.Port <= 0 || seedbox.Port > 65535)
+            seedbox.Port = 21;
+    }
+
+    private bool ValidateSeedboxSettings(SeedboxSettings seedbox)
+    {
+        if (seedbox.Port <= 0 || seedbox.Port > 65535)
+        {
+            OnError?.Invoke("Seedbox port must be between 1 and 65535.");
+            return false;
+        }
+
+        NormalizeSeedboxSettings(seedbox);
+
+        if (!IsValidRcloneRemoteName(GetSeedboxRemoteName(seedbox)))
+        {
+            OnError?.Invoke("Seedbox remote name cannot contain a colon, square bracket, or line break.");
+            return false;
+        }
+
+        if (string.IsNullOrWhiteSpace(seedbox.Host) || string.IsNullOrWhiteSpace(seedbox.Username))
+        {
+            OnError?.Invoke("Enter your Seedbox host and username.");
+            return false;
+        }
+
+        var drive = CloudProvider.NormalizeDriveLetterInput(seedbox.DriveLetter);
+        if (drive.Length != 1 || !char.IsLetter(drive[0]))
+        {
+            OnError?.Invoke("Seedbox drive letter must be a single letter, like S.");
+            return false;
+        }
+
+        return true;
+    }
+
+    private static bool HasSeedboxSettings(SeedboxSettings seedbox)
+    {
+        return !string.IsNullOrWhiteSpace(seedbox.Host) &&
+               !string.IsNullOrWhiteSpace(seedbox.Username) &&
+               !string.IsNullOrWhiteSpace(seedbox.DriveLetter);
     }
 
     private static string NormalizeDriveLetter(string driveLetter)
@@ -916,6 +1207,8 @@ public class RcloneManager : IDisposable
             "refresh_token",
             "client_secret",
             "service_account_credentials",
+            "pass",
+            "password",
             "key",
             "account"
         };

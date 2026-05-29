@@ -3,8 +3,10 @@ import Foundation
 enum CloudProvider: String, Codable {
     case backblazeB2 = "B2"
     case googleDrive = "GoogleDrive"
+    case seedbox = "Seedbox"
 
     static let defaultGoogleDriveRemoteName = "gdrive"
+    static let defaultSeedboxRemoteName = "seedbox"
 }
 
 struct BucketMount: Codable, Equatable {
@@ -19,6 +21,33 @@ struct GoogleDriveSettings: Codable, Equatable {
     var mountPath: String = ""
 }
 
+struct SeedboxSettings: Codable, Equatable {
+    var remoteName: String = CloudProvider.defaultSeedboxRemoteName
+    var host: String = ""
+    var username: String = ""
+    var port: Int = 21
+    var remotePath: String = "downloads"
+    var mountPath: String = ""
+    var allowUnverifiedCertificate: Bool = true
+    var readOnly: Bool = true
+
+    static func normalizeHost(_ host: String) -> String {
+        var normalized = host.trimmingCharacters(in: .whitespacesAndNewlines)
+        let schemes = ["https://", "http://", "ftps://", "ftp://"]
+        for scheme in schemes where normalized.lowercased().hasPrefix(scheme) {
+            normalized = String(normalized.dropFirst(scheme.count))
+                .trimmingCharacters(in: .whitespacesAndNewlines)
+            break
+        }
+
+        while normalized.hasSuffix("/") {
+            normalized.removeLast()
+        }
+
+        return normalized.trimmingCharacters(in: .whitespacesAndNewlines)
+    }
+}
+
 enum MountError: LocalizedError {
     case missingRclone
     case missingMacFuse
@@ -26,6 +55,10 @@ enum MountError: LocalizedError {
     case missingBuckets
     case missingGoogleDriveMountPath
     case googleDriveNotConfigured
+    case missingSeedboxCredentials
+    case missingSeedboxMountPath
+    case seedboxNotConfigured
+    case invalidSeedboxPort
     case duplicateBucket(String)
     case duplicateMountPath(String)
     case mountPathAlreadyMounted(String)
@@ -45,6 +78,14 @@ enum MountError: LocalizedError {
             return "Enter a mount folder for Google Drive."
         case .googleDriveNotConfigured:
             return "Google Drive is not connected. Click Connect Google Drive first."
+        case .missingSeedboxCredentials:
+            return "Enter your Seedbox host, username, and FTPS password."
+        case .missingSeedboxMountPath:
+            return "Enter a mount folder for Seedbox."
+        case .seedboxNotConfigured:
+            return "Seedbox is not configured. Enter your FTPS password and test the connection first."
+        case .invalidSeedboxPort:
+            return "Seedbox port must be between 1 and 65535."
         case .duplicateBucket(let bucket):
             return "Bucket '\(bucket)' is listed more than once."
         case .duplicateMountPath(let path):
