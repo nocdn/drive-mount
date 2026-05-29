@@ -10,8 +10,15 @@ public class RcloneManager : IDisposable
 {
     private sealed record MountSpec(string Label, string RemotePath, string DriveLetter, string VolumeName, string VfsCacheMode, bool ReadOnly);
     private sealed record DriveMountInfo(bool Exists, string VolumeLabel, string FileSystemName);
+    private sealed record MountProcess(Process Process, string DriveLetter, int RcPort, string Label);
 
-    private readonly Dictionary<string, Process> _processes = new(StringComparer.OrdinalIgnoreCase);
+    private const int RcBasePort = 5572;
+    private const int SHCNE_DRIVEADD = 0x00000100;
+    private const int SHCNE_DRIVEREMOVE = 0x00008000;
+    private const uint SHCNF_PATH = 0x0001;
+    private const uint SHCNF_FLUSH = 0x1000;
+
+    private readonly Dictionary<string, MountProcess> _mounts = new(StringComparer.OrdinalIgnoreCase);
     private readonly HashSet<int> _intentionalStops = new();
     private readonly string _configPath;
     private readonly string _protectedConfigPath;
@@ -19,7 +26,7 @@ public class RcloneManager : IDisposable
     public event Action<string>? OnStatusChanged;
     public event Action<string>? OnError;
 
-    public bool IsMounted => _processes.Values.Any(p => !p.HasExited);
+    public bool IsMounted => _mounts.Values.Any(m => !m.Process.HasExited);
 
     public RcloneManager()
     {
@@ -525,7 +532,7 @@ public class RcloneManager : IDisposable
                     Label: "Seedbox",
                     RemotePath: remotePath,
                     DriveLetter: driveLetter,
-                    VolumeName: string.IsNullOrWhiteSpace(seedbox.RemotePath) ? "Seedbox" : "Seedbox " + seedbox.RemotePath.Trim(),
+                    VolumeName: "Seedbox",
                     VfsCacheMode: "full",
                     ReadOnly: seedbox.ReadOnly));
             }
@@ -587,6 +594,7 @@ public class RcloneManager : IDisposable
             return false;
         }
 
+        var rcPort = GetRcPortForDrive(driveLetter);
         var args = new List<string>
         {
             "mount",
@@ -598,7 +606,11 @@ public class RcloneManager : IDisposable
             mount.VfsCacheMode,
             "--volname",
             mount.VolumeName,
-            "--links"
+            "--links",
+            "--rc",
+            "--rc-addr",
+            "127.0.0.1:" + rcPort,
+            "--rc-no-auth"
         };
 
         if (mount.ReadOnly)
@@ -639,9 +651,16 @@ public class RcloneManager : IDisposable
             process.BeginOutputReadLine();
             process.BeginErrorReadLine();
 
-            _processes[driveLetter] = process;
-            LogService.Info("rclone process started. Label=" + mount.Label + " Drive=" + driveLetter + " PID=" + process.Id);
+            _mounts[driveLetter] = new MountProcess(process, driveLetter, rcPort, mount.Label);
+            LogService.Info("rclone process started. Label=" + mount.Label + " Drive=" + driveLetter + " PID=" + process.Id + " RC port=" + rcPort);
             OnStatusChanged?.Invoke($"Mounting {mount.Label} to {driveLetter}...");
+
+            Task.Run(() =>
+            {
+                if (WaitForDriveToAppear(driveLetter, TimeSpan.FromSeconds(15)))
+                    NotifyExplorerDriveAdded(driveLetter);
+            });
+
             return true;
         }
         catch (Exception ex)
@@ -717,6 +736,9 @@ public class RcloneManager : IDisposable
 
     private void HandleProcessExited(Process process, string label, string driveLetter)
     {
+        _mounts.Remove(driveLetter);
+        NotifyExplorerDriveRemoved(driveLetter);
+
         var code = process.ExitCode;
         if (_intentionalStops.Remove(process.Id))
         {
@@ -774,30 +796,10 @@ public class RcloneManager : IDisposable
 
     public void Unmount()
     {
-        foreach (var process in _processes.Values.ToList())
-        {
-            if (process.HasExited)
-                continue;
+        foreach (var mount in _mounts.Values.ToList())
+            StopMountProcess(mount);
 
-            LogService.Info("Unmounting: killing rclone process PID=" + process.Id);
-            _intentionalStops.Add(process.Id);
-            try
-            {
-                process.Kill();
-                process.WaitForExit(5000);
-                LogService.Info("rclone process terminated. PID=" + process.Id);
-            }
-            catch (Exception ex)
-            {
-                LogService.Error("Error killing rclone process: " + ex.Message);
-            }
-            finally
-            {
-                process.Dispose();
-            }
-        }
-
-        _processes.Clear();
+        _mounts.Clear();
         ProtectConfigAtRest();
     }
 
@@ -805,31 +807,119 @@ public class RcloneManager : IDisposable
     {
         var drive = NormalizeDriveLetter(driveLetter);
 
-        if (!_processes.TryGetValue(drive, out var process))
+        if (!_mounts.TryGetValue(drive, out var mount))
             return;
 
-        _processes.Remove(drive);
+        _mounts.Remove(drive);
+        StopMountProcess(mount);
+    }
+
+    public void NotifyExplorerForDriveLetters(IEnumerable<string> driveLetters)
+    {
+        foreach (var driveLetter in driveLetters)
+            NotifyExplorerDriveRemoved(NormalizeDriveLetter(driveLetter));
+    }
+
+    private void StopMountProcess(MountProcess mount)
+    {
+        var process = mount.Process;
+        var drive = mount.DriveLetter;
+
         if (process.HasExited)
         {
+            WaitForDriveToRelease(drive, TimeSpan.FromSeconds(5));
+            NotifyExplorerDriveRemoved(drive);
             process.Dispose();
             return;
         }
 
-        LogService.Info("Unmounting drive " + drive + ": killing rclone process PID=" + process.Id);
+        LogService.Info("Unmounting " + drive + " via rclone remote control. PID=" + process.Id + " RC port=" + mount.RcPort);
         _intentionalStops.Add(process.Id);
+
+        var rclonePath = FindRclone();
+        if (rclonePath is not null)
+            TryGracefulUnmount(rclonePath, mount);
+
+        if (!process.WaitForExit(8000))
+        {
+            LogService.Info("Graceful unmount timed out for " + drive + "; terminating rclone PID=" + process.Id);
+            try
+            {
+                process.Kill(entireProcessTree: true);
+                process.WaitForExit(5000);
+            }
+            catch (Exception ex)
+            {
+                LogService.Error("Error killing rclone process for " + drive + ": " + ex.Message);
+            }
+        }
+        else
+        {
+            LogService.Info("rclone process exited cleanly for " + drive + ". PID=" + process.Id);
+        }
+
+        WaitForDriveToRelease(drive, TimeSpan.FromSeconds(5));
+        NotifyExplorerDriveRemoved(drive);
+        process.Dispose();
+    }
+
+    private void TryGracefulUnmount(string rclonePath, MountProcess mount)
+    {
+        var url = "http://127.0.0.1:" + mount.RcPort;
+        var drive = mount.DriveLetter;
+
+        if (RunRcloneRc(rclonePath, "mount/unmount", "mountPoint=" + drive, url, "unmount " + drive))
+            return;
+
+        RunRcloneRc(rclonePath, "core/quit", string.Empty, url, "quit " + drive);
+    }
+
+    private bool RunRcloneRc(string rclonePath, string command, string parameter, string url, string label)
+    {
+        var args = new List<string> { "rc", command, "--url", url };
+        if (!string.IsNullOrEmpty(parameter))
+            args.Add(parameter);
+
+        var psi = new ProcessStartInfo
+        {
+            FileName = rclonePath,
+            Arguments = BuildArguments(args),
+            RedirectStandardOutput = true,
+            RedirectStandardError = true,
+            UseShellExecute = false,
+            CreateNoWindow = true,
+        };
+
+        LogService.Info("Starting rclone rc. Label=" + label + " Command=" + psi.FileName + " " + psi.Arguments);
+
         try
         {
-            process.Kill();
-            process.WaitForExit(5000);
-            LogService.Info("rclone process terminated for drive " + drive + ". PID=" + process.Id);
+            using var process = Process.Start(psi);
+            if (process is null)
+                return false;
+
+            if (!process.WaitForExit(5000))
+            {
+                try { process.Kill(); } catch { /* ignore */ }
+            }
+
+            var output = process.StandardOutput.ReadToEnd();
+            var error = process.StandardError.ReadToEnd();
+
+            if (process.ExitCode == 0)
+            {
+                LogService.Info("rclone rc succeeded. Label=" + label);
+                return true;
+            }
+
+            _ = output;
+            LogService.Debug("rclone rc failed. Label=" + label + " ExitCode=" + process.ExitCode + " Error=" + RedactSensitiveLine(error.Trim()));
+            return false;
         }
         catch (Exception ex)
         {
-            LogService.Error("Error killing rclone process for drive " + drive + ": " + ex.Message);
-        }
-        finally
-        {
-            process.Dispose();
+            LogService.Debug("rclone rc failed. Label=" + label + " Error=" + ex.Message);
+            return false;
         }
     }
 
@@ -1143,6 +1233,44 @@ public class RcloneManager : IDisposable
         }
 
         return info;
+    }
+
+    private static bool WaitForDriveToAppear(string driveLetter, TimeSpan timeout)
+    {
+        var deadline = DateTime.UtcNow.Add(timeout);
+        while (DateTime.UtcNow < deadline)
+        {
+            if (GetDriveMountInfo(driveLetter).Exists)
+                return true;
+
+            Thread.Sleep(200);
+        }
+
+        return GetDriveMountInfo(driveLetter).Exists;
+    }
+
+    private static int GetRcPortForDrive(string driveLetter)
+    {
+        var drive = CloudProvider.NormalizeDriveLetterInput(driveLetter);
+        if (drive.Length != 1 || !char.IsLetter(drive[0]))
+            return RcBasePort;
+
+        return RcBasePort + (char.ToUpperInvariant(drive[0]) - 'A');
+    }
+
+    [DllImport("shell32.dll", CharSet = CharSet.Unicode)]
+    private static extern void SHChangeNotify(int wEventId, uint uFlags, string? psz1, IntPtr psz2);
+
+    private static void NotifyExplorerDriveAdded(string driveLetter)
+    {
+        var path = NormalizeDriveLetter(driveLetter) + "\\";
+        SHChangeNotify(SHCNE_DRIVEADD, SHCNF_PATH | SHCNF_FLUSH, path, IntPtr.Zero);
+    }
+
+    private static void NotifyExplorerDriveRemoved(string driveLetter)
+    {
+        var path = NormalizeDriveLetter(driveLetter) + "\\";
+        SHChangeNotify(SHCNE_DRIVEREMOVE, SHCNF_PATH | SHCNF_FLUSH, path, IntPtr.Zero);
     }
 
     private static bool IsAppRcloneProcess(Process process, string rclonePath)

@@ -100,6 +100,34 @@ public partial class MainWindow : Window
     public void CleanupExistingAppProcesses()
     {
         _rcloneManager.CleanupExistingAppProcesses();
+        RefreshExplorerForConfiguredDrives();
+    }
+
+    public void RefreshExplorerForConfiguredDrives()
+    {
+        _rcloneManager.NotifyExplorerForDriveLetters(CollectConfiguredDriveLetters());
+    }
+
+    private IEnumerable<string> CollectConfiguredDriveLetters()
+    {
+        var drives = new List<string>();
+
+        foreach (var bucket in _settings.Buckets)
+        {
+            var drive = NormalizeDriveInput(bucket.DriveLetter);
+            if (!string.IsNullOrWhiteSpace(drive))
+                drives.Add(drive);
+        }
+
+        var googleDrive = NormalizeDriveInput(_settings.GoogleDrive?.DriveLetter ?? string.Empty);
+        if (!string.IsNullOrWhiteSpace(googleDrive))
+            drives.Add(googleDrive);
+
+        var seedboxDrive = NormalizeDriveInput(_settings.Seedbox?.DriveLetter ?? string.Empty);
+        if (!string.IsNullOrWhiteSpace(seedboxDrive))
+            drives.Add(seedboxDrive);
+
+        return drives;
     }
 
     public void AttemptMount()
@@ -922,6 +950,7 @@ public partial class MainWindow : Window
     private void BtnUnmount_Click(object sender, RoutedEventArgs e)
     {
         _rcloneManager.Unmount();
+        RefreshExplorerForConfiguredDrives();
         AddLog("[INFO] Unmounted all.");
         LogService.Info("User clicked Unmount All.");
     }
