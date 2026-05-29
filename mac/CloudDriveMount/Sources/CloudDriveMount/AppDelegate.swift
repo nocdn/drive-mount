@@ -4,6 +4,8 @@ import ServiceManagement
 @MainActor
 final class AppDelegate: NSObject, NSApplicationDelegate {
     private let rcloneManager = RcloneManager()
+    private let singleInstanceCoordinator = SingleInstanceCoordinator()
+    private let errorNotifications = ErrorNotificationManager()
     private var statusItem: NSStatusItem?
     private var settingsWindowController: SettingsWindowController?
     private var isRestarting = false
@@ -13,6 +15,20 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         let launchArguments = Set(CommandLine.arguments.dropFirst())
 
         AppPreferences.registerDefaults()
+        guard singleInstanceCoordinator.claimOrSignalRunningInstance() else {
+            RuntimeLog.info("Duplicate instance forwarded Settings request and will terminate.")
+            NSApp.terminate(nil)
+            return
+        }
+
+        singleInstanceCoordinator.listenForShowSettingsRequests { [weak self] in
+            self?.showSettings()
+        }
+
+        rcloneManager.onError = { [weak self] message in
+            self?.errorNotifications.showError(message)
+        }
+
         RuntimeLog.info("Preferences loaded. startAtLogin=\(AppPreferences.startAtLogin) startMinimized=\(AppPreferences.startMinimized)")
         setupMainMenu()
         setupStatusItem()
@@ -41,6 +57,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         RuntimeLog.info("applicationShouldTerminate requested restart=\(isRestarting)")
         rcloneManager.unmountAll()
         rcloneManager.cleanupTemporaryFiles()
+        singleInstanceCoordinator.stop()
         RuntimeLog.info("applicationShouldTerminate completed cleanup")
         return .terminateNow
     }
@@ -138,6 +155,9 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
                 RuntimeLog.info("macFUSE help requested from settings window")
                 self?.showMacFuseInstructions()
             }
+            controller.onErrorNotificationRequested = { [weak self] message in
+                self?.errorNotifications.showError(message)
+            }
             settingsWindowController = controller
             RuntimeLog.info("SettingsWindowController created")
         }
@@ -196,6 +216,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
             try rcloneManager.mount(applicationKeyId: credentials.applicationKeyId, applicationKey: credentials.applicationKey, buckets: buckets, googleDrive: googleDrive)
         } catch {
             RuntimeLog.error("Auto-mount failed: \(error.localizedDescription)")
+            errorNotifications.showError("Auto-mount failed. \(error.localizedDescription)")
             settingsWindowController?.appendError("Auto-mount failed. \(error.localizedDescription)")
         }
     }

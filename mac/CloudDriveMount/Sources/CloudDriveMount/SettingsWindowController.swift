@@ -3,6 +3,7 @@ import AppKit
 @MainActor
 final class SettingsWindowController: NSWindowController, NSWindowDelegate {
     var onMacFuseHelpRequested: (() -> Void)?
+    var onErrorNotificationRequested: ((String) -> Void)?
 
     private let rcloneManager: RcloneManager
     private let rootStack = NSStackView()
@@ -573,6 +574,7 @@ final class SettingsWindowController: NSWindowController, NSWindowDelegate {
 
     func appendError(_ message: String) {
         appendLog(formatLog(level: "ERROR", message: message))
+        onErrorNotificationRequested?(message)
     }
 
     private func formatLog(level: String, message: String) -> String {

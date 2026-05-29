@@ -28,6 +28,7 @@ final class RcloneManager {
     }
 
     var onLog: ((String) -> Void)?
+    var onError: ((String) -> Void)?
     var onMountedStateChanged: ((Bool) -> Void)?
 
     private var processes: [String: Process] = [:]
@@ -53,7 +54,6 @@ final class RcloneManager {
     static func isMacFuseInstalled() -> Bool {
         let paths = [
             "/Library/Filesystems/macfuse.fs",
-            "/Library/Filesystems/osxfuse.fs",
             "/usr/local/lib/libfuse.2.dylib",
             "/opt/homebrew/lib/libfuse.2.dylib",
             "/Library/Filesystems/fuse-t.fs",
@@ -626,6 +626,7 @@ final class RcloneManager {
         formatter.dateFormat = "HH:mm:ss"
         let line = "[\(formatter.string(from: Date()))] [ERROR] \(message)"
         onLog?(line)
+        onError?(message)
         RuntimeLog.error(message)
     }
 
