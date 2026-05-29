@@ -32,6 +32,7 @@ public class SettingsService
 
             if (string.IsNullOrWhiteSpace(settings.GoogleDrive.RemoteName))
                 settings.GoogleDrive.RemoteName = CloudProvider.DefaultGoogleDriveRemoteName;
+            settings.GoogleDrive.DriveLetter = CloudProvider.DefaultGoogleDriveLetter;
 
             // Migrate the earlier single-bucket settings format if present.
             if (settings.Buckets.Count == 0)
@@ -66,6 +67,7 @@ public class SettingsService
 
         if (string.IsNullOrWhiteSpace(settings.GoogleDrive.RemoteName))
             settings.GoogleDrive.RemoteName = CloudProvider.DefaultGoogleDriveRemoteName;
+        settings.GoogleDrive.DriveLetter = CloudProvider.DefaultGoogleDriveLetter;
 
         Directory.CreateDirectory(AppDataFolder);
         var json = JsonSerializer.Serialize(settings, new JsonSerializerOptions { WriteIndented = true });

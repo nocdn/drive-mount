@@ -1,3 +1,4 @@
+import Darwin
 import Foundation
 
 @MainActor
@@ -10,10 +11,27 @@ final class RcloneManager {
         var vfsCacheMode: String
     }
 
+    private struct RunningProcess {
+        var pid: pid_t
+        var command: String
+    }
+
+    private enum RcloneOutputSource {
+        case stdout
+        case stderr
+    }
+
+    private enum RcloneLineSeverity {
+        case info
+        case error
+        case hiddenErrorDetail
+    }
+
     var onLog: ((String) -> Void)?
     var onMountedStateChanged: ((Bool) -> Void)?
 
     private var processes: [String: Process] = [:]
+    private var intentionalStops = Set<String>()
     private let appSupportURL: URL
     private let configURL: URL
     private let cacheURL: URL
@@ -48,6 +66,19 @@ final class RcloneManager {
 
     func isGoogleDriveConfigured(_ googleDrive: GoogleDriveSettings) -> Bool {
         hasConfigSection(getGoogleDriveRemoteName(googleDrive))
+    }
+
+    func cleanupExistingAppProcesses() {
+        let staleProcesses = appOwnedRcloneProcesses()
+        guard !staleProcesses.isEmpty else {
+            RuntimeLog.info("No stale app-owned rclone processes found")
+            return
+        }
+
+        for process in staleProcesses {
+            logInfo("Stopping stale rclone process PID=\(process.pid).")
+            terminate(pid: process.pid, timeout: 5)
+        }
     }
 
     func configureGoogleDrive(_ googleDrive: GoogleDriveSettings) throws {
@@ -133,6 +164,7 @@ final class RcloneManager {
 
         try validate(mountSpecs: mountSpecs)
         unmountAll()
+        cleanupExistingAppProcesses()
 
         logInfo("Found rclone at: \(rclonePath)")
         for spec in mountSpecs {
@@ -180,9 +212,9 @@ final class RcloneManager {
 
         var normalizedGoogleDrive = googleDrive
         normalizedGoogleDrive.remoteName = CloudProvider.defaultGoogleDriveRemoteName
-        let googleMountPath = expandPath(normalizedGoogleDrive.mountPath.isEmpty ? defaultGoogleDriveMountPath() : normalizedGoogleDrive.mountPath)
-        if !googleMountPath.isEmpty {
-            guard hasConfigSection(getGoogleDriveRemoteName(normalizedGoogleDrive)) else { throw MountError.googleDriveNotConfigured }
+        if hasConfigSection(getGoogleDriveRemoteName(normalizedGoogleDrive)) {
+            let googleMountPath = expandPath(normalizedGoogleDrive.mountPath.isEmpty ? defaultGoogleDriveMountPath() : normalizedGoogleDrive.mountPath)
+            guard !googleMountPath.isEmpty else { throw MountError.missingGoogleDriveMountPath }
             specs.append(MountSpec(label: "Google Drive", remotePath: buildGoogleDriveRemotePath(normalizedGoogleDrive), mountPath: googleMountPath, volumeName: "Google Drive", vfsCacheMode: "full"))
         }
 
@@ -252,6 +284,13 @@ final class RcloneManager {
     private func mountRemote(rclonePath: String, spec: MountSpec) throws {
         let mountPath = expandPath(spec.mountPath)
         try FileManager.default.createDirectory(atPath: mountPath, withIntermediateDirectories: true)
+        if isMountPoint(mountPath) {
+            waitForMountPathToRelease(mountPath, timeout: 5)
+        }
+
+        guard !isMountPoint(mountPath) else {
+            throw MountError.mountPathAlreadyMounted(mountPath)
+        }
 
         let process = Process()
         process.executableURL = URL(fileURLWithPath: rclonePath)
@@ -272,13 +311,23 @@ final class RcloneManager {
         process.standardOutput = output
         process.standardError = error
 
-        stream(pipe: output, prefix: "[\(spec.label)]")
-        stream(pipe: error, prefix: "[\(spec.label)]")
+        stream(pipe: output, prefix: "[\(spec.label)]", source: .stdout)
+        stream(pipe: error, prefix: "[\(spec.label)]", source: .stderr)
 
         process.terminationHandler = { [weak self] process in
             Task { @MainActor in
                 self?.processes.removeValue(forKey: mountPath)
-                self?.logInfo("Mount process exited for \(spec.label) with code \(process.terminationStatus).")
+                if self?.intentionalStops.remove(mountPath) != nil {
+                    self?.logInfo("Mount process stopped (unmounted) for \(spec.label).")
+                    self?.onMountedStateChanged?(self?.isMounted == true)
+                    return
+                }
+
+                if process.terminationStatus == 0 {
+                    self?.logInfo("Mount process exited normally for \(spec.label).")
+                } else {
+                    self?.logError("Mount process exited with code \(process.terminationStatus) for \(spec.label).")
+                }
                 self?.onMountedStateChanged?(self?.isMounted == true)
             }
         }
@@ -299,8 +348,8 @@ final class RcloneManager {
         process.standardOutput = output
         process.standardError = error
 
-        stream(pipe: output, prefix: "[\(label)]")
-        stream(pipe: error, prefix: "[\(label)]")
+        stream(pipe: output, prefix: "[\(label)]", source: .stdout)
+        stream(pipe: error, prefix: "[\(label)]", source: .stderr)
 
         RuntimeLog.info("Starting rclone command label=\(label) args=\(redactArguments(args).joined(separator: " "))")
 
@@ -322,14 +371,14 @@ final class RcloneManager {
         }
     }
 
-    private func stream(pipe: Pipe, prefix: String) {
+    private func stream(pipe: Pipe, prefix: String, source: RcloneOutputSource) {
         pipe.fileHandleForReading.readabilityHandler = { [weak self] handle in
             let data = handle.availableData
             guard !data.isEmpty, let text = String(data: data, encoding: .utf8) else { return }
             let lines = text.split(whereSeparator: \.isNewline)
             Task { @MainActor in
                 for line in lines {
-                    self?.logInfo("\(prefix) \(Self.redactSensitiveLine(String(line)))")
+                    self?.logRcloneLine(String(line), prefix: prefix, source: source)
                 }
             }
         }
@@ -339,6 +388,7 @@ final class RcloneManager {
         let expanded = expandPath(mountPath)
         if let process = processes.removeValue(forKey: expanded) {
             logInfo("Unmounting \(expanded)")
+            intentionalStops.insert(expanded)
             if process.isRunning {
                 process.terminate()
                 _ = wait(process: process, timeout: 5)
@@ -360,6 +410,105 @@ final class RcloneManager {
         unmount.arguments = [mountPath]
         try? unmount.run()
         unmount.waitUntilExit()
+    }
+
+    private func logRcloneLine(_ line: String, prefix: String, source: RcloneOutputSource) {
+        let safeLine = Self.redactSensitiveLine(line)
+        let message = "\(prefix) \(safeLine)"
+
+        switch Self.classifyRcloneLine(safeLine, source: source) {
+        case .info:
+            logInfo(message)
+        case .error:
+            logError(message)
+        case .hiddenErrorDetail:
+            RuntimeLog.error(message)
+        }
+    }
+
+    private func appOwnedRcloneProcesses() -> [RunningProcess] {
+        listRunningProcesses().filter { process in
+            process.pid != ProcessInfo.processInfo.processIdentifier &&
+            process.command.localizedCaseInsensitiveContains("rclone") &&
+            process.command.contains(configURL.path)
+        }
+    }
+
+    private func listRunningProcesses() -> [RunningProcess] {
+        let process = Process()
+        process.executableURL = URL(fileURLWithPath: "/bin/ps")
+        process.arguments = ["-axo", "pid=,command="]
+
+        let output = Pipe()
+        process.standardOutput = output
+        process.standardError = Pipe()
+
+        do {
+            try process.run()
+            process.waitUntilExit()
+        } catch {
+            RuntimeLog.error("Failed to list running processes: \(error.localizedDescription)")
+            return []
+        }
+
+        let data = output.fileHandleForReading.readDataToEndOfFile()
+        guard let text = String(data: data, encoding: .utf8) else { return [] }
+
+        return text.split(whereSeparator: \.isNewline).compactMap { line in
+            let trimmed = line.trimmingCharacters(in: .whitespacesAndNewlines)
+            let parts = trimmed.split(separator: " ", maxSplits: 1, omittingEmptySubsequences: true)
+            guard parts.count == 2, let pid = pid_t(String(parts[0])) else { return nil }
+            return RunningProcess(pid: pid, command: String(parts[1]))
+        }
+    }
+
+    private func terminate(pid: pid_t, timeout: TimeInterval) {
+        guard isProcessRunning(pid) else { return }
+
+        RuntimeLog.info("Terminating app-owned rclone process pid=\(pid)")
+        _ = Darwin.kill(pid, SIGTERM)
+
+        if waitForProcessExit(pid: pid, timeout: timeout) {
+            RuntimeLog.info("App-owned rclone process terminated pid=\(pid)")
+            return
+        }
+
+        RuntimeLog.error("Stale rclone process did not terminate gracefully; killing pid=\(pid)")
+        _ = Darwin.kill(pid, SIGKILL)
+        _ = waitForProcessExit(pid: pid, timeout: 2)
+    }
+
+    private func waitForProcessExit(pid: pid_t, timeout: TimeInterval) -> Bool {
+        let deadline = Date().addingTimeInterval(timeout)
+        while isProcessRunning(pid) && Date() < deadline {
+            RunLoop.current.run(mode: .default, before: Date().addingTimeInterval(0.05))
+        }
+
+        return !isProcessRunning(pid)
+    }
+
+    private func isProcessRunning(_ pid: pid_t) -> Bool {
+        Darwin.kill(pid, 0) == 0 || errno == EPERM
+    }
+
+    private func waitForMountPathToRelease(_ mountPath: String, timeout: TimeInterval) {
+        let deadline = Date().addingTimeInterval(timeout)
+        while isMountPoint(mountPath) && Date() < deadline {
+            RunLoop.current.run(mode: .default, before: Date().addingTimeInterval(0.1))
+        }
+    }
+
+    private func isMountPoint(_ path: String) -> Bool {
+        var pathStat = stat()
+        guard lstat(path, &pathStat) == 0 else { return false }
+
+        let parentPath = (path as NSString).deletingLastPathComponent
+        guard !parentPath.isEmpty, parentPath != path else { return true }
+
+        var parentStat = stat()
+        guard lstat(parentPath, &parentStat) == 0 else { return false }
+
+        return pathStat.st_dev != parentStat.st_dev
     }
 
     private func wait(process: Process, timeout: TimeInterval) -> Bool {
@@ -509,5 +658,67 @@ final class RcloneManager {
         }
 
         return line
+    }
+
+    private static func classifyRcloneLine(_ line: String, source: RcloneOutputSource) -> RcloneLineSeverity {
+        guard source == .stderr else { return .info }
+
+        if isRcloneErrorDetailLine(line) {
+            return .hiddenErrorDetail
+        }
+
+        switch timestampedRcloneSeverity(in: line) {
+        case "NOTICE", "INFO":
+            return .info
+        case "ERROR", "CRITICAL", "FATAL":
+            return .error
+        default:
+            return looksLikeRcloneError(line) ? .error : .info
+        }
+    }
+
+    private static func timestampedRcloneSeverity(in line: String) -> String? {
+        guard line.count > 20 else { return nil }
+
+        let prefix = Array(line.prefix(20))
+        guard prefix.count == 20,
+              prefix[4] == "/",
+              prefix[7] == "/",
+              prefix[10] == " ",
+              prefix[13] == ":",
+              prefix[16] == ":",
+              prefix[19] == " " else {
+            return nil
+        }
+
+        let rest = String(line.dropFirst(20))
+        for severity in ["NOTICE", "INFO", "ERROR", "CRITICAL", "FATAL"] where rest.hasPrefix(severity) {
+            return severity
+        }
+
+        return nil
+    }
+
+    private static func looksLikeRcloneError(_ line: String) -> Bool {
+        let lowercased = line.lowercased()
+        return lowercased.contains(" error ") ||
+               lowercased.contains(" critical ") ||
+               lowercased.contains(" fatal ") ||
+               lowercased.contains("failed") ||
+               lowercased.contains("error")
+    }
+
+    private static func isRcloneErrorDetailLine(_ line: String) -> Bool {
+        let trimmed = line.trimmingCharacters(in: .whitespacesAndNewlines)
+        let exactDetailLines: Set<String> = ["Details:", "[", "]", "{", "}", "},", "],"]
+        if exactDetailLines.contains(trimmed) {
+            return true
+        }
+
+        let lowercased = trimmed.lowercased()
+        return trimmed.hasPrefix("\"") ||
+               lowercased.hasPrefix("@type") ||
+               lowercased.hasPrefix("metadata") ||
+               lowercased.hasPrefix(", ratelimitexceeded")
     }
 }

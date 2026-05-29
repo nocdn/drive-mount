@@ -1,4 +1,3 @@
-using System.Linq;
 using System.Threading;
 using System.Threading.Tasks;
 using System.Windows;
@@ -54,8 +53,7 @@ public partial class App : System.Windows.Application
         }
 
         _mainWindow.CleanupExistingAppProcesses();
-        if (HasAnyConfiguredMount(settings))
-            _mainWindow.AttemptMount();
+        _mainWindow.AttemptMount();
     }
 
     private static void SignalRunningInstanceToShowSettings()
@@ -92,21 +90,6 @@ public partial class App : System.Windows.Application
                 }
             }
         }, token);
-    }
-
-    private static bool HasAnyConfiguredMount(AppSettings settings)
-    {
-        var hasB2Mounts = !string.IsNullOrWhiteSpace(settings.ApplicationKeyId) &&
-                          !string.IsNullOrWhiteSpace(settings.ApplicationKey) &&
-                          settings.Buckets.Any(bucket =>
-                              !string.IsNullOrWhiteSpace(bucket.BucketName) &&
-                              !string.IsNullOrWhiteSpace(bucket.DriveLetter));
-
-        var hasGoogleDriveMount = settings.GoogleDrive is not null &&
-                                  !string.IsNullOrWhiteSpace(settings.GoogleDrive.RemoteName) &&
-                                  !string.IsNullOrWhiteSpace(settings.GoogleDrive.DriveLetter);
-
-        return hasB2Mounts || hasGoogleDriveMount;
     }
 
     protected override void OnExit(ExitEventArgs e)

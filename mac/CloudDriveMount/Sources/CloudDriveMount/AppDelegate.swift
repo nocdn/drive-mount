@@ -6,9 +6,12 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     private let rcloneManager = RcloneManager()
     private var statusItem: NSStatusItem?
     private var settingsWindowController: SettingsWindowController?
+    private var isRestarting = false
 
     func applicationDidFinishLaunching(_ notification: Notification) {
         RuntimeLog.info("applicationDidFinishLaunching")
+        let launchArguments = Set(CommandLine.arguments.dropFirst())
+
         AppPreferences.registerDefaults()
         RuntimeLog.info("Preferences loaded. startAtLogin=\(AppPreferences.startAtLogin) startMinimized=\(AppPreferences.startMinimized)")
         setupMainMenu()
@@ -16,26 +19,36 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
 
         applyStartAtLoginPreference(showErrors: false)
 
-        if !AppPreferences.startMinimized {
+        if launchArguments.contains("--show-settings") || !AppPreferences.startMinimized {
             showSettings()
         } else {
             RuntimeLog.info("Start minimized enabled; not showing settings window on launch")
         }
 
-        if !RcloneManager.isMacFuseInstalled() {
+        rcloneManager.cleanupExistingAppProcesses()
+
+        let macFuseInstalled = RcloneManager.isMacFuseInstalled()
+        if !macFuseInstalled {
             RuntimeLog.info("macFUSE not detected on launch; showing instructions")
             showMacFuseInstructions()
         } else {
             RuntimeLog.info("macFUSE detected on launch")
+            attemptAutoMount()
         }
     }
 
     func applicationShouldTerminate(_ sender: NSApplication) -> NSApplication.TerminateReply {
-        RuntimeLog.info("applicationShouldTerminate requested")
+        RuntimeLog.info("applicationShouldTerminate requested restart=\(isRestarting)")
         rcloneManager.unmountAll()
         rcloneManager.cleanupTemporaryFiles()
         RuntimeLog.info("applicationShouldTerminate completed cleanup")
         return .terminateNow
+    }
+
+    func applicationShouldHandleReopen(_ sender: NSApplication, hasVisibleWindows flag: Bool) -> Bool {
+        RuntimeLog.info("applicationShouldHandleReopen hasVisibleWindows=\(flag)")
+        showSettings()
+        return false
     }
 
     private func setupMainMenu() {
@@ -98,6 +111,24 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         NSApp.terminate(nil)
     }
 
+    @discardableResult
+    func restartApp() -> Bool {
+        RuntimeLog.info("Restart requested")
+        do {
+            try startRestartHelper()
+            isRestarting = true
+            rcloneManager.unmountAll()
+            rcloneManager.cleanupExistingAppProcesses()
+            RuntimeLog.clear()
+            NSApp.terminate(nil)
+            return true
+        } catch {
+            RuntimeLog.error("Could not restart app: \(error.localizedDescription)")
+            showRestartError(error)
+            return false
+        }
+    }
+
     private func showSettings() {
         RuntimeLog.info("showSettings called. existingController=\(settingsWindowController != nil)")
         if settingsWindowController == nil {
@@ -117,6 +148,99 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         settingsWindowController?.window?.orderFrontRegardless()
         NSApp.activate(ignoringOtherApps: true)
         RuntimeLog.info("showSettings completed. visible=\(settingsWindowController?.window?.isVisible == true) frame=\(String(describing: settingsWindowController?.window?.frame))")
+    }
+
+    private func attemptAutoMount() {
+        var buckets = AppPreferences.b2Buckets.filter {
+            !$0.bucketName.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty ||
+            !$0.mountPath.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
+        }
+
+        let savedGoogleDrive = AppPreferences.googleDriveSettings
+        let googleDrive = rcloneManager.isGoogleDriveConfigured(savedGoogleDrive)
+            ? normalizedGoogleDriveForMount(savedGoogleDrive)
+            : GoogleDriveSettings()
+
+        guard !buckets.isEmpty || !googleDrive.mountPath.isEmpty else {
+            RuntimeLog.info("No saved mounts configured for auto-mount")
+            return
+        }
+
+        var credentials = B2Credentials(applicationKeyId: "", applicationKey: "")
+        if buckets.isEmpty {
+            credentials = B2Credentials(applicationKeyId: "", applicationKey: "")
+        } else {
+            do {
+                guard let savedCredentials = try B2CredentialStore.load() else {
+                    RuntimeLog.error("Skipping B2 auto-mount because saved credentials were not found")
+                    buckets = []
+                    if googleDrive.mountPath.isEmpty { return }
+                    credentials = B2Credentials(applicationKeyId: "", applicationKey: "")
+                    tryAutoMount(buckets: buckets, googleDrive: googleDrive, credentials: credentials)
+                    return
+                }
+                credentials = savedCredentials
+            } catch {
+                RuntimeLog.error("Skipping B2 auto-mount because credentials could not be loaded: \(error.localizedDescription)")
+                buckets = []
+                if googleDrive.mountPath.isEmpty { return }
+            }
+        }
+
+        tryAutoMount(buckets: buckets, googleDrive: googleDrive, credentials: credentials)
+    }
+
+    private func tryAutoMount(buckets: [BucketMount], googleDrive: GoogleDriveSettings, credentials: B2Credentials) {
+        do {
+            RuntimeLog.info("Auto-mounting saved mounts. bucketCount=\(buckets.count) googleDrive=\(!googleDrive.mountPath.isEmpty)")
+            try rcloneManager.mount(applicationKeyId: credentials.applicationKeyId, applicationKey: credentials.applicationKey, buckets: buckets, googleDrive: googleDrive)
+        } catch {
+            RuntimeLog.error("Auto-mount failed: \(error.localizedDescription)")
+            settingsWindowController?.appendError("Auto-mount failed. \(error.localizedDescription)")
+        }
+    }
+
+    private func normalizedGoogleDriveForMount(_ googleDrive: GoogleDriveSettings) -> GoogleDriveSettings {
+        var normalized = googleDrive
+        normalized.remoteName = CloudProvider.defaultGoogleDriveRemoteName
+        if normalized.mountPath.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
+            normalized.mountPath = FileManager.default.homeDirectoryForCurrentUser
+                .appendingPathComponent("Drives")
+                .appendingPathComponent("Google Drive")
+                .path
+        }
+        return normalized
+    }
+
+    private func startRestartHelper() throws {
+        let helper = Process()
+        helper.executableURL = URL(fileURLWithPath: "/bin/sh")
+        var environment = ProcessInfo.processInfo.environment
+        environment["CDM_PARENT_PID"] = "\(ProcessInfo.processInfo.processIdentifier)"
+        environment["CDM_BUNDLE_PATH"] = Bundle.main.bundleURL.path
+        environment["CDM_EXECUTABLE_PATH"] = Bundle.main.executableURL?.path ?? ""
+        helper.environment = environment
+        helper.arguments = [
+            "-c",
+            """
+            while /bin/kill -0 "$CDM_PARENT_PID" 2>/dev/null; do /bin/sleep 0.1; done
+            if [ -d "$CDM_BUNDLE_PATH" ] && [ "${CDM_BUNDLE_PATH##*.}" = "app" ]; then
+              /usr/bin/open "$CDM_BUNDLE_PATH" --args --show-settings --clean-restart
+            elif [ -n "$CDM_EXECUTABLE_PATH" ]; then
+              "$CDM_EXECUTABLE_PATH" --show-settings --clean-restart &
+            fi
+            """
+        ]
+        try helper.run()
+    }
+
+    private func showRestartError(_ error: Error) {
+        let alert = NSAlert()
+        alert.messageText = "Could not restart Cloud Drive Mount"
+        alert.informativeText = error.localizedDescription
+        alert.alertStyle = .warning
+        alert.addButton(withTitle: "OK")
+        alert.runModal()
     }
 
     private func showMacFuseInstructions() {

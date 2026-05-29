@@ -42,10 +42,7 @@
                 <Label Content="Google Drive Root Folder ID (optional)" Padding="0,0,0,2"/>
                 <TextBox x:Name="TxtGoogleRootFolderId" Height="23" Margin="0,0,0,8" Padding="3,0" VerticalContentAlignment="Center" TextChanged="AnyMountField_Changed"/>
 
-                <Label Content="Drive Letter" Padding="0,0,0,2"/>
-                <TextBox x:Name="TxtGoogleDriveLetter" Height="23" Width="35" MaxLength="3" HorizontalAlignment="Left" Margin="0,0,0,8" Padding="3,0" VerticalContentAlignment="Center" TextChanged="AnyMountField_Changed"/>
-
-                <TextBlock x:Name="TxtGoogleConnectHelp" Margin="0,0,0,8" Text="Click Connect Google Drive and sign in through the browser. After it connects, use Save and Mount All." TextWrapping="Wrap"/>
+                <TextBlock x:Name="TxtGoogleConnectHelp" Margin="0,0,0,8" Text="Click Connect Google Drive and sign in through the browser. After it connects, use Save and Mount All. Google Drive mounts to G:." TextWrapping="Wrap"/>
 
                 <StackPanel Orientation="Horizontal" Margin="0,0,0,8">
                     <Button x:Name="BtnConnectGoogleDrive" Content="Connect Google Drive" Click="BtnConnectGoogleDrive_Click" Margin="0,0,5,0" HorizontalAlignment="Left" Padding="8,2"/>

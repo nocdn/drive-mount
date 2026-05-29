@@ -14,12 +14,14 @@ final class SettingsWindowController: NSWindowController, NSWindowDelegate {
     private let bucketStack = NSStackView()
     private let googleDriveRemotePathField = NSTextField()
     private let googleDriveRootFolderIdField = NSTextField()
-    private let googleDriveMountPathField = NSTextField()
     private let googleDriveConnectHelp = NSTextField(wrappingLabelWithString: "Click Connect Google Drive and sign in through the browser. After it connects, use Save and Mount All. Google Drive will mount as a disk named Google Drive under ~/Drives/Google Drive.")
     private let connectGoogleDriveButton = NSButton(title: "Connect Google Drive", target: nil, action: nil)
     private let testGoogleDriveConnectionButton = NSButton(title: "Test Connection", target: nil, action: nil)
     private let mountButton = NSButton(title: "Save and Mount All", target: nil, action: nil)
     private let unmountButton = NSButton(title: "Unmount All", target: nil, action: nil)
+    private let openLogsButton = NSButton(title: "Open Log Folder", target: nil, action: nil)
+    private let clearLogsButton = NSButton(title: "Clear Logs", target: nil, action: nil)
+    private let restartButton = NSButton(title: "Restart", target: nil, action: nil)
     private let startAtLoginCheckbox = NSButton(checkboxWithTitle: "Start at login", target: nil, action: nil)
     private let startMinimizedCheckbox = NSButton(checkboxWithTitle: "Start minimized to menu bar", target: nil, action: nil)
     private let logView = NSTextView()
@@ -45,7 +47,7 @@ final class SettingsWindowController: NSWindowController, NSWindowDelegate {
         wireRcloneManager()
         updateProviderPanels()
         refreshGoogleDriveConnectionUi()
-        updateMountedState(false)
+        updateMountedState(rcloneManager.isMounted)
         RuntimeLog.info("SettingsWindowController init completed frame=\(window.frame)")
     }
 
@@ -132,10 +134,17 @@ final class SettingsWindowController: NSWindowController, NSWindowDelegate {
         mountButton.action = #selector(mountAll)
         unmountButton.target = self
         unmountButton.action = #selector(unmountAll)
-        let clearLogsButton = NSButton(title: "Clear Logs", target: self, action: #selector(clearLogs))
+        openLogsButton.target = self
+        openLogsButton.action = #selector(openLogFolder)
+        clearLogsButton.target = self
+        clearLogsButton.action = #selector(clearLogs)
+        restartButton.target = self
+        restartButton.action = #selector(restartApp)
         buttonRow.addArrangedSubview(mountButton)
         buttonRow.addArrangedSubview(unmountButton)
+        buttonRow.addArrangedSubview(openLogsButton)
         buttonRow.addArrangedSubview(clearLogsButton)
+        buttonRow.addArrangedSubview(restartButton)
         root.addArrangedSubview(buttonRow)
 
         root.addArrangedSubview(makeLabel("Logs"))
@@ -286,29 +295,6 @@ final class SettingsWindowController: NSWindowController, NSWindowDelegate {
         return row
     }
 
-    private func makeMountFolderRow(label: String, field: NSTextField) -> NSView {
-        let row = NSStackView()
-        row.orientation = .vertical
-        row.spacing = 3
-        row.alignment = .leading
-
-        let labelView = NSTextField(labelWithString: label)
-        let inputRow = NSStackView()
-        inputRow.orientation = .horizontal
-        inputRow.spacing = 6
-        inputRow.alignment = .centerY
-        field.heightAnchor.constraint(equalToConstant: 24).isActive = true
-        let browseButton = NSButton(title: "Browse", target: self, action: #selector(browseGoogleDriveMountFolder))
-        browseButton.widthAnchor.constraint(equalToConstant: 70).isActive = true
-        inputRow.addArrangedSubview(field)
-        inputRow.addArrangedSubview(browseButton)
-
-        row.addArrangedSubview(labelView)
-        row.addArrangedSubview(inputRow)
-        inputRow.widthAnchor.constraint(equalTo: row.widthAnchor).isActive = true
-        return row
-    }
-
     private func selectedProvider() -> CloudProvider {
         providerPopup.indexOfSelectedItem == 1 ? .googleDrive : .backblazeB2
     }
@@ -355,20 +341,6 @@ final class SettingsWindowController: NSWindowController, NSWindowDelegate {
         AppPreferences.startMinimized = enabled
     }
 
-    @objc private func browseGoogleDriveMountFolder() {
-        let panel = NSOpenPanel()
-        panel.canChooseDirectories = true
-        panel.canChooseFiles = false
-        panel.canCreateDirectories = true
-        panel.allowsMultipleSelection = false
-        panel.prompt = "Choose"
-
-        if panel.runModal() == .OK, let url = panel.url {
-            googleDriveMountPathField.stringValue = url.path
-            saveVisibleSettings()
-        }
-    }
-
     private func addBucketRow(bucketName: String = "", mountPath: String = "") {
         let row = BucketRowView(bucketName: bucketName, mountPath: mountPath.isEmpty ? defaultMountPath(for: bucketName) : mountPath)
         row.onRemove = { [weak self, weak row] in
@@ -390,7 +362,7 @@ final class SettingsWindowController: NSWindowController, NSWindowDelegate {
 
     private func defaultMountPath(for bucketName: String) -> String {
         let folder = bucketName.trimmingCharacters(in: .whitespacesAndNewlines)
-        return folder.isEmpty ? "~/Drives/" : "~/Drives/\(folder)"
+        return folder.isEmpty ? "" : "~/Drives/\(folder)"
     }
 
     private func readGoogleDriveSettings() -> GoogleDriveSettings {
@@ -488,6 +460,12 @@ final class SettingsWindowController: NSWindowController, NSWindowDelegate {
             saveVisibleSettings()
             let buckets = collectBuckets()
             let googleDrive = readGoogleDriveSettings()
+            if selectedProvider() == .googleDrive &&
+                buckets.isEmpty &&
+                !rcloneManager.isGoogleDriveConfigured(googleDrive) {
+                throw MountError.googleDriveNotConfigured
+            }
+
             RuntimeLog.info("Mount requested from UI. bucketCount=\(buckets.count) googleDriveDisk=\(!googleDrive.mountPath.isEmpty)")
             let credentials = try loadOrSaveCredentialsIfNeeded(buckets: buckets)
             try rcloneManager.mount(applicationKeyId: credentials.applicationKeyId, applicationKey: credentials.applicationKey, buckets: buckets, googleDrive: googleDrive)
@@ -536,8 +514,34 @@ final class SettingsWindowController: NSWindowController, NSWindowDelegate {
         appendInfo("Unmounted all.")
     }
 
+    @objc private func openLogFolder() {
+        do {
+            try FileManager.default.createDirectory(at: RuntimeLog.logDirectory, withIntermediateDirectories: true)
+            NSWorkspace.shared.open(RuntimeLog.logDirectory)
+        } catch {
+            RuntimeLog.error("Could not open log folder: \(error.localizedDescription)")
+            appendError("Could not open log folder. \(error.localizedDescription)")
+        }
+    }
+
     @objc private func clearLogs() {
+        RuntimeLog.clear()
         logView.string = ""
+    }
+
+    @objc private func restartApp() {
+        restartButton.isEnabled = false
+        appendInfo("Restarting Cloud Drive Mount.")
+        saveVisibleSettings()
+        guard let delegate = NSApp.delegate as? AppDelegate else {
+            appendError("Could not restart Cloud Drive Mount.")
+            restartButton.isEnabled = true
+            return
+        }
+
+        if !delegate.restartApp() {
+            restartButton.isEnabled = true
+        }
     }
 
     private func collectBuckets(allowEmpty: Bool = false) -> [BucketMount] {
@@ -567,7 +571,7 @@ final class SettingsWindowController: NSWindowController, NSWindowDelegate {
         appendLog(formatLog(level: "INFO", message: message))
     }
 
-    private func appendError(_ message: String) {
+    func appendError(_ message: String) {
         appendLog(formatLog(level: "ERROR", message: message))
     }
 
@@ -634,7 +638,7 @@ private final class BucketRowView: NSView {
     func clear() {
         bucketField.stringValue = ""
         mountPathManuallyEdited = false
-        mountPathField.stringValue = "~/Drives/"
+        mountPathField.stringValue = ""
         updateFieldWidths()
         onChanged?()
     }
@@ -723,7 +727,7 @@ extension BucketRowView: NSTextFieldDelegate {
             if field === bucketField && !mountPathManuallyEdited {
                 isProgrammaticMountPathChange = true
                 let bucketName = bucketField.stringValue.trimmingCharacters(in: .whitespacesAndNewlines)
-                mountPathField.stringValue = bucketName.isEmpty ? "~/Drives/" : "~/Drives/\(bucketName)"
+                mountPathField.stringValue = bucketName.isEmpty ? "" : "~/Drives/\(bucketName)"
                 isProgrammaticMountPathChange = false
             } else if field === mountPathField && !isProgrammaticMountPathChange {
                 mountPathManuallyEdited = true

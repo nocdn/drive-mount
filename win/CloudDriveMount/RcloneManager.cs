@@ -340,6 +340,13 @@ public class RcloneManager : IDisposable
                 {
                     var bucketName = bucket.BucketName.Trim();
                     var driveLetter = NormalizeDriveLetter(bucket.DriveLetter);
+                    if (CloudProvider.IsReservedGoogleDriveLetter(driveLetter))
+                    {
+                        OnError?.Invoke("Drive letter G: is reserved for Google Drive. Choose another drive letter for bucket '" + bucketName + "'.");
+                        validationOk = false;
+                        continue;
+                    }
+
                     mountSpecs.Add(new MountSpec(
                         Label: "B2 " + bucketName,
                         RemotePath: "b2remote:" + bucketName,
@@ -351,7 +358,11 @@ public class RcloneManager : IDisposable
         }
 
         var googleDrive = settings.GoogleDrive;
-        if (!string.IsNullOrWhiteSpace(googleDrive.DriveLetter))
+        googleDrive.DriveLetter = CloudProvider.DefaultGoogleDriveLetter;
+        var googleDriveSelected = string.Equals(settings.SelectedProvider, CloudProvider.GoogleDrive, StringComparison.OrdinalIgnoreCase);
+        var googleDriveConfigured = HasConfigSection(GetGoogleDriveRemoteName(googleDrive));
+
+        if (googleDriveConfigured || googleDriveSelected)
         {
             var remoteName = GetGoogleDriveRemoteName(googleDrive);
             if (!IsValidRcloneRemoteName(remoteName))
@@ -359,7 +370,7 @@ public class RcloneManager : IDisposable
                 OnError?.Invoke("Google Drive remote name cannot contain a colon, square bracket, or line break.");
                 validationOk = false;
             }
-            else if (!HasConfigSection(remoteName))
+            else if (!googleDriveConfigured)
             {
                 OnError?.Invoke("Google Drive is not configured yet. Select Google Drive and click Connect Google Drive first.");
                 validationOk = false;
@@ -787,12 +798,7 @@ public class RcloneManager : IDisposable
 
     private static string NormalizeDriveLetter(string driveLetter)
     {
-        var drive = driveLetter.Trim().ToUpperInvariant();
-
-        if (drive.EndsWith(":/") || drive.EndsWith(":\\"))
-            drive = drive[..^2];
-        else if (drive.EndsWith(":"))
-            drive = drive[..^1];
+        var drive = CloudProvider.NormalizeDriveLetterInput(driveLetter);
 
         if (!drive.EndsWith(":"))
             drive += ":";

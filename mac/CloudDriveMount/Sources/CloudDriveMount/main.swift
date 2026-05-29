@@ -1,5 +1,9 @@
 import AppKit
 
+if CommandLine.arguments.contains("--clean-restart") {
+    RuntimeLog.clear()
+}
+
 NSSetUncaughtExceptionHandler { exception in
     RuntimeLog.error("Uncaught exception: \(exception.name.rawValue) reason=\(exception.reason ?? "none") stack=\(exception.callStackSymbols.joined(separator: " | "))")
 }

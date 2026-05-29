@@ -28,6 +28,7 @@ enum MountError: LocalizedError {
     case googleDriveNotConfigured
     case duplicateBucket(String)
     case duplicateMountPath(String)
+    case mountPathAlreadyMounted(String)
     case invalidMountPath(String)
 
     var errorDescription: String? {
@@ -48,6 +49,8 @@ enum MountError: LocalizedError {
             return "Bucket '\(bucket)' is listed more than once."
         case .duplicateMountPath(let path):
             return "Mount folder '\(path)' is used more than once."
+        case .mountPathAlreadyMounted(let path):
+            return "Mount folder '\(path)' is already mounted. Unmount it or choose another folder."
         case .invalidMountPath(let path):
             return "Mount folder '\(path)' is invalid."
         }

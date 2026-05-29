@@ -48,7 +48,6 @@ public partial class MainWindow : Window
 
         TxtGoogleRemotePath.Text = _settings.GoogleDrive.RemotePath;
         TxtGoogleRootFolderId.Text = _settings.GoogleDrive.RootFolderId;
-        TxtGoogleDriveLetter.Text = NormalizeDriveInput(_settings.GoogleDrive.DriveLetter);
 
         ChkStartOnLogin.IsChecked = StartupManager.IsSet();
         ChkStartMinimized.IsChecked = _settings.StartMinimized;
@@ -88,7 +87,7 @@ public partial class MainWindow : Window
 
     public void AttemptMount()
     {
-        if (HasAnyCompleteMount())
+        if (HasAnyCompleteMount(includeSelectedGoogleDrive: false))
         {
             Dispatcher.BeginInvoke(() => BtnSaveMount_Click(null, null));
         }
@@ -245,10 +244,10 @@ public partial class MainWindow : Window
 
     private void UpdateSaveMountButton()
     {
-        BtnSaveMount.IsEnabled = HasAnyCompleteMount();
+        BtnSaveMount.IsEnabled = HasAnyCompleteMount(includeSelectedGoogleDrive: true);
     }
 
-    private bool HasAnyCompleteMount()
+    private bool HasAnyCompleteMount(bool includeSelectedGoogleDrive)
     {
         var hasB2 = BucketsPanel.Children.OfType<StackPanel>().Any(row =>
         {
@@ -258,7 +257,9 @@ public partial class MainWindow : Window
                    !string.IsNullOrWhiteSpace(textBoxes[1].Text);
         });
 
-        var hasGoogleDrive = !string.IsNullOrWhiteSpace(TxtGoogleDriveLetter.Text);
+        var googleDrive = ReadGoogleDriveSettings();
+        var hasGoogleDrive = _rcloneManager.IsGoogleDriveConfigured(googleDrive) ||
+                             (includeSelectedGoogleDrive && GetSelectedProvider() == CloudProvider.GoogleDrive);
 
         return hasB2 || hasGoogleDrive;
     }
@@ -364,6 +365,9 @@ public partial class MainWindow : Window
             if (driveText.Length != 1 || !char.IsLetter(driveText[0]))
                 throw new InvalidOperationException("Drive letter for bucket '" + bucketText + "' must be a single letter, like Z.");
 
+            if (CloudProvider.IsReservedGoogleDriveLetter(driveText))
+                throw new InvalidOperationException("Drive letter G: is reserved for Google Drive. Choose another drive letter for bucket '" + bucketText + "'.");
+
             var drive = driveText + ":";
             if (!seenDrives.Add(drive))
                 throw new InvalidOperationException("Drive letter " + drive + " is used more than once.");
@@ -391,26 +395,22 @@ public partial class MainWindow : Window
             RemoteName = CloudProvider.DefaultGoogleDriveRemoteName,
             RemotePath = NormalizeGoogleDrivePath(TxtGoogleRemotePath.Text),
             RootFolderId = TxtGoogleRootFolderId.Text.Trim(),
-            DriveLetter = NormalizeDriveInput(TxtGoogleDriveLetter.Text)
+            DriveLetter = CloudProvider.DefaultGoogleDriveLetter
         };
     }
 
     private void ValidateGoogleDriveSettings(GoogleDriveSettings googleDrive, bool requireCompleteMount)
     {
         googleDrive.RemoteName = CloudProvider.DefaultGoogleDriveRemoteName;
+        googleDrive.DriveLetter = CloudProvider.DefaultGoogleDriveLetter;
 
-        var hasDriveLetter = !string.IsNullOrWhiteSpace(googleDrive.DriveLetter);
         var hasOptionalValues = !string.IsNullOrWhiteSpace(googleDrive.RemotePath) ||
                                 !string.IsNullOrWhiteSpace(googleDrive.RootFolderId);
 
-        if (!hasDriveLetter && !hasOptionalValues && !requireCompleteMount)
+        if (!hasOptionalValues && !requireCompleteMount)
             return;
 
-        if (requireCompleteMount && string.IsNullOrWhiteSpace(googleDrive.DriveLetter))
-            throw new InvalidOperationException("Drive letter is required for Google Drive.");
-
-        if (!string.IsNullOrWhiteSpace(googleDrive.DriveLetter) &&
-            (googleDrive.DriveLetter.Length != 1 || !char.IsLetter(googleDrive.DriveLetter[0])))
+        if (googleDrive.DriveLetter.Length != 1 || !char.IsLetter(googleDrive.DriveLetter[0]))
         {
             throw new InvalidOperationException("Google Drive letter must be a single letter, like G.");
         }
@@ -467,7 +467,11 @@ public partial class MainWindow : Window
             throw new InvalidOperationException("B2 requires an Application Key ID, Application Key, and at least one complete bucket mount row.");
 
         var googleComplete = !string.IsNullOrWhiteSpace(_settings.GoogleDrive.RemoteName) &&
-                             !string.IsNullOrWhiteSpace(_settings.GoogleDrive.DriveLetter);
+                             _rcloneManager.IsGoogleDriveConfigured(_settings.GoogleDrive);
+        var googleSelected = _settings.SelectedProvider == CloudProvider.GoogleDrive;
+
+        if (googleSelected && !googleComplete)
+            throw new InvalidOperationException("Google Drive is not connected. Click Connect Google Drive first.");
 
         if (googleComplete)
             ValidateGoogleDriveSettings(_settings.GoogleDrive, requireCompleteMount: true);
@@ -493,6 +497,7 @@ public partial class MainWindow : Window
     {
         _settings.GoogleDrive ??= new GoogleDriveSettings();
         _settings.GoogleDrive.RemoteName = CloudProvider.DefaultGoogleDriveRemoteName;
+        _settings.GoogleDrive.DriveLetter = CloudProvider.DefaultGoogleDriveLetter;
     }
 
     private static string NormalizeGoogleDrivePath(string value)
@@ -508,14 +513,7 @@ public partial class MainWindow : Window
 
     private static string NormalizeDriveInput(string value)
     {
-        var drive = value.Trim().ToUpperInvariant();
-
-        if (drive.EndsWith(":/") || drive.EndsWith(":\\"))
-            drive = drive[..^2];
-        else if (drive.EndsWith(":"))
-            drive = drive[..^1];
-
-        return drive;
+        return CloudProvider.NormalizeDriveLetterInput(value);
     }
 
     private void BtnAddBucket_Click(object sender, RoutedEventArgs e)
@@ -642,8 +640,6 @@ public partial class MainWindow : Window
     {
         if (!SaveSettings(validateMounts: true))
             return;
-
-        TxtGoogleDriveLetter.Text = NormalizeDriveInput(TxtGoogleDriveLetter.Text);
 
         try
         {
