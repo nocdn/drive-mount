@@ -104,19 +104,9 @@ input:focus-visible {
   gap: 6px;
 }
 
-.bucket-mount-group {
-  flex: 1;
-  min-width: 0;
-}
-
 .bucket-row .bucket-name-input {
   width: 96px;
   flex: 0 0 auto;
-}
-
-.bucket-row .bucket-mount-input {
-  flex: 1;
-  min-width: 140px;
 }
 
 .bucket-row .bucket-drive-input {
@@ -184,11 +174,6 @@ button:disabled {
 .field-port {
   width: 72px;
   flex-shrink: 0;
-}
-
-.field-grow-input {
-  flex: 1;
-  min-width: 0;
 }
 
 .inline-loader {

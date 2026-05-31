@@ -125,6 +125,10 @@ pub fn unmount_target(target: &str) -> bool {
     wait_for_drive_release(target, 8)
 }
 
+pub fn cleanup_mount_target(_target: &str) -> Result<bool, String> {
+    Ok(false)
+}
+
 pub fn notify_mount_change(target: &str, added: bool) {
     use windows::Win32::UI::Shell::{
         SHChangeNotify, SHCNE_DRIVEADD, SHCNE_DRIVEREMOVE, SHCNF_FLUSH, SHCNF_PATHW,

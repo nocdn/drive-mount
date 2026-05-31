@@ -29,6 +29,11 @@ pub fn unmount_target(_target: &str) -> bool {
 }
 
 #[cfg(not(any(target_os = "macos", windows)))]
+pub fn cleanup_mount_target(_target: &str) -> Result<bool, String> {
+    Ok(false)
+}
+
+#[cfg(not(any(target_os = "macos", windows)))]
 pub fn validate_mount_target(_target: &str) -> Result<(), String> {
     Err("Unsupported platform".to_string())
 }

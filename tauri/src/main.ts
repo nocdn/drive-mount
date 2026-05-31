@@ -65,7 +65,6 @@ let seedboxConfigured = false;
 let mountOperation: MountOperation = null;
 const logOperations = new Set<string>();
 const WINDOW_WIDTH = 560;
-const DEFAULT_SEEDBOX_MOUNT_PATH = "~/Drives/Seedbox";
 const MAX_RENDERED_LOG_LINES = 1000;
 const pendingLogLines: string[] = [];
 const renderedLogNodes: Text[] = [];
@@ -142,16 +141,13 @@ const seedboxPortInput = document.getElementById("seedbox-port") as HTMLInputEle
 const seedboxUsernameInput = document.getElementById("seedbox-username") as HTMLInputElement;
 const seedboxPasswordInput = document.getElementById("seedbox-password") as HTMLInputElement;
 const seedboxRemotePathInput = document.getElementById("seedbox-remote-path") as HTMLInputElement;
-const seedboxMountPathInput = document.getElementById("seedbox-mount-path") as HTMLInputElement;
 const seedboxDriveLetterInput = document.getElementById("seedbox-drive-letter") as HTMLInputElement;
-const seedboxMountRow = document.getElementById("seedbox-mount-row") as HTMLDivElement;
 const seedboxDriveRow = document.getElementById("seedbox-drive-row") as HTMLDivElement;
 const seedboxReadOnlyCheckbox = document.getElementById("seedbox-read-only") as HTMLInputElement;
 const seedboxAllowUnverifiedCheckbox = document.getElementById("seedbox-allow-unverified") as HTMLInputElement;
 const seedboxHelp = document.getElementById("seedbox-help") as HTMLParagraphElement;
 const btnTestSeedbox = document.getElementById("btn-test-seedbox") as HTMLButtonElement;
 const btnForgetSeedbox = document.getElementById("btn-forget-seedbox") as HTMLButtonElement;
-const btnBrowseSeedbox = document.getElementById("btn-browse-seedbox") as HTMLButtonElement;
 const gdriveRemotePathInput = document.getElementById("gdrive-remote-path") as HTMLInputElement;
 const gdriveRootFolderIdInput = document.getElementById("gdrive-root-folder-id") as HTMLInputElement;
 const gdriveHelp = document.getElementById("gdrive-help") as HTMLParagraphElement;
@@ -318,14 +314,13 @@ function normalizeSeedboxHostInUi() {
 
 function readSeedboxSettings(): SeedboxSettings {
   const port = Number.parseInt(seedboxPortInput.value.trim(), 10) || 21;
-  const mountPath = seedboxMountPathInput.value.trim();
   return {
     remoteName: "seedbox",
     host: seedboxHostInput.value.trim(),
     username: seedboxUsernameInput.value.trim(),
     port,
     remotePath: seedboxRemotePathInput.value.trim(),
-    mountPath: mountPath || (platform === "macos" ? DEFAULT_SEEDBOX_MOUNT_PATH : ""),
+    mountPath: "",
     driveLetter: seedboxDriveLetterInput.value.trim() || "S",
     allowUnverifiedCertificate: seedboxAllowUnverifiedCheckbox.checked,
     readOnly: seedboxReadOnlyCheckbox.checked,
@@ -341,9 +336,7 @@ function refreshSeedboxConnectionUi() {
 
 function configureSeedboxPlatformUi() {
   const isMac = platform === "macos";
-  seedboxMountRow.classList.toggle("hidden", !isMac);
   seedboxDriveRow.classList.toggle("hidden", isMac);
-  btnBrowseSeedbox.classList.toggle("hidden", !isMac);
 }
 
 function readGoogleDriveSettings(): GoogleDriveSettings {
@@ -365,10 +358,6 @@ function refreshGoogleDriveConnectionUi() {
   gdriveHelp.classList.toggle("hidden", googleDriveConnected);
 }
 
-function defaultMountPath(bucketName: string): string {
-  return `~/Drives/${bucketName}`;
-}
-
 function createBucketRow(bucket: BucketMount = { bucketName: "", mountPath: "", driveLetter: "Z" }) {
   const row = document.createElement("div");
   row.className = "bucket-row";
@@ -385,59 +374,9 @@ function createBucketRow(bucket: BucketMount = { bucketName: "", mountPath: "", 
   bucketGroup.append(nameLabel, nameInput);
   row.appendChild(bucketGroup);
 
-  let pathInput: HTMLInputElement | null = null;
   let driveInput: HTMLInputElement | null = null;
 
-  if (platform === "macos") {
-    const pathLabel = document.createElement("label");
-    pathLabel.textContent = "Mount";
-    pathInput = document.createElement("input");
-    pathInput.type = "text";
-    pathInput.className = "bucket-mount-input";
-    pathInput.value = bucket.mountPath || (bucket.bucketName ? defaultMountPath(bucket.bucketName) : "");
-
-    const browseBtn = document.createElement("button");
-    browseBtn.type = "button";
-    browseBtn.textContent = "Browse";
-    browseBtn.addEventListener("click", async () => {
-      if (browseBtn.disabled) {
-        return;
-      }
-
-      browseBtn.disabled = true;
-      setLogOperation("bucket-browse", true);
-      try {
-        const selected = await invoke<string | null>("browse_folder");
-        if (selected && pathInput) {
-          pathInput.value = selected;
-        }
-      } catch (err) {
-        appendLog({
-          level: "ERROR",
-          message: String(err),
-          timestamp: new Date().toLocaleTimeString(),
-        });
-      } finally {
-        setLogOperation("bucket-browse", false);
-        browseBtn.disabled = false;
-      }
-    });
-
-    const mountGroup = document.createElement("div");
-    mountGroup.className = "bucket-inline-group bucket-mount-group";
-    mountGroup.append(pathLabel, pathInput, browseBtn);
-
-    nameInput.addEventListener("input", () => {
-      if (pathInput && !pathInput.dataset.manual) {
-        pathInput.value = nameInput.value ? defaultMountPath(nameInput.value) : "";
-      }
-    });
-    pathInput.addEventListener("input", () => {
-      pathInput!.dataset.manual = "true";
-    });
-
-    row.appendChild(mountGroup);
-  } else {
+  if (platform !== "macos") {
     const driveLabel = document.createElement("label");
     driveLabel.textContent = "Drive";
     driveInput = document.createElement("input");
@@ -458,7 +397,6 @@ function createBucketRow(bucket: BucketMount = { bucketName: "", mountPath: "", 
   removeBtn.addEventListener("click", () => {
     if (bucketsList.children.length <= 1) {
       nameInput.value = "";
-      if (pathInput) pathInput.value = "";
       if (driveInput) driveInput.value = "Z";
       return;
     }
@@ -480,7 +418,7 @@ function collectBuckets(): BucketMount[] {
     if (platform === "macos") {
       buckets.push({
         bucketName,
-        mountPath: second,
+        mountPath: "",
         driveLetter: "",
       });
     } else {
@@ -560,14 +498,9 @@ async function loadUi() {
   seedboxUsernameInput.value = seedbox?.username ?? "";
   seedboxPortInput.value = String(seedbox?.port ?? 21);
   seedboxRemotePathInput.value = seedbox?.remotePath ?? "downloads";
-  seedboxMountPathInput.value = seedbox?.mountPath ?? "";
   seedboxDriveLetterInput.value = seedbox?.driveLetter ?? "S";
   seedboxReadOnlyCheckbox.checked = seedbox?.readOnly ?? true;
   seedboxAllowUnverifiedCheckbox.checked = seedbox?.allowUnverifiedCertificate ?? true;
-  if (platform === "macos" && !seedboxMountPathInput.value.trim()) {
-    seedboxMountPathInput.value = DEFAULT_SEEDBOX_MOUNT_PATH;
-  }
-
   startAtLoginCheckbox.checked = loaded.settings.startAtLogin;
   startMinimizedCheckbox.checked = loaded.settings.startMinimized;
   renderBuckets(loaded.settings.buckets);
@@ -836,37 +769,11 @@ btnForgetSeedbox.addEventListener("click", async () => {
   }
 });
 
-btnBrowseSeedbox.addEventListener("click", async () => {
-  if (btnBrowseSeedbox.disabled) {
-    return;
-  }
-
-  btnBrowseSeedbox.disabled = true;
-  setLogOperation("seedbox-browse", true);
-  try {
-    const selected = await invoke<string | null>("browse_folder");
-    if (selected) {
-      seedboxMountPathInput.value = selected;
-      void savePreferences();
-    }
-  } catch (err) {
-    appendLog({
-      level: "ERROR",
-      message: String(err),
-      timestamp: new Date().toLocaleTimeString(),
-    });
-  } finally {
-    setLogOperation("seedbox-browse", false);
-    btnBrowseSeedbox.disabled = false;
-  }
-});
-
 for (const el of [
   seedboxHostInput,
   seedboxPortInput,
   seedboxUsernameInput,
   seedboxRemotePathInput,
-  seedboxMountPathInput,
   seedboxDriveLetterInput,
   seedboxReadOnlyCheckbox,
   seedboxAllowUnverifiedCheckbox,

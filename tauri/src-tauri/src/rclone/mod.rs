@@ -10,13 +10,18 @@ use std::time::Duration;
 
 use tauri::{AppHandle, Emitter, Manager};
 
+use crate::credentials::{delete_google_drive_config, save_google_drive_config};
+#[cfg(not(test))]
+use crate::credentials::{
+    has_saved_google_drive_config, has_saved_seedbox_password, load_google_drive_config,
+};
 use crate::logging::{redact_sensitive_line, LogEmitter};
 use crate::models::{
     B2Credentials, BucketMount, CloudProvider, GoogleDriveSettings, MountRequest, MountState,
     SeedboxSettings, GDRIVE_REMOTE, SEEDBOX_REMOTE,
 };
 use crate::paths::{rclone_cache_dir, rclone_config_path};
-use crate::settings::ensure_app_data_dir;
+use crate::settings::{ensure_app_data_dir, load_settings};
 
 pub use platform::is_fuse_installed;
 
@@ -89,6 +94,7 @@ impl RcloneManager {
         let google_drive = request.google_drive.normalized();
         let seedbox = request.seedbox.normalized();
         let has_b2_buckets = has_actionable_b2_buckets(&request.buckets);
+        ensure_google_drive_config()?;
 
         if request.selected_provider == CloudProvider::GoogleDrive
             && !has_b2_buckets
@@ -116,10 +122,8 @@ impl RcloneManager {
             if !is_valid_seedbox(&seedbox) {
                 return Err("Enter Seedbox host, username, port, and mount target.".to_string());
             }
-            if !is_seedbox_configured() {
-                let password = resolve_seedbox_password(&request.seedbox_password)?;
-                self.configure_seedbox(app, &seedbox, &password)?;
-            }
+            let password = resolve_seedbox_password(&request.seedbox_password)?;
+            self.configure_seedbox(app, &seedbox, &password)?;
         }
 
         let specs = build_all_mount_specs(request, &google_drive, &seedbox)?;
@@ -181,12 +185,6 @@ impl RcloneManager {
         ensure_app_data_dir()?;
 
         let config_path = rclone_config_path();
-        let original_config = if config_path.exists() {
-            std::fs::read_to_string(&config_path).unwrap_or_default()
-        } else {
-            String::new()
-        };
-
         config::remove_config_section(&config_path, GDRIVE_REMOTE)?;
 
         let mut args = vec![
@@ -222,12 +220,12 @@ impl RcloneManager {
         )?;
 
         if !ok || !config::has_config_section(&config_path, GDRIVE_REMOTE) {
-            if original_config.is_empty() {
-                let _ = config::remove_config_section(&config_path, GDRIVE_REMOTE);
-            } else {
-                std::fs::write(&config_path, original_config).map_err(|e| e.to_string())?;
-            }
+            let _ = config::remove_config_section(&config_path, GDRIVE_REMOTE);
             return Err("Google Drive authorization failed or was cancelled.".to_string());
+        }
+
+        if let Some(lines) = config::read_config_section_lines(&config_path, GDRIVE_REMOTE)? {
+            save_google_drive_config(&lines)?;
         }
 
         self.log_info(&format!(
@@ -250,6 +248,7 @@ impl RcloneManager {
         }
 
         config::remove_config_section(&rclone_config_path(), GDRIVE_REMOTE)?;
+        delete_google_drive_config()?;
         self.log_info("Google Drive remote has been removed from the app rclone config.");
         Ok(())
     }
@@ -260,6 +259,7 @@ impl RcloneManager {
         google_drive: &GoogleDriveSettings,
     ) -> Result<(), String> {
         let google_drive = google_drive.normalized();
+        ensure_google_drive_config()?;
         if !is_google_drive_configured() {
             return Err(
                 "Google Drive is not connected. Click Connect Google Drive first.".to_string(),
@@ -399,11 +399,18 @@ impl RcloneManager {
     }
 
     pub fn unmount_all(&self, app: &AppHandle) {
-        let targets: Vec<String> = self.mounts.lock().unwrap().keys().cloned().collect();
-        for target in targets {
-            self.unmount_one(app, &target);
+        let mut targets: Vec<String> = self.mounts.lock().unwrap().keys().cloned().collect();
+        targets.extend(configured_mount_targets());
+        let mut seen = HashSet::new();
+        targets.retain(|target| seen.insert(target.clone()));
+
+        for target in &targets {
+            self.unmount_one(app, target);
         }
         self.cleanup_stale_processes(app);
+        for target in &targets {
+            self.cleanup_mount_folder(target);
+        }
         let _ = app.emit("mount-state-changed", MountState { mounted: false });
     }
 
@@ -564,6 +571,7 @@ impl RcloneManager {
         }
 
         platform::notify_mount_change(target, false);
+        self.cleanup_mount_folder(target);
         let still_mounted = self.is_mounted();
         let _ = app.emit(
             "mount-state-changed",
@@ -573,9 +581,23 @@ impl RcloneManager {
         );
     }
 
+    fn cleanup_mount_folder(&self, target: &str) {
+        match platform::cleanup_mount_target(target) {
+            Ok(true) => self.log_info(&format!("Removed mount folder {target}")),
+            Ok(false) => {}
+            Err(err) => self.log_error(&format!("Could not remove mount folder {target}: {err}")),
+        }
+    }
+
     fn log_info(&self, message: &str) {
         if let Ok(logger) = self.logger.lock() {
             logger.info(message);
+        }
+    }
+
+    fn log_error(&self, message: &str) {
+        if let Ok(logger) = self.logger.lock() {
+            logger.error(message);
         }
     }
 }
@@ -597,8 +619,55 @@ fn has_actionable_b2_buckets(buckets: &[BucketMount]) -> bool {
         .any(|bucket| !bucket.bucket_name.trim().is_empty())
 }
 
+fn configured_mount_targets() -> Vec<String> {
+    let settings = load_settings();
+    let mut targets = Vec::new();
+
+    for bucket in settings
+        .buckets
+        .iter()
+        .filter(|bucket| !bucket.bucket_name.trim().is_empty())
+    {
+        if let Ok(target) = platform::normalize_mount_target(bucket) {
+            targets.push(target);
+        }
+    }
+
+    if is_google_drive_configured() {
+        targets.push(platform::google_drive_mount_target(
+            &settings.google_drive.normalized(),
+        ));
+    }
+
+    if has_seedbox_settings(&settings.seedbox) {
+        targets.push(platform::seedbox_mount_target(
+            &settings.seedbox.normalized(),
+        ));
+    }
+
+    targets.retain(|target| !target.trim().is_empty());
+    targets
+}
+
 pub fn is_google_drive_configured() -> bool {
-    config::has_config_section(&rclone_config_path(), GDRIVE_REMOTE)
+    #[cfg(not(test))]
+    {
+        has_saved_google_drive_config().unwrap_or(false)
+    }
+
+    #[cfg(test)]
+    {
+        config::has_config_section(&rclone_config_path(), GDRIVE_REMOTE)
+    }
+}
+
+fn ensure_google_drive_config() -> Result<(), String> {
+    #[cfg(not(test))]
+    if let Some(lines) = load_google_drive_config()? {
+        config::upsert_config_section(&rclone_config_path(), GDRIVE_REMOTE, &lines)?;
+    }
+
+    Ok(())
 }
 
 fn build_google_drive_remote_path(google_drive: &GoogleDriveSettings) -> String {
@@ -704,7 +773,15 @@ fn is_valid_seedbox(seedbox: &SeedboxSettings) -> bool {
 }
 
 pub fn is_seedbox_configured() -> bool {
-    config::has_config_section(&rclone_config_path(), SEEDBOX_REMOTE)
+    #[cfg(not(test))]
+    {
+        has_saved_seedbox_password().unwrap_or(false)
+    }
+
+    #[cfg(test)]
+    {
+        config::has_config_section(&rclone_config_path(), SEEDBOX_REMOTE)
+    }
 }
 
 fn resolve_seedbox_password(request_password: &str) -> Result<String, String> {
@@ -930,10 +1007,9 @@ pub fn has_complete_b2_config(creds: &Option<B2Credentials>, buckets: &[BucketMo
     {
         return false;
     }
-    buckets.iter().any(|b| {
-        !b.bucket_name.trim().is_empty()
-            && (!b.mount_path.trim().is_empty() || !b.drive_letter.trim().is_empty())
-    })
+    buckets
+        .iter()
+        .any(|b| !b.bucket_name.trim().is_empty() && platform::normalize_mount_target(b).is_ok())
 }
 
 pub fn has_complete_google_drive_config() -> bool {
@@ -1047,16 +1123,9 @@ mod tests {
         }
     }
 
-    #[cfg(any(target_os = "macos", windows))]
+    #[cfg(windows)]
     fn expected_target(target: &str) -> String {
-        #[cfg(target_os = "macos")]
-        {
-            target.to_string()
-        }
-        #[cfg(windows)]
-        {
-            format!("{}:", target.trim().trim_end_matches(':').to_uppercase())
-        }
+        format!("{}:", target.trim().trim_end_matches(':').to_uppercase())
     }
 
     #[cfg(any(target_os = "macos", windows))]
@@ -1178,7 +1247,17 @@ mod tests {
             }),
             &[bucket_with_mount.clone()]
         ));
+        #[cfg(windows)]
         assert!(!has_complete_b2_config(
+            &creds,
+            &[BucketMount {
+                bucket_name: "photos".to_string(),
+                mount_path: "  ".to_string(),
+                drive_letter: "  ".to_string(),
+            }]
+        ));
+        #[cfg(target_os = "macos")]
+        assert!(has_complete_b2_config(
             &creds,
             &[BucketMount {
                 bucket_name: "photos".to_string(),
@@ -1204,6 +1283,9 @@ mod tests {
         assert_eq!(specs.len(), 1);
         assert_eq!(specs[0].label, "B2 photos");
         assert_eq!(specs[0].remote_path, "b2remote:photos");
+        #[cfg(target_os = "macos")]
+        assert!(specs[0].target.ends_with("/Drives/photos"));
+        #[cfg(windows)]
         assert_eq!(specs[0].target, expected_target(target));
         assert_eq!(specs[0].volume_name, "photos");
         assert_eq!(specs[0].vfs_cache_mode, "writes");
@@ -1228,12 +1310,9 @@ mod tests {
         assert_eq!(err, "Bucket 'photos' is listed more than once.");
     }
 
-    #[cfg(any(target_os = "macos", windows))]
+    #[cfg(windows)]
     #[test]
     fn build_mount_specs_rejects_duplicate_targets_case_insensitively() {
-        #[cfg(target_os = "macos")]
-        let targets = ("/tmp/photos", "/TMP/PHOTOS");
-        #[cfg(windows)]
         let targets = ("P", "p");
 
         let err = build_mount_specs(&[
@@ -1243,14 +1322,6 @@ mod tests {
         .unwrap_err();
 
         assert!(err.contains("is used more than once"));
-    }
-
-    #[cfg(target_os = "macos")]
-    #[test]
-    fn build_mount_specs_rejects_relative_macos_targets() {
-        let err = build_mount_specs(&[mountable_bucket("photos", "relative/path")]).unwrap_err();
-
-        assert_eq!(err, "Mount folder 'relative/path' is invalid.");
     }
 
     #[cfg(any(target_os = "macos", windows))]

@@ -1,143 +1,168 @@
+use serde::{Deserialize, Serialize};
+
 use crate::models::B2Credentials;
 
-const B2_SERVICE: &str = "com.bartek.clouddrivemount.b2credentials";
-const B2_ACCOUNT: &str = "backblaze-b2";
-const SEEDBOX_SERVICE: &str = "com.bartek.clouddrivemount.seedboxcredentials";
-const SEEDBOX_ACCOUNT: &str = "seedbox-ftps";
+const CREDENTIALS_SERVICE: &str = "com.bartek.clouddrivemount.credentials";
+const CREDENTIALS_ACCOUNT: &str = "cloud-drive-mount";
+
+#[derive(Debug, Clone, Default, Serialize, Deserialize)]
+#[serde(default, rename_all = "camelCase")]
+struct SecureCredentials {
+    b2: Option<B2Credentials>,
+    seedbox_password: Option<String>,
+    google_drive_config: Option<Vec<String>>,
+}
+
+impl SecureCredentials {
+    fn is_empty(&self) -> bool {
+        self.b2.is_none()
+            && self
+                .seedbox_password
+                .as_deref()
+                .unwrap_or_default()
+                .is_empty()
+            && self
+                .google_drive_config
+                .as_ref()
+                .is_none_or(|lines| lines.is_empty())
+    }
+}
 
 pub fn load_b2_credentials() -> Result<Option<B2Credentials>, String> {
-    if let Some(creds) = load_from_keyring()? {
-        return Ok(Some(creds));
-    }
-
-    #[cfg(windows)]
-    {
-        if let Some(creds) = load_legacy_dpapi()? {
-            let _ = save_b2_credentials(&creds);
-            return Ok(Some(creds));
-        }
-    }
-
-    Ok(None)
+    Ok(load_credentials_bundle()?.b2)
 }
 
 pub fn save_b2_credentials(credentials: &B2Credentials) -> Result<(), String> {
-    let json = serde_json::to_string(credentials).map_err(|e| e.to_string())?;
-    keyring::Entry::new(B2_SERVICE, B2_ACCOUNT)
-        .map_err(|e| e.to_string())?
-        .set_password(&json)
-        .map_err(|e| e.to_string())
+    update_credentials_bundle(|bundle| {
+        bundle.b2 = Some(credentials.clone());
+    })
 }
 
 pub fn load_seedbox_password() -> Result<Option<String>, String> {
-    match keyring::Entry::new(SEEDBOX_SERVICE, SEEDBOX_ACCOUNT) {
-        Ok(entry) => match entry.get_password() {
-            Ok(password) if password.is_empty() => Ok(None),
-            Ok(password) => Ok(Some(password)),
-            Err(keyring::Error::NoEntry) => Ok(None),
-            Err(e) => Err(e.to_string()),
-        },
-        Err(e) => Err(e.to_string()),
-    }
+    Ok(load_credentials_bundle()?
+        .seedbox_password
+        .filter(|password| !password.is_empty()))
 }
 
 pub fn save_seedbox_password(password: &str) -> Result<(), String> {
     if password.is_empty() {
         return Ok(());
     }
-    keyring::Entry::new(SEEDBOX_SERVICE, SEEDBOX_ACCOUNT)
-        .map_err(|e| e.to_string())?
-        .set_password(password)
-        .map_err(|e| e.to_string())
+
+    update_credentials_bundle(|bundle| {
+        bundle.seedbox_password = Some(password.to_string());
+    })
 }
 
 pub fn delete_seedbox_password() -> Result<(), String> {
-    match keyring::Entry::new(SEEDBOX_SERVICE, SEEDBOX_ACCOUNT) {
-        Ok(entry) => match entry.delete_credential() {
-            Ok(()) | Err(keyring::Error::NoEntry) => Ok(()),
-            Err(e) => Err(e.to_string()),
-        },
-        Err(e) => Err(e.to_string()),
-    }
+    update_credentials_bundle(|bundle| {
+        bundle.seedbox_password = None;
+    })
 }
 
 pub fn has_saved_seedbox_password() -> Result<bool, String> {
     Ok(load_seedbox_password()?.is_some())
 }
 
-fn load_from_keyring() -> Result<Option<B2Credentials>, String> {
-    match keyring::Entry::new(B2_SERVICE, B2_ACCOUNT) {
+#[cfg_attr(test, allow(dead_code))]
+pub fn load_google_drive_config() -> Result<Option<Vec<String>>, String> {
+    Ok(load_credentials_bundle()?
+        .google_drive_config
+        .filter(|lines| !lines.is_empty()))
+}
+
+pub fn save_google_drive_config(lines: &[String]) -> Result<(), String> {
+    update_credentials_bundle(|bundle| {
+        bundle.google_drive_config = if lines.is_empty() {
+            None
+        } else {
+            Some(lines.to_vec())
+        };
+    })
+}
+
+pub fn delete_google_drive_config() -> Result<(), String> {
+    update_credentials_bundle(|bundle| {
+        bundle.google_drive_config = None;
+    })
+}
+
+#[cfg_attr(test, allow(dead_code))]
+pub fn has_saved_google_drive_config() -> Result<bool, String> {
+    Ok(load_google_drive_config()?.is_some())
+}
+
+fn load_credentials_bundle() -> Result<SecureCredentials, String> {
+    match keyring::Entry::new(CREDENTIALS_SERVICE, CREDENTIALS_ACCOUNT) {
         Ok(entry) => match entry.get_password() {
-            Ok(json) => {
-                let creds: B2Credentials = serde_json::from_str(&json)
-                    .map_err(|_| "Invalid saved B2 credentials".to_string())?;
-                Ok(Some(creds))
-            }
-            Err(keyring::Error::NoEntry) => Ok(None),
+            Ok(json) if json.trim().is_empty() => Ok(SecureCredentials::default()),
+            Ok(json) => serde_json::from_str(&json)
+                .map_err(|_| "Invalid saved Cloud Drive Mount credentials".to_string()),
+            Err(keyring::Error::NoEntry) => Ok(SecureCredentials::default()),
             Err(e) => Err(e.to_string()),
         },
         Err(e) => Err(e.to_string()),
     }
 }
 
-#[cfg(windows)]
-fn load_legacy_dpapi() -> Result<Option<B2Credentials>, String> {
-    use std::fs;
-    use std::path::PathBuf;
+fn save_credentials_bundle(bundle: &SecureCredentials) -> Result<(), String> {
+    let entry =
+        keyring::Entry::new(CREDENTIALS_SERVICE, CREDENTIALS_ACCOUNT).map_err(|e| e.to_string())?;
 
-    let path: PathBuf = crate::paths::app_data_dir()
-        .join("credentials")
-        .join("b2.bin");
-    if !path.exists() {
-        return Ok(None);
+    if bundle.is_empty() {
+        return match entry.delete_credential() {
+            Ok(()) | Err(keyring::Error::NoEntry) => Ok(()),
+            Err(e) => Err(e.to_string()),
+        };
     }
 
-    let encrypted = fs::read(&path).map_err(|e| e.to_string())?;
-    let entropy = b"CloudDriveMount.WindowsSecureStore.v1";
-    let decrypted = dpapi_decrypt(&encrypted, Some(entropy)).map_err(|e| e.to_string())?;
-    let json =
-        String::from_utf8(decrypted).map_err(|_| "Invalid legacy credential file".to_string())?;
-    let creds: B2Credentials =
-        serde_json::from_str(&json).map_err(|_| "Invalid legacy credential JSON".to_string())?;
-    Ok(Some(creds))
+    let json = serde_json::to_string(bundle).map_err(|e| e.to_string())?;
+    entry.set_password(&json).map_err(|e| e.to_string())
 }
 
-#[cfg(windows)]
-fn dpapi_decrypt(data: &[u8], entropy: Option<&[u8]>) -> Result<Vec<u8>, String> {
-    use std::ptr;
-    use windows::Win32::Foundation::LocalFree;
-    use windows::Win32::Security::Cryptography::{
-        CryptUnprotectData, CRYPTPROTECT_UI_FORBIDDEN, CRYPT_INTEGER_BLOB,
-    };
+fn update_credentials_bundle<F>(update: F) -> Result<(), String>
+where
+    F: FnOnce(&mut SecureCredentials),
+{
+    let mut bundle = load_credentials_bundle()?;
+    update(&mut bundle);
+    save_credentials_bundle(&bundle)
+}
 
-    unsafe {
-        let mut input = CRYPT_INTEGER_BLOB {
-            cbData: data.len() as u32,
-            pbData: data.as_ptr() as *mut u8,
-        };
-        let mut output = CRYPT_INTEGER_BLOB::default();
-        let mut entropy_blob = entropy.map(|e| CRYPT_INTEGER_BLOB {
-            cbData: e.len() as u32,
-            pbData: e.as_ptr() as *mut u8,
-        });
+#[cfg(test)]
+mod tests {
+    use super::*;
 
-        let result = CryptUnprotectData(
-            &mut input,
-            None,
-            entropy_blob.as_mut().map(|b| b as *mut _),
-            None,
-            None,
-            CRYPTPROTECT_UI_FORBIDDEN,
-            &mut output,
-        );
-
-        if result.is_err() {
-            return Err("DPAPI decrypt failed".to_string());
+    #[test]
+    fn secure_credentials_detects_empty_bundle() {
+        assert!(SecureCredentials::default().is_empty());
+        assert!(SecureCredentials {
+            seedbox_password: Some(String::new()),
+            google_drive_config: Some(Vec::new()),
+            ..SecureCredentials::default()
         }
+        .is_empty());
 
-        let slice = std::slice::from_raw_parts(output.pbData, output.cbData as usize);
-        let out = slice.to_vec();
-        let _ = LocalFree(windows::Win32::Foundation::HLOCAL(output.pbData as _));
-        Ok(out)
+        assert!(!SecureCredentials {
+            seedbox_password: Some("secret".to_string()),
+            ..SecureCredentials::default()
+        }
+        .is_empty());
+        assert!(!SecureCredentials {
+            google_drive_config: Some(vec!["type = drive".to_string()]),
+            ..SecureCredentials::default()
+        }
+        .is_empty());
+    }
+
+    #[test]
+    fn secure_credentials_deserializes_partial_json() {
+        let bundle: SecureCredentials =
+            serde_json::from_str(r#"{"b2":{"applicationKeyId":"id","applicationKey":"key"}}"#)
+                .unwrap();
+
+        assert_eq!(bundle.b2.unwrap().application_key_id, "id");
+        assert_eq!(bundle.seedbox_password, None);
+        assert_eq!(bundle.google_drive_config, None);
     }
 }

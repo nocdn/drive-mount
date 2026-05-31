@@ -58,6 +58,46 @@ pub fn has_config_section(config_path: &Path, section: &str) -> bool {
     content.lines().any(|line| line.trim() == header)
 }
 
+pub fn read_config_section_lines(
+    config_path: &Path,
+    section: &str,
+) -> Result<Option<Vec<String>>, String> {
+    if !config_path.exists() {
+        return Ok(None);
+    }
+
+    let existing = fs::read_to_string(config_path).map_err(|e| e.to_string())?;
+    let header = format!("[{section}]");
+    let mut in_section = false;
+    let mut lines = Vec::new();
+
+    for line in existing.lines() {
+        let trimmed = line.trim();
+        if trimmed.starts_with('[') && trimmed.ends_with(']') {
+            if in_section {
+                break;
+            }
+            if trimmed == header {
+                in_section = true;
+            }
+            continue;
+        }
+        if in_section {
+            lines.push(line.to_string());
+        }
+    }
+
+    while lines.last().is_some_and(|line| line.trim().is_empty()) {
+        lines.pop();
+    }
+
+    if in_section {
+        Ok(Some(lines))
+    } else {
+        Ok(None)
+    }
+}
+
 pub fn remove_config_section(config_path: &Path, section: &str) -> Result<(), String> {
     if !config_path.exists() {
         return Ok(());
@@ -166,6 +206,27 @@ mod tests {
         assert!(has_config_section(&config, "seedbox"));
         assert!(!has_config_section(&config, "drive"));
         assert!(!has_config_section(&config, "missing"));
+    }
+
+    #[test]
+    fn read_config_section_lines_returns_only_target_body() {
+        let temp = tempfile::tempdir().unwrap();
+        let config = temp.path().join("rclone.conf");
+        fs::write(
+            &config,
+            "[before]\ntype = local\n\n[gdrive]\ntype = drive\nscope = drive\ntoken = {}\n\n[after]\ntype = sftp\n",
+        )
+        .unwrap();
+
+        assert_eq!(
+            read_config_section_lines(&config, "gdrive").unwrap(),
+            Some(vec![
+                "type = drive".to_string(),
+                "scope = drive".to_string(),
+                "token = {}".to_string(),
+            ])
+        );
+        assert_eq!(read_config_section_lines(&config, "missing").unwrap(), None);
     }
 
     #[test]

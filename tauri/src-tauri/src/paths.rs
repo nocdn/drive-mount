@@ -70,17 +70,21 @@ pub fn rclone_cache_dir() -> PathBuf {
     app_data_dir().join("cache")
 }
 
+pub fn drives_dir() -> PathBuf {
+    dirs::home_dir()
+        .unwrap_or_else(|| PathBuf::from("/"))
+        .join("Drives")
+}
+
 pub fn default_bucket_mount_path(bucket_name: &str) -> String {
-    let home = dirs::home_dir().unwrap_or_else(|| PathBuf::from("/"));
-    home.join("Drives")
+    drives_dir()
         .join(bucket_name)
         .to_string_lossy()
         .into_owned()
 }
 
 pub fn default_google_drive_mount_path() -> String {
-    let home = dirs::home_dir().unwrap_or_else(|| PathBuf::from("/"));
-    home.join("Drives")
+    drives_dir()
         .join("Google Drive")
         .to_string_lossy()
         .into_owned()
@@ -113,32 +117,7 @@ pub fn normalize_seedbox_host(host: &str) -> String {
 }
 
 pub fn default_seedbox_mount_path() -> String {
-    let home = dirs::home_dir().unwrap_or_else(|| PathBuf::from("/"));
-    home.join("Drives")
-        .join("Seedbox")
-        .to_string_lossy()
-        .into_owned()
-}
-
-pub fn expand_path(path: &str) -> String {
-    let trimmed = path.trim();
-    if trimmed.starts_with('~') {
-        let home = dirs::home_dir().unwrap_or_else(|| PathBuf::from("/"));
-        if trimmed == "~" {
-            return home.to_string_lossy().into_owned();
-        }
-        if trimmed.starts_with("~/") || trimmed.starts_with("~\\") {
-            return home
-                .join(
-                    trimmed
-                        .trim_start_matches('~')
-                        .trim_start_matches(['/', '\\']),
-                )
-                .to_string_lossy()
-                .into_owned();
-        }
-    }
-    trimmed.to_string()
+    drives_dir().join("Seedbox").to_string_lossy().into_owned()
 }
 
 pub fn platform_name() -> &'static str {
@@ -223,23 +202,6 @@ mod tests {
             normalize_seedbox_host("plain.example.com"),
             "plain.example.com"
         );
-    }
-
-    #[test]
-    fn expand_path_handles_home_forms_and_plain_paths() {
-        let home = dirs::home_dir().unwrap();
-
-        assert_eq!(expand_path("~"), home.to_string_lossy());
-        assert_eq!(
-            expand_path("~/Drives/Bucket"),
-            home.join("Drives").join("Bucket").to_string_lossy()
-        );
-        assert_eq!(
-            expand_path("~\\Drives\\Bucket"),
-            home.join("Drives\\Bucket").to_string_lossy()
-        );
-        assert_eq!(expand_path("  /tmp/mount  "), "/tmp/mount");
-        assert_eq!(expand_path("~other/path"), "~other/path");
     }
 
     #[test]
