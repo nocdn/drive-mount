@@ -4,7 +4,6 @@
   gap: 10px;
   padding: 16px;
   box-sizing: border-box;
-  height: 100vh;
 }
 
 .field-row {
@@ -88,8 +87,6 @@ input:focus-visible {
   display: flex;
   flex-direction: column;
   gap: 6px;
-  max-height: 140px;
-  overflow-y: auto;
 }
 
 .bucket-row {
@@ -163,13 +160,12 @@ button {
   display: flex;
   flex-direction: row;
   flex-wrap: wrap;
-  gap: 8px;
+  gap: 6px;
 }
 
 .logs {
-  flex: 1;
-  min-height: 190px;
-  max-height: 190px;
+  box-sizing: border-box;
+  height: 190px;
   overflow: auto;
   margin: 0;
   font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
@@ -178,6 +174,11 @@ button {
   padding: 6px;
   white-space: pre-wrap;
   word-break: break-word;
+}
+
+html,
+body {
+  overflow: hidden;
 }
 
 body {

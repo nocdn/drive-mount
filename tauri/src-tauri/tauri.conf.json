@@ -17,7 +17,8 @@
         "title": "Cloud Drive Mount Settings",
         "width": 560,
         "height": 740,
-        "resizable": true
+        "resizable": false,
+        "maximizable": false
       }
     ],
     "security": {

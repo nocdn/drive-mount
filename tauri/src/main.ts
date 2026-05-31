@@ -1,5 +1,7 @@
 import { invoke } from "@tauri-apps/api/core";
+import { LogicalSize } from "@tauri-apps/api/dpi";
 import { listen } from "@tauri-apps/api/event";
+import { getCurrentWebviewWindow } from "@tauri-apps/api/webviewWindow";
 import { isEnabled, enable, disable } from "@tauri-apps/plugin-autostart";
 
 type CloudProvider = "B2" | "GoogleDrive" | "Seedbox";
@@ -32,6 +34,69 @@ interface LogLine {
 
 let platform = "macos";
 let mounted = false;
+const WINDOW_WIDTH = 560;
+
+function measureRequiredInnerHeight(appEl: HTMLElement): number {
+  const lastChild = appEl.lastElementChild;
+  if (!(lastChild instanceof HTMLElement)) {
+    return Math.ceil(appEl.getBoundingClientRect().height);
+  }
+
+  const appTop = appEl.getBoundingClientRect().top;
+  const lastBottom = lastChild.getBoundingClientRect().bottom;
+  const paddingBottom = Number.parseFloat(getComputedStyle(appEl).paddingBottom) || 0;
+  return Math.ceil(lastBottom - appTop + paddingBottom);
+}
+
+async function fitWindowToContent() {
+  const appEl = document.getElementById("app");
+  if (!appEl) {
+    return;
+  }
+
+  const tauriWindow = getCurrentWebviewWindow();
+  let targetHeight = measureRequiredInnerHeight(appEl);
+
+  // setSize sets the inner (client) area — CSS pixels, not outer frame size.
+  await tauriWindow.setSize(new LogicalSize(WINDOW_WIDTH, targetHeight));
+
+  await new Promise<void>((resolve) => {
+    requestAnimationFrame(() => resolve());
+  });
+
+  const clippedBy = measureRequiredInnerHeight(appEl) - window.innerHeight;
+  if (clippedBy > 0) {
+    targetHeight += Math.ceil(clippedBy);
+    await tauriWindow.setSize(new LogicalSize(WINDOW_WIDTH, targetHeight));
+  }
+}
+
+function scheduleFitWindow() {
+  requestAnimationFrame(() => {
+    requestAnimationFrame(() => {
+      void fitWindowToContent();
+    });
+  });
+}
+
+function startWindowFitWatcher() {
+  const appEl = document.getElementById("app");
+  if (!appEl) {
+    return;
+  }
+
+  const observer = new ResizeObserver(() => {
+    scheduleFitWindow();
+  });
+  observer.observe(appEl);
+  scheduleFitWindow();
+}
+
+document.addEventListener("visibilitychange", () => {
+  if (document.visibilityState === "visible") {
+    scheduleFitWindow();
+  }
+});
 
 const providerSelect = document.getElementById("provider") as HTMLSelectElement;
 const b2Panel = document.getElementById("b2-panel") as HTMLDivElement;
@@ -120,6 +185,7 @@ function updateProviderPanels() {
     b2Panel.classList.add("hidden");
     stubPanel.classList.remove("hidden");
   }
+  scheduleFitWindow();
 }
 
 function defaultMountPath(bucketName: string): string {
@@ -203,10 +269,12 @@ function createBucketRow(bucket: BucketMount = { bucketName: "", mountPath: "", 
       return;
     }
     row.remove();
+    scheduleFitWindow();
   });
   row.appendChild(removeBtn);
 
   bucketsList.appendChild(row);
+  scheduleFitWindow();
 }
 
 function collectBuckets(): BucketMount[] {
@@ -236,6 +304,7 @@ function renderBuckets(buckets: BucketMount[]) {
   bucketsList.innerHTML = "";
   const rows = buckets.length > 0 ? buckets : [{ bucketName: "", mountPath: "", driveLetter: "Z" }];
   rows.forEach((bucket) => createBucketRow(bucket));
+  scheduleFitWindow();
 }
 
 function collectSettings(): AppSettings {
@@ -308,6 +377,8 @@ async function loadUi() {
     message: "Cloud Drive Mount started. Use the tray icon to reopen Settings after closing this window.",
     timestamp: new Date().toLocaleTimeString(),
   });
+
+  startWindowFitWatcher();
 }
 
 providerSelect.addEventListener("change", () => {
