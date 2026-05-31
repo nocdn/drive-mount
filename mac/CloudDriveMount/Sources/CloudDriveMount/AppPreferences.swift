@@ -12,7 +12,7 @@ enum AppPreferences {
     static func registerDefaults() {
         UserDefaults.standard.register(defaults: [
             startAtLoginKey: true,
-            startMinimizedKey: true,
+            startMinimizedKey: false,
             selectedProviderKey: CloudProvider.backblazeB2.rawValue
         ])
     }

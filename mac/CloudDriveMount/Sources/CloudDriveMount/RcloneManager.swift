@@ -10,6 +10,7 @@ final class RcloneManager {
         var volumeName: String
         var vfsCacheMode: String
         var readOnly: Bool
+        var extraArgs: [String] = []
     }
 
     private struct RunningProcess {
@@ -295,7 +296,8 @@ final class RcloneManager {
                 mountPath: seedboxMountPath,
                 volumeName: "Seedbox",
                 vfsCacheMode: "full",
-                readOnly: normalizedSeedbox.readOnly
+                readOnly: normalizedSeedbox.readOnly,
+                extraArgs: seedboxLargeFileMountArgs()
             ))
         }
 
@@ -389,6 +391,7 @@ final class RcloneManager {
         if spec.readOnly {
             args.append("--read-only")
         }
+        args.append(contentsOf: spec.extraArgs)
         process.arguments = args
 
         let output = Pipe()
@@ -753,6 +756,18 @@ final class RcloneManager {
                normalized.port > 0 &&
                normalized.port <= 65535 &&
                !expandPath(normalized.mountPath).isEmpty
+    }
+
+    private func seedboxLargeFileMountArgs() -> [String] {
+        [
+            "--buffer-size", "32M",
+            "--vfs-read-ahead", "128M",
+            "--vfs-read-chunk-size", "64M",
+            "--vfs-read-chunk-size-limit", "1G",
+            "--multi-thread-cutoff", "256M",
+            "--multi-thread-streams", "4",
+            "--vfs-fast-fingerprint"
+        ]
     }
 
     private func normalizeRemotePath(_ path: String) -> String {
