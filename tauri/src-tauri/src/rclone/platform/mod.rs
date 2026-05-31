@@ -51,3 +51,13 @@ pub fn prepare_mount_target(_target: &str) -> Result<(), String> {
 
 #[cfg(not(any(target_os = "macos", windows)))]
 pub fn notify_mount_change(_target: &str, _added: bool) {}
+
+#[cfg(not(any(target_os = "macos", windows)))]
+pub fn google_drive_mount_target(_settings: &crate::models::GoogleDriveSettings) -> String {
+    String::new()
+}
+
+#[cfg(not(any(target_os = "macos", windows)))]
+pub fn seedbox_mount_target(_settings: &crate::models::SeedboxSettings) -> String {
+    String::new()
+}

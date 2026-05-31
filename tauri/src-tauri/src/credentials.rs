@@ -1,7 +1,9 @@
 use crate::models::B2Credentials;
 
-const SERVICE: &str = "com.bartek.clouddrivemount.b2credentials";
-const ACCOUNT: &str = "backblaze-b2";
+const B2_SERVICE: &str = "com.bartek.clouddrivemount.b2credentials";
+const B2_ACCOUNT: &str = "backblaze-b2";
+const SEEDBOX_SERVICE: &str = "com.bartek.clouddrivemount.seedboxcredentials";
+const SEEDBOX_ACCOUNT: &str = "seedbox-ftps";
 
 pub fn load_b2_credentials() -> Result<Option<B2Credentials>, String> {
     if let Some(creds) = load_from_keyring()? {
@@ -21,14 +23,50 @@ pub fn load_b2_credentials() -> Result<Option<B2Credentials>, String> {
 
 pub fn save_b2_credentials(credentials: &B2Credentials) -> Result<(), String> {
     let json = serde_json::to_string(credentials).map_err(|e| e.to_string())?;
-    keyring::Entry::new(SERVICE, ACCOUNT)
+    keyring::Entry::new(B2_SERVICE, B2_ACCOUNT)
         .map_err(|e| e.to_string())?
         .set_password(&json)
         .map_err(|e| e.to_string())
 }
 
+pub fn load_seedbox_password() -> Result<Option<String>, String> {
+    match keyring::Entry::new(SEEDBOX_SERVICE, SEEDBOX_ACCOUNT) {
+        Ok(entry) => match entry.get_password() {
+            Ok(password) if password.is_empty() => Ok(None),
+            Ok(password) => Ok(Some(password)),
+            Err(keyring::Error::NoEntry) => Ok(None),
+            Err(e) => Err(e.to_string()),
+        },
+        Err(e) => Err(e.to_string()),
+    }
+}
+
+pub fn save_seedbox_password(password: &str) -> Result<(), String> {
+    if password.is_empty() {
+        return Ok(());
+    }
+    keyring::Entry::new(SEEDBOX_SERVICE, SEEDBOX_ACCOUNT)
+        .map_err(|e| e.to_string())?
+        .set_password(password)
+        .map_err(|e| e.to_string())
+}
+
+pub fn delete_seedbox_password() -> Result<(), String> {
+    match keyring::Entry::new(SEEDBOX_SERVICE, SEEDBOX_ACCOUNT) {
+        Ok(entry) => match entry.delete_credential() {
+            Ok(()) | Err(keyring::Error::NoEntry) => Ok(()),
+            Err(e) => Err(e.to_string()),
+        },
+        Err(e) => Err(e.to_string()),
+    }
+}
+
+pub fn has_saved_seedbox_password() -> Result<bool, String> {
+    Ok(load_seedbox_password()?.is_some())
+}
+
 fn load_from_keyring() -> Result<Option<B2Credentials>, String> {
-    match keyring::Entry::new(SERVICE, ACCOUNT) {
+    match keyring::Entry::new(B2_SERVICE, B2_ACCOUNT) {
         Ok(entry) => match entry.get_password() {
             Ok(json) => {
                 let creds: B2Credentials =

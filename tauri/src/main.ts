@@ -12,9 +12,31 @@ interface BucketMount {
   driveLetter: string;
 }
 
+interface GoogleDriveSettings {
+  remoteName: string;
+  remotePath: string;
+  rootFolderId: string;
+  mountPath: string;
+  driveLetter: string;
+}
+
+interface SeedboxSettings {
+  remoteName: string;
+  host: string;
+  username: string;
+  port: number;
+  remotePath: string;
+  mountPath: string;
+  driveLetter: string;
+  allowUnverifiedCertificate: boolean;
+  readOnly: boolean;
+}
+
 interface AppSettings {
   selectedProvider: CloudProvider;
   buckets: BucketMount[];
+  googleDrive: GoogleDriveSettings;
+  seedbox: SeedboxSettings;
   startAtLogin: boolean;
   startMinimized: boolean;
 }
@@ -24,6 +46,9 @@ interface LoadedSettings {
   hasSavedCredentials: boolean;
   applicationKeyId: string;
   applicationKey: string;
+  isGoogleDriveConfigured: boolean;
+  isSeedboxConfigured: boolean;
+  hasSavedSeedboxPassword: boolean;
 }
 
 interface LogLine {
@@ -34,7 +59,10 @@ interface LogLine {
 
 let platform = "macos";
 let mounted = false;
+let googleDriveConnected = false;
+let seedboxConfigured = false;
 const WINDOW_WIDTH = 560;
+const DEFAULT_SEEDBOX_MOUNT_PATH = "~/Drives/Seedbox";
 
 function measureRequiredInnerHeight(appEl: HTMLElement): number {
   const lastChild = appEl.lastElementChild;
@@ -100,7 +128,30 @@ document.addEventListener("visibilitychange", () => {
 
 const providerSelect = document.getElementById("provider") as HTMLSelectElement;
 const b2Panel = document.getElementById("b2-panel") as HTMLDivElement;
-const stubPanel = document.getElementById("stub-panel") as HTMLDivElement;
+const gdrivePanel = document.getElementById("gdrive-panel") as HTMLDivElement;
+const seedboxPanel = document.getElementById("seedbox-panel") as HTMLDivElement;
+const seedboxHostInput = document.getElementById("seedbox-host") as HTMLInputElement;
+const seedboxPortInput = document.getElementById("seedbox-port") as HTMLInputElement;
+const seedboxUsernameInput = document.getElementById("seedbox-username") as HTMLInputElement;
+const seedboxPasswordInput = document.getElementById("seedbox-password") as HTMLInputElement;
+const seedboxRemotePathInput = document.getElementById("seedbox-remote-path") as HTMLInputElement;
+const seedboxMountPathInput = document.getElementById("seedbox-mount-path") as HTMLInputElement;
+const seedboxDriveLetterInput = document.getElementById("seedbox-drive-letter") as HTMLInputElement;
+const seedboxMountRow = document.getElementById("seedbox-mount-row") as HTMLDivElement;
+const seedboxDriveRow = document.getElementById("seedbox-drive-row") as HTMLDivElement;
+const seedboxReadOnlyCheckbox = document.getElementById("seedbox-read-only") as HTMLInputElement;
+const seedboxAllowUnverifiedCheckbox = document.getElementById("seedbox-allow-unverified") as HTMLInputElement;
+const seedboxHelp = document.getElementById("seedbox-help") as HTMLParagraphElement;
+const btnTestSeedbox = document.getElementById("btn-test-seedbox") as HTMLButtonElement;
+const btnForgetSeedbox = document.getElementById("btn-forget-seedbox") as HTMLButtonElement;
+const btnBrowseSeedbox = document.getElementById("btn-browse-seedbox") as HTMLButtonElement;
+const seedboxTestLoader = document.getElementById("seedbox-test-loader") as HTMLSpanElement;
+const gdriveRemotePathInput = document.getElementById("gdrive-remote-path") as HTMLInputElement;
+const gdriveRootFolderIdInput = document.getElementById("gdrive-root-folder-id") as HTMLInputElement;
+const gdriveHelp = document.getElementById("gdrive-help") as HTMLParagraphElement;
+const btnConnectGdrive = document.getElementById("btn-connect-gdrive") as HTMLButtonElement;
+const btnTestGdrive = document.getElementById("btn-test-gdrive") as HTMLButtonElement;
+const gdriveTestLoader = document.getElementById("gdrive-test-loader") as HTMLSpanElement;
 const keyIdInput = document.getElementById("key-id") as HTMLInputElement;
 const keyInput = document.getElementById("key") as HTMLInputElement;
 const bucketsList = document.getElementById("buckets-list") as HTMLDivElement;
@@ -162,14 +213,76 @@ function updateMountButtons() {
 
 function updateProviderPanels() {
   const provider = providerSelect.value as CloudProvider;
-  if (provider === "B2") {
-    b2Panel.classList.remove("hidden");
-    stubPanel.classList.add("hidden");
-  } else {
-    b2Panel.classList.add("hidden");
-    stubPanel.classList.remove("hidden");
-  }
+  b2Panel.classList.toggle("hidden", provider !== "B2");
+  gdrivePanel.classList.toggle("hidden", provider !== "GoogleDrive");
+  seedboxPanel.classList.toggle("hidden", provider !== "Seedbox");
   scheduleFitWindow();
+}
+
+function normalizeSeedboxHostInUi() {
+  let host = seedboxHostInput.value.trim();
+  for (const scheme of ["https://", "http://", "ftps://", "ftp://"]) {
+    if (host.toLowerCase().startsWith(scheme)) {
+      host = host.slice(scheme.length).trim();
+      break;
+    }
+  }
+  while (host.endsWith("/")) {
+    host = host.slice(0, -1);
+  }
+  if (seedboxHostInput.value !== host) {
+    seedboxHostInput.value = host;
+  }
+}
+
+function readSeedboxSettings(): SeedboxSettings {
+  const port = Number.parseInt(seedboxPortInput.value.trim(), 10) || 21;
+  const mountPath = seedboxMountPathInput.value.trim();
+  return {
+    remoteName: "seedbox",
+    host: seedboxHostInput.value.trim(),
+    username: seedboxUsernameInput.value.trim(),
+    port,
+    remotePath: seedboxRemotePathInput.value.trim(),
+    mountPath: mountPath || (platform === "macos" ? DEFAULT_SEEDBOX_MOUNT_PATH : ""),
+    driveLetter: seedboxDriveLetterInput.value.trim() || "S",
+    allowUnverifiedCertificate: seedboxAllowUnverifiedCheckbox.checked,
+    readOnly: seedboxReadOnlyCheckbox.checked,
+  };
+}
+
+function refreshSeedboxConnectionUi() {
+  btnForgetSeedbox.classList.toggle("hidden", !seedboxConfigured);
+  seedboxTestLoader.classList.add("hidden");
+  seedboxHelp.textContent = seedboxConfigured
+    ? "Seedbox FTPS is configured. Use Save and Mount All to mount it."
+    : "Use your Ultra.cc FTP/SFTP connection details. Host is usually your server name, port is 21, and Remote Folder is usually downloads.";
+}
+
+function configureSeedboxPlatformUi() {
+  const isMac = platform === "macos";
+  seedboxMountRow.classList.toggle("hidden", !isMac);
+  seedboxDriveRow.classList.toggle("hidden", isMac);
+  btnBrowseSeedbox.classList.toggle("hidden", !isMac);
+}
+
+function readGoogleDriveSettings(): GoogleDriveSettings {
+  return {
+    remoteName: "gdrive",
+    remotePath: gdriveRemotePathInput.value.trim(),
+    rootFolderId: gdriveRootFolderIdInput.value.trim(),
+    mountPath: "",
+    driveLetter: "G",
+  };
+}
+
+function refreshGoogleDriveConnectionUi() {
+  btnConnectGdrive.textContent = googleDriveConnected
+    ? "Disconnect Google Drive"
+    : "Connect Google Drive";
+  btnTestGdrive.classList.toggle("hidden", !googleDriveConnected);
+  gdriveTestLoader.classList.add("hidden");
+  gdriveHelp.classList.toggle("hidden", googleDriveConnected);
 }
 
 function defaultMountPath(bucketName: string): string {
@@ -295,6 +408,8 @@ function collectSettings(): AppSettings {
   return {
     selectedProvider: providerSelect.value as CloudProvider,
     buckets: collectBuckets(),
+    googleDrive: readGoogleDriveSettings(),
+    seedbox: readSeedboxSettings(),
     startAtLogin: startAtLoginCheckbox.checked,
     startMinimized: startMinimizedCheckbox.checked,
   };
@@ -329,15 +444,41 @@ async function loadUi() {
   if (platform === "windows") {
     bucketsHelp.textContent = "Each bucket is mounted directly to its own drive letter.";
     startMinimizedLabel.textContent = "Start minimized to tray";
+    gdriveHelp.textContent =
+      "Click Connect Google Drive and sign in through the browser. After it connects, use Save and Mount All. Google Drive mounts to G:.";
+  } else {
+    gdriveHelp.textContent =
+      "Click Connect Google Drive and sign in through the browser. After it connects, use Save and Mount All. Google Drive will mount as a disk named Google Drive under ~/Drives/Google Drive.";
   }
 
   const loaded = await invoke<LoadedSettings>("load_settings_cmd");
   providerSelect.value = loaded.settings.selectedProvider;
   keyIdInput.value = loaded.applicationKeyId;
   keyInput.value = loaded.applicationKey;
+  gdriveRemotePathInput.value = loaded.settings.googleDrive?.remotePath ?? "";
+  gdriveRootFolderIdInput.value = loaded.settings.googleDrive?.rootFolderId ?? "";
+
+  const seedbox = loaded.settings.seedbox;
+  seedboxHostInput.value = seedbox?.host ?? "";
+  seedboxUsernameInput.value = seedbox?.username ?? "";
+  seedboxPortInput.value = String(seedbox?.port ?? 21);
+  seedboxRemotePathInput.value = seedbox?.remotePath ?? "downloads";
+  seedboxMountPathInput.value = seedbox?.mountPath ?? "";
+  seedboxDriveLetterInput.value = seedbox?.driveLetter ?? "S";
+  seedboxReadOnlyCheckbox.checked = seedbox?.readOnly ?? true;
+  seedboxAllowUnverifiedCheckbox.checked = seedbox?.allowUnverifiedCertificate ?? true;
+  if (platform === "macos" && !seedboxMountPathInput.value.trim()) {
+    seedboxMountPathInput.value = DEFAULT_SEEDBOX_MOUNT_PATH;
+  }
+
   startAtLoginCheckbox.checked = loaded.settings.startAtLogin;
   startMinimizedCheckbox.checked = loaded.settings.startMinimized;
   renderBuckets(loaded.settings.buckets);
+  googleDriveConnected = loaded.isGoogleDriveConfigured;
+  seedboxConfigured = loaded.isSeedboxConfigured;
+  configureSeedboxPlatformUi();
+  refreshGoogleDriveConnectionUi();
+  refreshSeedboxConnectionUi();
   updateProviderPanels();
   await applyAutostart(loaded.settings.startAtLogin);
 
@@ -387,13 +528,15 @@ btnMount.addEventListener("click", async () => {
     await invoke("save_settings_cmd", { settings });
     await applyAutostart(settings.startAtLogin);
 
-    if (keyIdInput.value.trim() || keyInput.value.trim()) {
-      await invoke("save_b2_credentials_cmd", {
-        credentials: {
-          applicationKeyId: keyIdInput.value.trim(),
-          applicationKey: keyInput.value.trim(),
-        },
-      });
+    if (settings.selectedProvider === "B2") {
+      if (keyIdInput.value.trim() || keyInput.value.trim()) {
+        await invoke("save_b2_credentials_cmd", {
+          credentials: {
+            applicationKeyId: keyIdInput.value.trim(),
+            applicationKey: keyInput.value.trim(),
+          },
+        });
+      }
     }
 
     await invoke("mount_all", {
@@ -401,6 +544,10 @@ btnMount.addEventListener("click", async () => {
         applicationKeyId: keyIdInput.value.trim(),
         applicationKey: keyInput.value.trim(),
         buckets: settings.buckets,
+        googleDrive: settings.googleDrive,
+        seedbox: settings.seedbox,
+        seedboxPassword: seedboxPasswordInput.value,
+        selectedProvider: settings.selectedProvider,
       },
     });
     mounted = true;
@@ -413,6 +560,194 @@ btnMount.addEventListener("click", async () => {
     });
   }
 });
+
+btnConnectGdrive.addEventListener("click", async () => {
+  const settings = collectSettings();
+  settings.selectedProvider = "GoogleDrive";
+  providerSelect.value = "GoogleDrive";
+  updateProviderPanels();
+
+  try {
+    await invoke("save_settings_cmd", { settings });
+    btnConnectGdrive.disabled = true;
+    btnTestGdrive.disabled = true;
+    btnConnectGdrive.textContent = googleDriveConnected ? "Disconnecting..." : "Connecting...";
+
+    if (googleDriveConnected) {
+      await invoke("disconnect_google_drive_cmd", {
+        googleDrive: settings.googleDrive,
+      });
+      googleDriveConnected = false;
+      appendLog({
+        level: "INFO",
+        message: "Google Drive is disconnected.",
+        timestamp: new Date().toLocaleTimeString(),
+      });
+    } else {
+      appendLog({
+        level: "INFO",
+        message: "Starting Google Drive authorization. Complete the sign-in in your browser.",
+        timestamp: new Date().toLocaleTimeString(),
+      });
+      await invoke("configure_google_drive_cmd", {
+        googleDrive: settings.googleDrive,
+      });
+      googleDriveConnected = true;
+      appendLog({
+        level: "INFO",
+        message: "Google Drive is connected. You can now click Save and Mount All.",
+        timestamp: new Date().toLocaleTimeString(),
+      });
+    }
+  } catch (err) {
+    appendLog({
+      level: "ERROR",
+      message: String(err),
+      timestamp: new Date().toLocaleTimeString(),
+    });
+  } finally {
+    refreshGoogleDriveConnectionUi();
+    btnConnectGdrive.disabled = false;
+    btnTestGdrive.disabled = false;
+  }
+});
+
+btnTestGdrive.addEventListener("click", async () => {
+  if (btnTestGdrive.disabled) {
+    return;
+  }
+
+  const settings = collectSettings();
+  btnTestGdrive.disabled = true;
+  gdriveTestLoader.classList.remove("hidden");
+
+  try {
+    await invoke("save_settings_cmd", { settings });
+    await invoke("test_google_drive_connection_cmd", {
+      googleDrive: settings.googleDrive,
+    });
+    appendLog({
+      level: "INFO",
+      message: "Google Drive connection test succeeded.",
+      timestamp: new Date().toLocaleTimeString(),
+    });
+  } catch (err) {
+    appendLog({
+      level: "ERROR",
+      message: String(err),
+      timestamp: new Date().toLocaleTimeString(),
+    });
+  } finally {
+    gdriveTestLoader.classList.add("hidden");
+    btnTestGdrive.disabled = false;
+  }
+});
+
+gdriveRemotePathInput.addEventListener("change", () => {
+  void savePreferences();
+});
+
+gdriveRootFolderIdInput.addEventListener("change", () => {
+  void savePreferences();
+});
+
+btnTestSeedbox.addEventListener("click", async () => {
+  if (btnTestSeedbox.disabled) {
+    return;
+  }
+
+  normalizeSeedboxHostInUi();
+  const settings = collectSettings();
+  btnTestSeedbox.disabled = true;
+  btnForgetSeedbox.disabled = true;
+  seedboxTestLoader.classList.remove("hidden");
+
+  try {
+    await invoke("save_settings_cmd", { settings });
+    await invoke("test_seedbox_connection_cmd", {
+      seedbox: settings.seedbox,
+      password: seedboxPasswordInput.value,
+    });
+    if (seedboxPasswordInput.value) {
+      seedboxPasswordInput.value = "";
+    }
+    seedboxConfigured = true;
+    appendLog({
+      level: "INFO",
+      message: "Seedbox connection test succeeded.",
+      timestamp: new Date().toLocaleTimeString(),
+    });
+  } catch (err) {
+    appendLog({
+      level: "ERROR",
+      message: String(err),
+      timestamp: new Date().toLocaleTimeString(),
+    });
+  } finally {
+    seedboxTestLoader.classList.add("hidden");
+    btnTestSeedbox.disabled = false;
+    btnForgetSeedbox.disabled = false;
+    refreshSeedboxConnectionUi();
+  }
+});
+
+btnForgetSeedbox.addEventListener("click", async () => {
+  const settings = collectSettings();
+
+  try {
+    await invoke("save_settings_cmd", { settings });
+    await invoke("forget_seedbox_cmd", { seedbox: settings.seedbox });
+    seedboxPasswordInput.value = "";
+    seedboxConfigured = false;
+    appendLog({
+      level: "INFO",
+      message: "Seedbox is disconnected.",
+      timestamp: new Date().toLocaleTimeString(),
+    });
+  } catch (err) {
+    appendLog({
+      level: "ERROR",
+      message: String(err),
+      timestamp: new Date().toLocaleTimeString(),
+    });
+  } finally {
+    refreshSeedboxConnectionUi();
+  }
+});
+
+btnBrowseSeedbox.addEventListener("click", async () => {
+  try {
+    const selected = await invoke<string | null>("browse_folder");
+    if (selected) {
+      seedboxMountPathInput.value = selected;
+      void savePreferences();
+    }
+  } catch (err) {
+    appendLog({
+      level: "ERROR",
+      message: String(err),
+      timestamp: new Date().toLocaleTimeString(),
+    });
+  }
+});
+
+for (const el of [
+  seedboxHostInput,
+  seedboxPortInput,
+  seedboxUsernameInput,
+  seedboxRemotePathInput,
+  seedboxMountPathInput,
+  seedboxDriveLetterInput,
+  seedboxReadOnlyCheckbox,
+  seedboxAllowUnverifiedCheckbox,
+]) {
+  el.addEventListener("change", () => {
+    if (el === seedboxHostInput) {
+      normalizeSeedboxHostInUi();
+    }
+    void savePreferences();
+  });
+}
 
 btnUnmount.addEventListener("click", async () => {
   try {

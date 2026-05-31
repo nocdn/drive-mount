@@ -16,10 +16,12 @@ use tauri::{
 use tauri_plugin_autostart::MacosLauncher;
 
 use commands::{
-    attempt_auto_mount, browse_folder, clear_logs, emit_mount_state, get_platform,
-    is_fuse_installed_cmd, is_mounted, load_settings_cmd, mount_all, open_log_folder,
-    restart_app, save_b2_credentials_cmd, save_settings_cmd, setup_window_events,
-    show_settings_window, unmount_all, AppState,
+    attempt_auto_mount, browse_folder, clear_logs, configure_google_drive_cmd,
+    disconnect_google_drive_cmd, emit_mount_state, forget_seedbox_cmd, get_platform,
+    is_fuse_installed_cmd, is_google_drive_configured_cmd, is_mounted, is_seedbox_configured_cmd,
+    load_settings_cmd, mount_all, open_log_folder, restart_app, save_b2_credentials_cmd,
+    save_settings_cmd, setup_window_events, show_settings_window, test_google_drive_connection_cmd,
+    test_seedbox_connection_cmd, unmount_all, AppState,
 };
 use logging::LogEmitter;
 use rclone::RcloneManager;
@@ -28,9 +30,9 @@ use settings::load_settings;
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
 pub fn run() {
     let logger = Arc::new(Mutex::new(LogEmitter::new(None)));
-    let rclone = RcloneManager::new(logger.clone());
+    let rclone = Arc::new(RcloneManager::new(logger.clone()));
     let state = AppState {
-        rclone: Mutex::new(rclone),
+        rclone: rclone.clone(),
         logger: logger.clone(),
     };
 
@@ -70,14 +72,7 @@ pub fn run() {
                 .show_menu_on_left_click(true)
                 .on_menu_event(|app, event| match event.id.as_ref() {
                     "settings" => show_settings_window(app),
-                    "quit" => {
-                        if let Some(state) = app.try_state::<AppState>() {
-                            if let Ok(manager) = state.rclone.lock() {
-                                manager.unmount_all(app);
-                            }
-                        }
-                        app.exit(0);
-                    }
+                    "quit" => app.exit(0),
                     _ => {}
                 })
                 .on_tray_icon_event(|tray, event| {
@@ -94,28 +89,28 @@ pub fn run() {
             setup_window_events(app.handle());
 
             if let Some(window) = app.get_webview_window("main") {
-                if show_on_launch {
-                    let _ = window.show();
-                    let _ = window.set_focus();
-                } else {
+                if !show_on_launch {
                     let _ = window.hide();
                 }
             }
 
             if let Some(state) = app.try_state::<AppState>() {
-                state
-                    .rclone
-                    .lock()
-                    .map_err(|e| e.to_string())?
-                    .cleanup_stale_processes(app.handle());
-
-                if is_fuse_installed_cmd() {
-                    attempt_auto_mount(app.handle(), state.inner());
-                } else if let Ok(log) = logger.lock() {
-                    log.info("FUSE provider not detected on launch.");
-                }
-
                 emit_mount_state(app.handle(), state.inner());
+
+                let app_handle = app.handle().clone();
+                std::thread::spawn(move || {
+                    if let Some(state) = app_handle.try_state::<AppState>() {
+                        state.rclone.cleanup_stale_processes(&app_handle);
+
+                        if is_fuse_installed_cmd() {
+                            attempt_auto_mount(&app_handle, state.inner());
+                        } else if let Ok(log) = state.logger.lock() {
+                            log.info("FUSE provider not detected on launch.");
+                        }
+
+                        emit_mount_state(&app_handle, state.inner());
+                    }
+                });
             }
 
             Ok(())
@@ -129,6 +124,13 @@ pub fn run() {
             unmount_all,
             is_mounted,
             is_fuse_installed_cmd,
+            is_google_drive_configured_cmd,
+            configure_google_drive_cmd,
+            disconnect_google_drive_cmd,
+            test_google_drive_connection_cmd,
+            is_seedbox_configured_cmd,
+            test_seedbox_connection_cmd,
+            forget_seedbox_cmd,
             open_log_folder,
             clear_logs,
             browse_folder,
@@ -136,13 +138,17 @@ pub fn run() {
         ])
         .build(tauri::generate_context!())
         .expect("error while running tauri application")
-        .run(|app, event| {
-            if let RunEvent::ExitRequested { .. } = event {
-                if let Some(state) = app.try_state::<AppState>() {
-                    if let Ok(manager) = state.rclone.lock() {
-                        manager.unmount_all(app);
+        .run(move |app, event| {
+            match event {
+                RunEvent::Ready if show_on_launch => {
+                    show_settings_window(app);
+                }
+                RunEvent::ExitRequested { .. } => {
+                    if let Some(state) = app.try_state::<AppState>() {
+                        state.rclone.unmount_all(app);
                     }
                 }
+                _ => {}
             }
         });
 }

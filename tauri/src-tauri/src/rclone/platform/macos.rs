@@ -1,9 +1,12 @@
 use std::path::Path;
-use std::process::Command;
+use std::process::{Command, Stdio};
+use std::thread;
 use std::time::{Duration, Instant};
 
 use crate::models::BucketMount;
-use crate::paths::{expand_path, default_bucket_mount_path};
+use crate::models::GoogleDriveSettings;
+use crate::models::SeedboxSettings;
+use crate::paths::{default_bucket_mount_path, default_google_drive_mount_path, default_seedbox_mount_path, expand_path};
 
 pub fn is_fuse_installed() -> bool {
     let paths = [
@@ -71,6 +74,8 @@ pub fn unmount_target(target: &str) -> bool {
         return true;
     }
 
+    const UNMOUNT_TIMEOUT: Duration = Duration::from_secs(5);
+
     let attempts: [(&str, &[&str]); 4] = [
         ("/usr/sbin/diskutil", &["unmount", target]),
         ("/sbin/umount", &[target]),
@@ -80,17 +85,72 @@ pub fn unmount_target(target: &str) -> bool {
 
     for (executable, args) in attempts {
         if Path::new(executable).exists() {
-            let status = Command::new(executable).args(args).status();
-            if status.map(|s| s.success()).unwrap_or(false) && !is_mount_point(target) {
+            if run_command_with_timeout(executable, args, UNMOUNT_TIMEOUT)
+                && !is_mount_point(target)
+            {
                 return true;
             }
         }
     }
 
+    wait_for_mount_release(target, UNMOUNT_TIMEOUT);
     !is_mount_point(target)
 }
 
+fn run_command_with_timeout(executable: &str, args: &[&str], timeout: Duration) -> bool {
+    let mut child = match Command::new(executable)
+        .args(args)
+        .stdout(Stdio::null())
+        .stderr(Stdio::null())
+        .spawn()
+    {
+        Ok(child) => child,
+        Err(_) => return false,
+    };
+
+    let deadline = Instant::now() + timeout;
+    loop {
+        match child.try_wait() {
+            Ok(Some(status)) => return status.success(),
+            Ok(None) if Instant::now() < deadline => {
+                thread::sleep(Duration::from_millis(50));
+            }
+            _ => {
+                let _ = child.kill();
+                let _ = child.wait();
+                return false;
+            }
+        }
+    }
+}
+
+fn wait_for_mount_release(target: &str, timeout: Duration) {
+    let deadline = Instant::now() + timeout;
+    while Instant::now() < deadline {
+        if !is_mount_point(target) {
+            return;
+        }
+        thread::sleep(Duration::from_millis(100));
+    }
+}
+
 pub fn notify_mount_change(_target: &str, _added: bool) {}
+
+pub fn google_drive_mount_target(settings: &GoogleDriveSettings) -> String {
+    if settings.mount_path.trim().is_empty() {
+        default_google_drive_mount_path()
+    } else {
+        expand_path(&settings.mount_path)
+    }
+}
+
+pub fn seedbox_mount_target(settings: &SeedboxSettings) -> String {
+    if settings.mount_path.trim().is_empty() {
+        default_seedbox_mount_path()
+    } else {
+        expand_path(&settings.mount_path)
+    }
+}
 
 fn is_mount_point(path: &str) -> bool {
     use std::os::unix::fs::MetadataExt;

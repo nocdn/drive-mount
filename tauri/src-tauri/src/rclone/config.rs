@@ -53,3 +53,46 @@ pub fn has_config_section(config_path: &Path, section: &str) -> bool {
     let header = format!("[{section}]");
     content.lines().any(|line| line.trim() == header)
 }
+
+pub fn remove_config_section(config_path: &Path, section: &str) -> Result<(), String> {
+    if !config_path.exists() {
+        return Ok(());
+    }
+
+    let existing = fs::read_to_string(config_path).map_err(|e| e.to_string())?;
+    let header = format!("[{section}]");
+    let mut output = String::new();
+    let mut in_section = false;
+
+    for line in existing.lines() {
+        let trimmed = line.trim();
+        if trimmed.starts_with('[') && trimmed.ends_with(']') {
+            if in_section {
+                in_section = false;
+            }
+            if trimmed == header {
+                in_section = true;
+                continue;
+            }
+        }
+        if !in_section {
+            output.push_str(line);
+            output.push('\n');
+        }
+    }
+
+    while output.ends_with("\n\n") {
+        output.pop();
+    }
+    if !output.is_empty() && !output.ends_with('\n') {
+        output.push('\n');
+    }
+
+    if output.trim().is_empty() {
+        fs::remove_file(config_path).map_err(|e| e.to_string())?;
+    } else {
+        fs::write(config_path, output).map_err(|e| e.to_string())?;
+    }
+
+    Ok(())
+}

@@ -37,8 +37,79 @@
         <button type="button" id="add-bucket">+ Add Bucket</button>
       </div>
 
-      <div id="stub-panel" class="panel stub-panel hidden">
-        <p>Not implemented yet.</p>
+      <div id="gdrive-panel" class="panel hidden">
+        <div class="field-row">
+          <label for="gdrive-remote-path">Google Drive Folder Path (optional)</label>
+          <input id="gdrive-remote-path" type="text" autocomplete="off" />
+        </div>
+        <div class="field-row">
+          <label for="gdrive-root-folder-id">Google Drive Root Folder ID (optional)</label>
+          <input id="gdrive-root-folder-id" type="text" autocomplete="off" />
+        </div>
+        <p class="help-text" id="gdrive-help">
+          Click Connect Google Drive and sign in through the browser. After it connects, use Save and Mount All.
+        </p>
+        <div class="button-row">
+          <button type="button" id="btn-connect-gdrive">Connect Google Drive</button>
+          <button type="button" id="btn-test-gdrive" class="hidden">Test Connection</button>
+          <span id="gdrive-test-loader" class="inline-loader hidden" aria-hidden="true"></span>
+        </div>
+      </div>
+
+      <div id="seedbox-panel" class="panel hidden">
+        <div class="inline-field-row">
+          <div class="field-row field-grow">
+            <label for="seedbox-host">Seedbox Host</label>
+            <input id="seedbox-host" type="text" autocomplete="off" />
+          </div>
+          <div class="field-row field-port">
+            <label for="seedbox-port">Port</label>
+            <input id="seedbox-port" type="text" inputmode="numeric" autocomplete="off" value="21" />
+          </div>
+        </div>
+        <div class="inline-field-row">
+          <div class="field-row field-grow">
+            <label for="seedbox-username">Seedbox Username</label>
+            <input id="seedbox-username" type="text" autocomplete="off" />
+          </div>
+          <div class="field-row field-grow">
+            <label for="seedbox-password">FTPS Password</label>
+            <input id="seedbox-password" type="password" autocomplete="off" />
+          </div>
+        </div>
+        <div class="field-row">
+          <label for="seedbox-remote-path">Remote Folder</label>
+          <input id="seedbox-remote-path" type="text" autocomplete="off" value="downloads" />
+        </div>
+        <div id="seedbox-mount-row" class="field-row">
+          <label for="seedbox-mount-path">Mount Folder</label>
+          <div class="inline-field-row">
+            <input id="seedbox-mount-path" type="text" autocomplete="off" class="field-grow-input" />
+            <button type="button" id="btn-browse-seedbox">Browse</button>
+          </div>
+        </div>
+        <div id="seedbox-drive-row" class="field-row hidden">
+          <label for="seedbox-drive-letter">Drive</label>
+          <input id="seedbox-drive-letter" type="text" maxlength="3" autocomplete="off" value="S" />
+        </div>
+        <div class="checkbox-group">
+          <label class="checkbox-row">
+            <input type="checkbox" id="seedbox-read-only" checked />
+            Mount read-only
+          </label>
+          <label class="checkbox-row">
+            <input type="checkbox" id="seedbox-allow-unverified" checked />
+            Allow unverified FTPS certificate
+          </label>
+        </div>
+        <p class="help-text" id="seedbox-help">
+          Use your Ultra.cc FTP/SFTP connection details. Host is usually your server name, port is 21, and Remote Folder is usually downloads.
+        </p>
+        <div class="button-row">
+          <button type="button" id="btn-test-seedbox">Test Connection</button>
+          <button type="button" id="btn-forget-seedbox" class="hidden">Forget Seedbox</button>
+          <span id="seedbox-test-loader" class="inline-loader hidden" aria-hidden="true"></span>
+        </div>
       </div>
 
       <div class="checkbox-group">

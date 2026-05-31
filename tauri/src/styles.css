@@ -147,6 +147,11 @@ button {
   font-size: 12.75px;
 }
 
+button:disabled {
+  opacity: 0.45;
+  cursor: default;
+}
+
 #provider {
   padding-block: 3px;
   font-size: 12.5px;
@@ -161,6 +166,65 @@ button {
   flex-direction: row;
   flex-wrap: wrap;
   gap: 6px;
+  align-items: center;
+}
+
+.inline-field-row {
+  display: flex;
+  flex-direction: row;
+  gap: 6px;
+  align-items: flex-end;
+}
+
+.field-grow {
+  flex: 1;
+  min-width: 0;
+}
+
+.field-port {
+  width: 72px;
+  flex-shrink: 0;
+}
+
+.field-grow-input {
+  flex: 1;
+  min-width: 0;
+}
+
+.inline-loader {
+  box-sizing: border-box;
+  flex-shrink: 0;
+  width: 12px;
+  height: 12px;
+  margin-left: 2px;
+  border: 1.5px solid currentColor;
+  border-top-color: transparent;
+  border-radius: 50%;
+  animation: gdrive-loader-spin 0.7s linear infinite;
+}
+
+.inline-loader:not(.hidden) {
+  display: block;
+}
+
+.inline-loader.hidden {
+  display: none;
+  animation: none;
+}
+
+#btn-test-gdrive:disabled,
+#btn-test-seedbox:disabled {
+  opacity: 0.45;
+  cursor: default;
+}
+
+@keyframes gdrive-loader-spin {
+  from {
+    transform: rotate(0deg);
+  }
+  to {
+    transform: rotate(360deg);
+  }
 }
 
 .logs {

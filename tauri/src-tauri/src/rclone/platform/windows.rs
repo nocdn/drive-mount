@@ -3,6 +3,7 @@ use std::process::Command;
 use std::time::{Duration, Instant};
 
 use crate::models::BucketMount;
+use crate::models::GoogleDriveSettings;
 
 const RC_BASE_PORT: u16 = 5572;
 
@@ -127,6 +128,14 @@ pub fn notify_mount_change(target: &str, added: bool) {
     }
 }
 
+pub fn google_drive_mount_target(_settings: &GoogleDriveSettings) -> String {
+    "G:".to_string()
+}
+
+pub fn seedbox_mount_target(settings: &SeedboxSettings) -> String {
+    "S:".to_string()
+}
+
 fn normalize_drive_letter(input: &str) -> Result<String, String> {
     let trimmed = input.trim().trim_end_matches(':');
     if trimmed.len() != 1 {
@@ -138,6 +147,9 @@ fn normalize_drive_letter(input: &str) -> Result<String, String> {
     }
     if ch == 'G' {
         return Err("Drive letter G: is reserved for Google Drive.".to_string());
+    }
+    if ch == 'S' {
+        return Err("Drive letter S: is reserved for Seedbox.".to_string());
     }
     Ok(ch.to_string())
 }
