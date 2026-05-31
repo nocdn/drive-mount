@@ -53,6 +53,11 @@ mac/**/Carthage/
 mac/**/Pods/
 mac/**/.DS_Store
 
+# Tauri
+tauri/src-tauri/target/
+tauri/dist/
+tauri/src-tauri/binaries/rclone-*
+
 # OS/editor noise
 .vs/
 .vscode/

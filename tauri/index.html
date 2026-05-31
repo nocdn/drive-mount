@@ -1,0 +1,71 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>Cloud Drive Mount Settings</title>
+    <link rel="stylesheet" href="/src/styles.css" />
+  </head>
+  <body>
+    <div id="app" class="app">
+      <div class="field-row">
+        <label for="provider">Provider</label>
+        <select id="provider">
+          <option value="B2">B2</option>
+          <option value="GoogleDrive">Google Drive</option>
+          <option value="Seedbox">Seedbox</option>
+        </select>
+      </div>
+
+      <div id="b2-panel" class="panel">
+        <div class="field-row">
+          <label for="key-id">B2 Application Key ID</label>
+          <input id="key-id" type="text" autocomplete="off" />
+        </div>
+        <div class="field-row">
+          <label for="key">B2 Application Key</label>
+          <input id="key" type="password" autocomplete="off" />
+        </div>
+
+        <div class="buckets-intro">
+          <div class="buckets-heading">Buckets</div>
+          <p class="help-text" id="buckets-help">
+            Each bucket mounts to a local folder.
+          </p>
+        </div>
+        <div id="buckets-list" class="buckets-list"></div>
+        <button type="button" id="add-bucket">+ Add Bucket</button>
+      </div>
+
+      <div id="stub-panel" class="panel stub-panel hidden">
+        <p>Not implemented yet.</p>
+      </div>
+
+      <div class="checkbox-group">
+        <label class="checkbox-row">
+          <input type="checkbox" id="start-at-login" />
+          Start at login
+        </label>
+        <label class="checkbox-row">
+          <input type="checkbox" id="start-minimized" />
+          <span id="start-minimized-label">Start minimized to menu bar</span>
+        </label>
+      </div>
+
+      <div class="button-row">
+        <button type="button" id="btn-mount">Save and Mount All</button>
+        <button type="button" id="btn-unmount">Unmount All</button>
+        <button type="button" id="btn-open-logs">Open Log Folder</button>
+        <button type="button" id="btn-restart">Restart</button>
+      </div>
+
+      <div class="logs-header">
+        <div class="logs-heading">Logs</div>
+        <button type="button" id="btn-clear-logs">Clear Logs</button>
+        <button type="button" id="btn-copy-logs">Copy Logs</button>
+      </div>
+      <pre id="logs" class="logs"></pre>
+    </div>
+    <script type="module" src="/src/main.ts"></script>
+  </body>
+</html>

@@ -15,6 +15,9 @@ final class RcloneManager {
 
     private struct RunningProcess {
         var pid: pid_t
+        var ppid: pid_t
+        var state: String
+        var user: String
         var command: String
     }
 
@@ -35,9 +38,11 @@ final class RcloneManager {
 
     private var processes: [String: Process] = [:]
     private var intentionalStops = Set<String>()
+    private var unclearedRclonePIDs = Set<pid_t>()
     private let appSupportURL: URL
     private let configURL: URL
     private let cacheURL: URL
+    private let mountStartupTimeout: TimeInterval = 90
 
     var isMounted: Bool {
         processes.values.contains { $0.isRunning }
@@ -75,15 +80,25 @@ final class RcloneManager {
     }
 
     func cleanupExistingAppProcesses() {
+        unclearedRclonePIDs = unclearedRclonePIDs.filter { isProcessRunning($0) }
+
         let staleProcesses = appOwnedRcloneProcesses()
+            .filter { !unclearedRclonePIDs.contains($0.pid) }
         guard !staleProcesses.isEmpty else {
-            RuntimeLog.info("No stale app-owned rclone processes found")
+            if unclearedRclonePIDs.isEmpty {
+                RuntimeLog.info("No stale app-owned rclone processes found")
+            } else {
+                RuntimeLog.error("Stale rclone processes remain uncleared: \(unclearedRclonePIDs.sorted().map { String($0) }.joined(separator: ", "))")
+            }
             return
         }
 
         for process in staleProcesses {
-            logInfo("Stopping stale rclone process PID=\(process.pid).")
-            terminate(pid: process.pid, timeout: 5)
+            logInfo("Stopping stale rclone process PID=\(process.pid) state=\(process.state).")
+            let timeout: TimeInterval = isOrphanedExitingRclone(process) ? 0.5 : 5
+            if !terminate(pid: process.pid, timeout: timeout) {
+                unclearedRclonePIDs.insert(process.pid)
+            }
         }
     }
 
@@ -227,10 +242,20 @@ final class RcloneManager {
         try validate(mountSpecs: mountSpecs)
         unmountAll()
         cleanupExistingAppProcesses()
+        if !unclearedRclonePIDs.isEmpty {
+            throw MountError.staleRcloneProcesses(Array(unclearedRclonePIDs).sorted())
+        }
 
         logInfo("Found rclone at: \(rclonePath)")
-        for spec in mountSpecs {
-            try mountRemote(rclonePath: rclonePath, spec: spec)
+
+        do {
+            for spec in mountSpecs {
+                try mountRemote(rclonePath: rclonePath, spec: spec)
+            }
+        } catch {
+            logError("Mount startup failed. Cleaning up any mounts started by this request.")
+            cleanupStartedMounts(mountSpecs)
+            throw error
         }
 
         onMountedStateChanged?(isMounted)
@@ -243,6 +268,7 @@ final class RcloneManager {
         }
 
         processes.removeAll()
+        cleanupExistingAppProcesses()
         onMountedStateChanged?(false)
         RuntimeLog.info("Unmount all completed")
     }
@@ -281,7 +307,8 @@ final class RcloneManager {
         }
 
         let normalizedSeedbox = normalizeSeedbox(seedbox)
-        if hasConfigSection(getSeedboxRemoteName(normalizedSeedbox)) || hasSeedboxSettings(normalizedSeedbox) {
+        let seedboxHasSettings = hasSeedboxSettings(normalizedSeedbox)
+        if seedboxHasSettings {
             guard isValid(seedbox: normalizedSeedbox) else { throw MountError.missingSeedboxCredentials }
             if !hasConfigSection(getSeedboxRemoteName(normalizedSeedbox)) {
                 let savedPassword = (try? SeedboxCredentialStore.loadPassword()) ?? ""
@@ -386,7 +413,7 @@ final class RcloneManager {
             "--vfs-cache-mode", spec.vfsCacheMode,
             "--volname", spec.volumeName,
             "--links",
-            "--log-level", "INFO"
+            "--log-level", "NOTICE"
         ]
         if spec.readOnly {
             args.append("--read-only")
@@ -403,6 +430,10 @@ final class RcloneManager {
         stream(pipe: error, prefix: "[\(spec.label)]", source: .stderr)
 
         process.terminationHandler = { [weak self] process in
+            output.fileHandleForReading.readabilityHandler = nil
+            error.fileHandleForReading.readabilityHandler = nil
+            process.waitUntilExit()
+
             Task { @MainActor in
                 self?.processes.removeValue(forKey: mountPath)
                 if self?.intentionalStops.remove(mountPath) != nil {
@@ -424,6 +455,13 @@ final class RcloneManager {
         RuntimeLog.info("Starting rclone process label=\(spec.label) mountPath=\(mountPath) args=\(redactArguments(process.arguments ?? []).joined(separator: " "))")
         try process.run()
         processes[mountPath] = process
+
+        do {
+            try waitForMountStartup(process: process, mountPath: mountPath, label: spec.label, timeout: mountStartupTimeout)
+        } catch {
+            cleanupFailedMountProcess(process: process, mountPath: mountPath, label: spec.label)
+            throw error
+        }
     }
 
     private func runRcloneToCompletion(rclonePath: String, args: [String], label: String) -> Bool {
@@ -444,6 +482,8 @@ final class RcloneManager {
         do {
             try process.run()
             process.waitUntilExit()
+            output.fileHandleForReading.readabilityHandler = nil
+            error.fileHandleForReading.readabilityHandler = nil
             if process.terminationStatus == 0 {
                 RuntimeLog.info("rclone command completed successfully label=\(label)")
                 return true
@@ -514,27 +554,54 @@ final class RcloneManager {
         if let process = processes.removeValue(forKey: expanded) {
             logInfo("Unmounting \(expanded)")
             intentionalStops.insert(expanded)
+            _ = runUnmount(mountPath: expanded)
+            waitForMountPathToRelease(expanded, timeout: 5)
             if process.isRunning {
-                process.terminate()
-                _ = wait(process: process, timeout: 5)
-                if process.isRunning {
-                    process.interrupt()
-                }
+                stop(process: process, label: expanded, timeout: 5)
+            } else {
+                process.waitUntilExit()
             }
+        } else {
+            _ = runUnmount(mountPath: expanded)
+            waitForMountPathToRelease(expanded, timeout: 5)
         }
-
-        runUnmount(mountPath: expanded)
         onMountedStateChanged?(isMounted)
     }
 
-    private func runUnmount(mountPath: String) {
-        guard !mountPath.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty else { return }
+    @discardableResult
+    private func runUnmount(mountPath: String) -> Bool {
+        guard !mountPath.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty else { return true }
+        guard isMountPoint(mountPath) else { return true }
 
-        let unmount = Process()
-        unmount.executableURL = URL(fileURLWithPath: "/sbin/umount")
-        unmount.arguments = [mountPath]
-        try? unmount.run()
-        unmount.waitUntilExit()
+        let attempts: [(String, [String])] = [
+            ("/usr/sbin/diskutil", ["unmount", mountPath]),
+            ("/sbin/umount", [mountPath]),
+            ("/usr/sbin/diskutil", ["unmount", "force", mountPath]),
+            ("/sbin/umount", ["-f", mountPath])
+        ]
+
+        for (executable, arguments) in attempts where runProcess(executable: executable, arguments: arguments) == 0 {
+            return true
+        }
+
+        return false
+    }
+
+    private func runProcess(executable: String, arguments: [String]) -> Int32? {
+        let process = Process()
+        process.executableURL = URL(fileURLWithPath: executable)
+        process.arguments = arguments
+        process.standardOutput = Pipe()
+        process.standardError = Pipe()
+
+        do {
+            try process.run()
+            process.waitUntilExit()
+            return process.terminationStatus
+        } catch {
+            RuntimeLog.error("Failed to run \(executable): \(error.localizedDescription)")
+            return nil
+        }
     }
 
     private func logRcloneLine(_ line: String, prefix: String, source: RcloneOutputSource) {
@@ -552,17 +619,30 @@ final class RcloneManager {
     }
 
     private func appOwnedRcloneProcesses() -> [RunningProcess] {
-        listRunningProcesses().filter { process in
-            process.pid != ProcessInfo.processInfo.processIdentifier &&
-            process.command.localizedCaseInsensitiveContains("rclone") &&
-            process.command.contains(configURL.path)
+        let currentPid = ProcessInfo.processInfo.processIdentifier
+        return listRunningProcesses().filter { process in
+            guard process.pid != currentPid else { return false }
+
+            let command = process.command.localizedLowercase
+            let isRclone = command.contains("rclone")
+            let usesAppConfig = process.command.contains(configURL.path)
+            let isCurrentChild = process.ppid == currentPid && (isRclone || command == "(rclone)")
+
+            return (isRclone && usesAppConfig) || isCurrentChild || isOrphanedExitingRclone(process)
         }
+    }
+
+    private func isOrphanedExitingRclone(_ process: RunningProcess) -> Bool {
+        process.ppid == 1 &&
+            process.user == NSUserName() &&
+            process.command.localizedLowercase == "(rclone)" &&
+            (process.state.contains("E") || process.state.contains("Z"))
     }
 
     private func listRunningProcesses() -> [RunningProcess] {
         let process = Process()
         process.executableURL = URL(fileURLWithPath: "/bin/ps")
-        process.arguments = ["-axo", "pid=,command="]
+        process.arguments = ["-axo", "pid=,ppid=,stat=,user=,command="]
 
         let output = Pipe()
         process.standardOutput = output
@@ -570,46 +650,69 @@ final class RcloneManager {
 
         do {
             try process.run()
-            process.waitUntilExit()
         } catch {
             RuntimeLog.error("Failed to list running processes: \(error.localizedDescription)")
             return []
         }
 
         let data = output.fileHandleForReading.readDataToEndOfFile()
+        process.waitUntilExit()
         guard let text = String(data: data, encoding: .utf8) else { return [] }
 
         return text.split(whereSeparator: \.isNewline).compactMap { line in
             let trimmed = line.trimmingCharacters(in: .whitespacesAndNewlines)
-            let parts = trimmed.split(separator: " ", maxSplits: 1, omittingEmptySubsequences: true)
-            guard parts.count == 2, let pid = pid_t(String(parts[0])) else { return nil }
-            return RunningProcess(pid: pid, command: String(parts[1]))
+            let parts = trimmed.split(separator: " ", maxSplits: 4, omittingEmptySubsequences: true)
+            guard parts.count == 5,
+                  let pid = pid_t(String(parts[0])),
+                  let ppid = pid_t(String(parts[1])) else {
+                return nil
+            }
+            return RunningProcess(
+                pid: pid,
+                ppid: ppid,
+                state: String(parts[2]),
+                user: String(parts[3]),
+                command: String(parts[4]).trimmingCharacters(in: .whitespacesAndNewlines)
+            )
         }
     }
 
-    private func terminate(pid: pid_t, timeout: TimeInterval) {
-        guard isProcessRunning(pid) else { return }
+    @discardableResult
+    private func terminate(pid: pid_t, timeout: TimeInterval) -> Bool {
+        if reapExitedChildProcess(pid: pid) {
+            return true
+        }
+
+        guard isProcessRunning(pid) else { return true }
 
         RuntimeLog.info("Terminating app-owned rclone process pid=\(pid)")
         _ = Darwin.kill(pid, SIGTERM)
 
         if waitForProcessExit(pid: pid, timeout: timeout) {
             RuntimeLog.info("App-owned rclone process terminated pid=\(pid)")
-            return
+            return true
         }
 
         RuntimeLog.error("Stale rclone process did not terminate gracefully; killing pid=\(pid)")
         _ = Darwin.kill(pid, SIGKILL)
-        _ = waitForProcessExit(pid: pid, timeout: 2)
+        if !waitForProcessExit(pid: pid, timeout: 2) {
+            RuntimeLog.error("Stale rclone process still appears to be running after SIGKILL pid=\(pid)")
+            return false
+        }
+
+        return true
     }
 
     private func waitForProcessExit(pid: pid_t, timeout: TimeInterval) -> Bool {
         let deadline = Date().addingTimeInterval(timeout)
         while isProcessRunning(pid) && Date() < deadline {
+            if reapExitedChildProcess(pid: pid) {
+                return true
+            }
             RunLoop.current.run(mode: .default, before: Date().addingTimeInterval(0.05))
         }
 
-        return !isProcessRunning(pid)
+        return reapExitedChildProcess(pid: pid) || !isProcessRunning(pid)
     }
 
     private func isProcessRunning(_ pid: pid_t) -> Bool {
@@ -619,7 +722,69 @@ final class RcloneManager {
     private func waitForMountPathToRelease(_ mountPath: String, timeout: TimeInterval) {
         let deadline = Date().addingTimeInterval(timeout)
         while isMountPoint(mountPath) && Date() < deadline {
+            _ = runUnmount(mountPath: mountPath)
             RunLoop.current.run(mode: .default, before: Date().addingTimeInterval(0.1))
+        }
+    }
+
+    private func waitForMountStartup(process: Process, mountPath: String, label: String, timeout: TimeInterval) throws {
+        let deadline = Date().addingTimeInterval(timeout)
+
+        while Date() < deadline {
+            if isMountPoint(mountPath) {
+                RuntimeLog.info("Mount startup completed label=\(label) mountPath=\(mountPath)")
+                return
+            }
+
+            if !process.isRunning {
+                process.waitUntilExit()
+                processes.removeValue(forKey: mountPath)
+                throw MountError.mountProcessExited(label, process.terminationStatus)
+            }
+
+            RunLoop.current.run(mode: .default, before: Date().addingTimeInterval(0.1))
+        }
+
+        throw MountError.mountStartupTimedOut(label)
+    }
+
+    private func cleanupStartedMounts(_ mountSpecs: [MountSpec]) {
+        for spec in mountSpecs.reversed() {
+            let mountPath = expandPath(spec.mountPath)
+            unmountDrive(mountPath: mountPath)
+        }
+        cleanupExistingAppProcesses()
+    }
+
+    private func cleanupFailedMountProcess(process: Process, mountPath: String, label: String) {
+        processes.removeValue(forKey: mountPath)
+        intentionalStops.insert(mountPath)
+        stop(process: process, label: label, timeout: 3)
+        _ = runUnmount(mountPath: mountPath)
+        waitForMountPathToRelease(mountPath, timeout: 5)
+        intentionalStops.remove(mountPath)
+    }
+
+    private func stop(process: Process, label: String, timeout: TimeInterval) {
+        guard process.isRunning else {
+            process.waitUntilExit()
+            return
+        }
+
+        process.terminate()
+        if wait(process: process, timeout: timeout) {
+            return
+        }
+
+        process.interrupt()
+        if wait(process: process, timeout: 2) {
+            return
+        }
+
+        RuntimeLog.error("rclone process did not stop gracefully for \(label); killing pid=\(process.processIdentifier)")
+        _ = Darwin.kill(process.processIdentifier, SIGKILL)
+        if !wait(process: process, timeout: 2) {
+            RuntimeLog.error("rclone process still appears to be running after SIGKILL for \(label) pid=\(process.processIdentifier)")
         }
     }
 
@@ -642,7 +807,16 @@ final class RcloneManager {
             RunLoop.current.run(mode: .default, before: Date().addingTimeInterval(0.05))
         }
 
+        if !process.isRunning {
+            process.waitUntilExit()
+        }
+
         return !process.isRunning
+    }
+
+    private func reapExitedChildProcess(pid: pid_t) -> Bool {
+        var status: Int32 = 0
+        return Darwin.waitpid(pid, &status, WNOHANG) == pid
     }
 
     private func upsertConfigSection(_ sectionName: String, lines sectionLines: [String]) throws {

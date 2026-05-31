@@ -38,6 +38,9 @@ final class SettingsWindowController: NSWindowController, NSWindowDelegate {
     private let startAtLoginCheckbox = NSButton(checkboxWithTitle: "Start at login", target: nil, action: nil)
     private let startMinimizedCheckbox = NSButton(checkboxWithTitle: "Start minimized to menu bar", target: nil, action: nil)
     private let logView = NSTextView()
+    private var visibleLogLines: [String] = []
+    private let maxVisibleLogLines = 500
+    private var isLoadingSavedSettings = false
 
     init(rcloneManager: RcloneManager) {
         self.rcloneManager = rcloneManager
@@ -122,17 +125,6 @@ final class SettingsWindowController: NSWindowController, NSWindowDelegate {
         root.addArrangedSubview(seedboxOptionsStack)
         seedboxOptionsStack.widthAnchor.constraint(equalTo: root.widthAnchor).isActive = true
         buildSeedboxOptions()
-
-        let macFuseRow = NSStackView()
-        macFuseRow.orientation = .horizontal
-        macFuseRow.spacing = 8
-        macFuseRow.alignment = .centerY
-        let macFuseStatus = NSTextField(labelWithString: RcloneManager.isMacFuseInstalled() ? "macFUSE detected." : "macFUSE not detected. Mounting requires macFUSE.")
-        macFuseStatus.textColor = RcloneManager.isMacFuseInstalled() ? .secondaryLabelColor : .systemOrange
-        let macFuseHelp = NSButton(title: "macFUSE Help", target: self, action: #selector(showMacFuseHelp))
-        macFuseRow.addArrangedSubview(macFuseHelp)
-        macFuseRow.addArrangedSubview(macFuseStatus)
-        root.addArrangedSubview(macFuseRow)
 
         startAtLoginCheckbox.state = AppPreferences.startAtLogin ? .on : .off
         startAtLoginCheckbox.target = self
@@ -244,32 +236,45 @@ final class SettingsWindowController: NSWindowController, NSWindowDelegate {
     }
 
     private func buildSeedboxOptions() {
+        let hostPortRow = NSStackView()
+        hostPortRow.orientation = .horizontal
+        hostPortRow.spacing = 10
+        hostPortRow.alignment = .top
+        hostPortRow.distribution = .fill
+
         let hostRow = makeFieldRow(label: "Seedbox Host", field: seedboxHostField)
-        seedboxOptionsStack.addArrangedSubview(hostRow)
-        hostRow.widthAnchor.constraint(equalTo: seedboxOptionsStack.widthAnchor).isActive = true
+        let portRow = makeFieldRow(label: "Port", field: seedboxPortField)
+        hostRow.setContentHuggingPriority(.defaultLow, for: .horizontal)
+        hostRow.setContentCompressionResistancePriority(.defaultLow, for: .horizontal)
+        portRow.setContentHuggingPriority(.required, for: .horizontal)
+        portRow.setContentCompressionResistancePriority(.required, for: .horizontal)
+        portRow.widthAnchor.constraint(equalToConstant: 96).isActive = true
+        hostPortRow.addArrangedSubview(hostRow)
+        hostPortRow.addArrangedSubview(portRow)
+        seedboxOptionsStack.addArrangedSubview(hostPortRow)
+        hostPortRow.widthAnchor.constraint(equalTo: seedboxOptionsStack.widthAnchor).isActive = true
+
+        let credentialsRow = NSStackView()
+        credentialsRow.orientation = .horizontal
+        credentialsRow.spacing = 10
+        credentialsRow.alignment = .top
+        credentialsRow.distribution = .fillEqually
 
         let usernameRow = makeFieldRow(label: "Seedbox Username", field: seedboxUsernameField)
-        seedboxOptionsStack.addArrangedSubview(usernameRow)
-        usernameRow.widthAnchor.constraint(equalTo: seedboxOptionsStack.widthAnchor).isActive = true
-
         let passwordRow = makeFieldRow(label: "FTPS Password", field: seedboxPasswordField)
-        seedboxOptionsStack.addArrangedSubview(passwordRow)
-        passwordRow.widthAnchor.constraint(equalTo: seedboxOptionsStack.widthAnchor).isActive = true
-
-        let portRow = makeFieldRow(label: "Port", field: seedboxPortField)
-        seedboxOptionsStack.addArrangedSubview(portRow)
-        portRow.widthAnchor.constraint(equalTo: seedboxOptionsStack.widthAnchor).isActive = true
+        credentialsRow.addArrangedSubview(usernameRow)
+        credentialsRow.addArrangedSubview(passwordRow)
+        seedboxOptionsStack.addArrangedSubview(credentialsRow)
+        credentialsRow.widthAnchor.constraint(equalTo: seedboxOptionsStack.widthAnchor).isActive = true
 
         let remotePathRow = makeFieldRow(label: "Remote Folder", field: seedboxRemotePathField)
         seedboxOptionsStack.addArrangedSubview(remotePathRow)
         remotePathRow.widthAnchor.constraint(equalTo: seedboxOptionsStack.widthAnchor).isActive = true
 
-        let mountPathRow = makeFieldRow(label: "Mount Folder", field: seedboxMountPathField)
+        let browseButton = NSButton(title: "Browse", target: self, action: #selector(browseSeedboxMountPath))
+        let mountPathRow = makeFieldRow(label: "Mount Folder", field: seedboxMountPathField, trailingButton: browseButton)
         seedboxOptionsStack.addArrangedSubview(mountPathRow)
         mountPathRow.widthAnchor.constraint(equalTo: seedboxOptionsStack.widthAnchor).isActive = true
-
-        let browseButton = NSButton(title: "Browse", target: self, action: #selector(browseSeedboxMountPath))
-        seedboxOptionsStack.addArrangedSubview(browseButton)
 
         seedboxReadOnlyCheckbox.state = .on
         seedboxReadOnlyCheckbox.target = self
@@ -309,6 +314,9 @@ final class SettingsWindowController: NSWindowController, NSWindowDelegate {
     }
 
     private func loadSavedSettings() {
+        isLoadingSavedSettings = true
+        defer { isLoadingSavedSettings = false }
+
         do {
             if let credentials = try B2CredentialStore.load() {
                 keyIdField.stringValue = credentials.applicationKeyId
@@ -390,6 +398,33 @@ final class SettingsWindowController: NSWindowController, NSWindowDelegate {
         return row
     }
 
+    private func makeFieldRow(label: String, field: NSControl, trailingButton: NSButton) -> NSView {
+        let row = NSStackView()
+        row.orientation = .vertical
+        row.spacing = 3
+        row.alignment = .leading
+
+        let labelView = NSTextField(labelWithString: label)
+        let controlsRow = NSStackView()
+        controlsRow.orientation = .horizontal
+        controlsRow.spacing = 8
+        controlsRow.alignment = .centerY
+
+        field.heightAnchor.constraint(equalToConstant: 24).isActive = true
+        field.setContentHuggingPriority(.defaultLow, for: .horizontal)
+        field.setContentCompressionResistancePriority(.defaultLow, for: .horizontal)
+        trailingButton.setContentHuggingPriority(.required, for: .horizontal)
+        trailingButton.setContentCompressionResistancePriority(.required, for: .horizontal)
+
+        controlsRow.addArrangedSubview(field)
+        controlsRow.addArrangedSubview(trailingButton)
+
+        row.addArrangedSubview(labelView)
+        row.addArrangedSubview(controlsRow)
+        controlsRow.widthAnchor.constraint(equalTo: row.widthAnchor).isActive = true
+        return row
+    }
+
     private func selectedProvider() -> CloudProvider {
         switch providerPopup.indexOfSelectedItem {
         case 1:
@@ -443,10 +478,6 @@ final class SettingsWindowController: NSWindowController, NSWindowDelegate {
         refreshSeedboxConnectionUi()
     }
 
-    @objc private func showMacFuseHelp() {
-        onMacFuseHelpRequested?()
-    }
-
     @objc private func addBucketButtonClicked() {
         addBucketRow()
         saveVisibleSettings()
@@ -480,7 +511,9 @@ final class SettingsWindowController: NSWindowController, NSWindowDelegate {
             self?.saveVisibleSettings()
         }
         bucketStack.addArrangedSubview(row)
-        growWindowForBucketCount()
+        if !isLoadingSavedSettings {
+            growWindowForBucketCount()
+        }
     }
 
     private func defaultMountPath(for bucketName: String) -> String {
@@ -783,6 +816,7 @@ final class SettingsWindowController: NSWindowController, NSWindowDelegate {
 
     @objc private func clearLogs() {
         RuntimeLog.clear()
+        visibleLogLines.removeAll()
         logView.string = ""
     }
 
@@ -819,9 +853,28 @@ final class SettingsWindowController: NSWindowController, NSWindowDelegate {
     }
 
     private func appendLog(_ line: String) {
-        let current = logView.string
-        logView.string = current.isEmpty ? line : current + "\n" + line
+        visibleLogLines.append(line)
+        if visibleLogLines.count > maxVisibleLogLines {
+            visibleLogLines.removeFirst(visibleLogLines.count - maxVisibleLogLines)
+            logView.textStorage?.setAttributedString(NSAttributedString(
+                string: visibleLogLines.joined(separator: "\n"),
+                attributes: logTextAttributes()
+            ))
+        } else {
+            let prefix = logView.string.isEmpty ? "" : "\n"
+            logView.textStorage?.append(NSAttributedString(
+                string: prefix + line,
+                attributes: logTextAttributes()
+            ))
+        }
         logView.scrollToEndOfDocument(nil)
+    }
+
+    private func logTextAttributes() -> [NSAttributedString.Key: Any] {
+        [
+            .font: logView.font ?? NSFont.monospacedSystemFont(ofSize: 12, weight: .regular),
+            .foregroundColor: NSColor.textColor
+        ]
     }
 
     private func appendInfo(_ message: String) {

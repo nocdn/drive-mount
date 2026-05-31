@@ -63,6 +63,9 @@ enum MountError: LocalizedError {
     case duplicateMountPath(String)
     case mountPathAlreadyMounted(String)
     case invalidMountPath(String)
+    case mountProcessExited(String, Int32)
+    case mountStartupTimedOut(String)
+    case staleRcloneProcesses([pid_t])
 
     var errorDescription: String? {
         switch self {
@@ -94,6 +97,13 @@ enum MountError: LocalizedError {
             return "Mount folder '\(path)' is already mounted. Unmount it or choose another folder."
         case .invalidMountPath(let path):
             return "Mount folder '\(path)' is invalid."
+        case .mountProcessExited(let label, let code):
+            return "\(label) failed to start mounting. rclone exited with code \(code)."
+        case .mountStartupTimedOut(let label):
+            return "\(label) did not finish mounting in time. The partial mount was cleaned up."
+        case .staleRcloneProcesses(let pids):
+            let pidList = pids.map { String($0) }.joined(separator: ", ")
+            return "Stale rclone mount processes could not be stopped: \(pidList). Restart macOS or reload macFUSE before mounting again."
         }
     }
 }

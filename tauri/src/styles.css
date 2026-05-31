@@ -1,0 +1,206 @@
+.app {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  padding: 16px;
+  box-sizing: border-box;
+  height: 100vh;
+}
+
+.field-row {
+  display: flex;
+  flex-direction: column;
+  gap: 3px;
+}
+
+.panel {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+
+.hidden {
+  display: none;
+}
+
+label {
+  font-size: 13px;
+}
+
+input {
+  font-size: 13px;
+}
+
+input:focus,
+input:focus-visible {
+  outline: none;
+  box-shadow: none;
+}
+
+#provider:focus,
+#provider:focus-visible {
+  outline: none;
+  box-shadow: none;
+}
+
+.help-text {
+  margin: 0;
+  font-size: 13px;
+  font-weight: normal;
+  line-height: 1.4;
+}
+
+.stub-panel {
+  align-items: center;
+  justify-content: center;
+  min-height: 120px;
+}
+
+.stub-panel p {
+  margin: 0;
+  font-size: 0.95em;
+}
+
+.buckets-intro {
+  display: flex;
+  flex-direction: column;
+  gap: 3px;
+}
+
+.buckets-heading {
+  font-size: 13px;
+  margin-top: 4px;
+}
+
+.logs-header {
+  display: flex;
+  flex-direction: row;
+  align-items: center;
+  gap: 6px;
+  margin-top: 4px;
+}
+
+.logs-heading {
+  font-size: 13px;
+}
+
+.buckets-list {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  max-height: 140px;
+  overflow-y: auto;
+}
+
+.bucket-row {
+  display: flex;
+  flex-direction: row;
+  flex-wrap: wrap;
+  gap: 6px;
+  align-items: center;
+}
+
+.bucket-inline-group {
+  display: flex;
+  flex-direction: row;
+  align-items: center;
+  gap: 6px;
+}
+
+.bucket-mount-group {
+  flex: 1;
+  min-width: 0;
+}
+
+.bucket-row .bucket-name-input {
+  width: 96px;
+  flex: 0 0 auto;
+}
+
+.bucket-row .bucket-mount-input {
+  flex: 1;
+  min-width: 140px;
+}
+
+.bucket-row .bucket-drive-input {
+  width: 48px;
+  flex: 0 0 auto;
+}
+
+.checkbox-group {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+
+.checkbox-row {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+
+.checkbox-row input[type="checkbox"] {
+  width: 15px;
+  height: 15px;
+}
+
+button {
+  padding-block: 3.75px;
+  padding-inline: 11px;
+  font-size: 12.75px;
+}
+
+#provider {
+  padding-block: 3px;
+  font-size: 12.5px;
+}
+
+#provider option {
+  font-size: 12.5px;
+}
+
+.button-row {
+  display: flex;
+  flex-direction: row;
+  flex-wrap: wrap;
+  gap: 8px;
+}
+
+.logs {
+  flex: 1;
+  min-height: 190px;
+  max-height: 190px;
+  overflow: auto;
+  margin: 0;
+  font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+  font-size: 12px;
+  border: 1px solid #ccc;
+  padding: 6px;
+  white-space: pre-wrap;
+  word-break: break-word;
+}
+
+body {
+  margin: 0;
+  font-family: system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+  -webkit-user-select: none;
+  user-select: none;
+}
+
+#app,
+#app *:not(input):not(.logs) {
+  -webkit-user-select: none;
+  user-select: none;
+}
+
+input,
+.logs {
+  -webkit-user-select: text;
+  user-select: text;
+}
+
+#app *:not(input):not(.logs)::selection,
+#app *:not(input):not(.logs)::-moz-selection {
+  background: transparent;
+  color: inherit;
+}
