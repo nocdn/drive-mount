@@ -63,6 +63,7 @@ let mounted = false;
 let googleDriveConnected = false;
 let seedboxConfigured = false;
 let mountOperation: MountOperation = null;
+const logOperations = new Set<string>();
 const WINDOW_WIDTH = 560;
 const DEFAULT_SEEDBOX_MOUNT_PATH = "~/Drives/Seedbox";
 const MAX_RENDERED_LOG_LINES = 1000;
@@ -151,7 +152,6 @@ const seedboxHelp = document.getElementById("seedbox-help") as HTMLParagraphElem
 const btnTestSeedbox = document.getElementById("btn-test-seedbox") as HTMLButtonElement;
 const btnForgetSeedbox = document.getElementById("btn-forget-seedbox") as HTMLButtonElement;
 const btnBrowseSeedbox = document.getElementById("btn-browse-seedbox") as HTMLButtonElement;
-const seedboxTestLoader = document.getElementById("seedbox-test-loader") as HTMLSpanElement;
 const gdriveRemotePathInput = document.getElementById("gdrive-remote-path") as HTMLInputElement;
 const gdriveRootFolderIdInput = document.getElementById("gdrive-root-folder-id") as HTMLInputElement;
 const gdriveHelp = document.getElementById("gdrive-help") as HTMLParagraphElement;
@@ -172,6 +172,7 @@ const btnOpenLogs = document.getElementById("btn-open-logs") as HTMLButtonElemen
 const btnClearLogs = document.getElementById("btn-clear-logs") as HTMLButtonElement;
 const btnCopyLogs = document.getElementById("btn-copy-logs") as HTMLButtonElement;
 const btnRestart = document.getElementById("btn-restart") as HTMLButtonElement;
+const logsOperationLoader = document.getElementById("logs-operation-loader") as HTMLSpanElement;
 const logsEl = document.getElementById("logs") as HTMLPreElement;
 const mountButtonLabel = btnMount.textContent ?? "Save and Mount All";
 const unmountButtonLabel = btnUnmount.textContent ?? "Unmount All";
@@ -261,7 +262,17 @@ function waitForUiFeedback() {
 
 function setMountOperation(operation: MountOperation) {
   mountOperation = operation;
+  setLogOperation("mount", operation !== null);
   updateMountButtons();
+}
+
+function setLogOperation(name: string, active: boolean) {
+  if (active) {
+    logOperations.add(name);
+  } else {
+    logOperations.delete(name);
+  }
+  logsOperationLoader.classList.toggle("hidden", logOperations.size === 0);
 }
 
 function updateMountButtons() {
@@ -323,7 +334,6 @@ function readSeedboxSettings(): SeedboxSettings {
 
 function refreshSeedboxConnectionUi() {
   btnForgetSeedbox.classList.toggle("hidden", !seedboxConfigured);
-  seedboxTestLoader.classList.add("hidden");
   seedboxHelp.textContent = seedboxConfigured
     ? "Seedbox FTPS is configured. Use Save and Mount All to mount it."
     : "Use your Ultra.cc FTP/SFTP connection details. Host is usually your server name, port is 21, and Remote Folder is usually downloads.";
@@ -395,6 +405,7 @@ function createBucketRow(bucket: BucketMount = { bucketName: "", mountPath: "", 
       }
 
       browseBtn.disabled = true;
+      setLogOperation("bucket-browse", true);
       try {
         const selected = await invoke<string | null>("browse_folder");
         if (selected && pathInput) {
@@ -407,6 +418,7 @@ function createBucketRow(bucket: BucketMount = { bucketName: "", mountPath: "", 
           timestamp: new Date().toLocaleTimeString(),
         });
       } finally {
+        setLogOperation("bucket-browse", false);
         browseBtn.disabled = false;
       }
     });
@@ -666,6 +678,7 @@ btnConnectGdrive.addEventListener("click", async () => {
   btnConnectGdrive.disabled = true;
   btnTestGdrive.disabled = true;
   btnConnectGdrive.textContent = googleDriveConnected ? "Disconnecting..." : "Connecting...";
+  setLogOperation("gdrive-connect", true);
 
   try {
     await invoke("save_settings_cmd", { settings });
@@ -703,6 +716,7 @@ btnConnectGdrive.addEventListener("click", async () => {
       timestamp: new Date().toLocaleTimeString(),
     });
   } finally {
+    setLogOperation("gdrive-connect", false);
     refreshGoogleDriveConnectionUi();
     btnConnectGdrive.disabled = false;
     btnTestGdrive.disabled = false;
@@ -757,7 +771,7 @@ btnTestSeedbox.addEventListener("click", async () => {
   const settings = collectSettings();
   btnTestSeedbox.disabled = true;
   btnForgetSeedbox.disabled = true;
-  seedboxTestLoader.classList.remove("hidden");
+  setLogOperation("seedbox-test", true);
 
   try {
     await invoke("save_settings_cmd", { settings });
@@ -781,7 +795,7 @@ btnTestSeedbox.addEventListener("click", async () => {
       timestamp: new Date().toLocaleTimeString(),
     });
   } finally {
-    seedboxTestLoader.classList.add("hidden");
+    setLogOperation("seedbox-test", false);
     btnTestSeedbox.disabled = false;
     btnForgetSeedbox.disabled = false;
     refreshSeedboxConnectionUi();
@@ -796,6 +810,7 @@ btnForgetSeedbox.addEventListener("click", async () => {
   const settings = collectSettings();
   btnForgetSeedbox.disabled = true;
   btnTestSeedbox.disabled = true;
+  setLogOperation("seedbox-forget", true);
 
   try {
     await invoke("save_settings_cmd", { settings });
@@ -814,6 +829,7 @@ btnForgetSeedbox.addEventListener("click", async () => {
       timestamp: new Date().toLocaleTimeString(),
     });
   } finally {
+    setLogOperation("seedbox-forget", false);
     refreshSeedboxConnectionUi();
     btnForgetSeedbox.disabled = false;
     btnTestSeedbox.disabled = false;
@@ -826,6 +842,7 @@ btnBrowseSeedbox.addEventListener("click", async () => {
   }
 
   btnBrowseSeedbox.disabled = true;
+  setLogOperation("seedbox-browse", true);
   try {
     const selected = await invoke<string | null>("browse_folder");
     if (selected) {
@@ -839,6 +856,7 @@ btnBrowseSeedbox.addEventListener("click", async () => {
       timestamp: new Date().toLocaleTimeString(),
     });
   } finally {
+    setLogOperation("seedbox-browse", false);
     btnBrowseSeedbox.disabled = false;
   }
 });
