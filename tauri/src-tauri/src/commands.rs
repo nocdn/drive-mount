@@ -26,6 +26,16 @@ pub struct AppState {
     pub logger: Arc<Mutex<LogEmitter>>,
 }
 
+async fn run_blocking<F, T>(f: F) -> Result<T, String>
+where
+    F: FnOnce() -> Result<T, String> + Send + 'static,
+    T: Send + 'static,
+{
+    tauri::async_runtime::spawn_blocking(f)
+        .await
+        .map_err(|e| e.to_string())?
+}
+
 #[tauri::command]
 pub fn get_platform() -> String {
     platform_name().to_string()
@@ -69,28 +79,35 @@ pub fn save_b2_credentials_cmd(credentials: B2Credentials) -> Result<(), String>
 }
 
 #[tauri::command]
-pub fn mount_all(
+pub async fn mount_all(
     app: AppHandle,
     state: State<'_, AppState>,
     request: MountRequest,
 ) -> Result<(), String> {
-    if !request.application_key_id.trim().is_empty() || !request.application_key.trim().is_empty() {
-        save_b2_credentials(&B2Credentials {
-            application_key_id: request.application_key_id.clone(),
-            application_key: request.application_key.clone(),
-        })?;
-    }
+    let rclone = state.rclone.clone();
 
-    let settings = AppSettings {
-        buckets: request.buckets.clone(),
-        google_drive: request.google_drive.clone(),
-        seedbox: request.seedbox.clone(),
-        selected_provider: request.selected_provider,
-        ..load_settings()
-    };
-    save_settings(&settings)?;
+    run_blocking(move || {
+        if !request.application_key_id.trim().is_empty()
+            || !request.application_key.trim().is_empty()
+        {
+            save_b2_credentials(&B2Credentials {
+                application_key_id: request.application_key_id.clone(),
+                application_key: request.application_key.clone(),
+            })?;
+        }
 
-    state.rclone.mount_all(&app, &request)
+        let settings = AppSettings {
+            buckets: request.buckets.clone(),
+            google_drive: request.google_drive.clone(),
+            seedbox: request.seedbox.clone(),
+            selected_provider: request.selected_provider,
+            ..load_settings()
+        };
+        save_settings(&settings)?;
+
+        rclone.mount_all(&app, &request)
+    })
+    .await
 }
 
 #[tauri::command]
@@ -99,36 +116,51 @@ pub fn is_google_drive_configured_cmd(state: State<'_, AppState>) -> Result<bool
 }
 
 #[tauri::command]
-pub fn configure_google_drive_cmd(
+pub async fn configure_google_drive_cmd(
     app: AppHandle,
     state: State<'_, AppState>,
     google_drive: GoogleDriveSettings,
 ) -> Result<(), String> {
-    let settings = AppSettings {
-        google_drive: google_drive.clone(),
-        ..load_settings()
-    };
-    save_settings(&settings)?;
+    let rclone = state.rclone.clone();
 
-    state.rclone.configure_google_drive(&app, &google_drive)
+    run_blocking(move || {
+        let settings = AppSettings {
+            google_drive: google_drive.clone(),
+            ..load_settings()
+        };
+        save_settings(&settings)?;
+
+        rclone.configure_google_drive(&app, &google_drive)
+    })
+    .await
 }
 
 #[tauri::command]
-pub fn disconnect_google_drive_cmd(
+pub async fn disconnect_google_drive_cmd(
     app: AppHandle,
     state: State<'_, AppState>,
     google_drive: GoogleDriveSettings,
 ) -> Result<(), String> {
-    state.rclone.disconnect_google_drive(&app, &google_drive)
+    let rclone = state.rclone.clone();
+
+    run_blocking(move || {
+        rclone.disconnect_google_drive(&app, &google_drive)
+    })
+    .await
 }
 
 #[tauri::command]
-pub fn test_google_drive_connection_cmd(
+pub async fn test_google_drive_connection_cmd(
     app: AppHandle,
     state: State<'_, AppState>,
     google_drive: GoogleDriveSettings,
 ) -> Result<(), String> {
-    state.rclone.test_google_drive_connection(&app, &google_drive)
+    let rclone = state.rclone.clone();
+
+    run_blocking(move || {
+        rclone.test_google_drive_connection(&app, &google_drive)
+    })
+    .await
 }
 
 #[tauri::command]
@@ -137,45 +169,58 @@ pub fn is_seedbox_configured_cmd(state: State<'_, AppState>) -> Result<bool, Str
 }
 
 #[tauri::command]
-pub fn test_seedbox_connection_cmd(
+pub async fn test_seedbox_connection_cmd(
     app: AppHandle,
     state: State<'_, AppState>,
     seedbox: SeedboxSettings,
     password: String,
 ) -> Result<(), String> {
-    let settings = AppSettings {
-        seedbox: seedbox.clone(),
-        ..load_settings()
-    };
-    save_settings(&settings)?;
+    let rclone = state.rclone.clone();
 
-    let resolved_password = if password.trim().is_empty() {
-        load_seedbox_password()?.unwrap_or_default()
-    } else {
-        password.trim().to_string()
-    };
+    run_blocking(move || {
+        let settings = AppSettings {
+            seedbox: seedbox.clone(),
+            ..load_settings()
+        };
+        save_settings(&settings)?;
 
-    state
-        .rclone
-        .test_seedbox_connection(&app, &seedbox, &resolved_password)?;
+        let resolved_password = if password.trim().is_empty() {
+            load_seedbox_password()?.unwrap_or_default()
+        } else {
+            password.trim().to_string()
+        };
 
-    save_seedbox_password(&resolved_password)
+        rclone.test_seedbox_connection(&app, &seedbox, &resolved_password)?;
+
+        save_seedbox_password(&resolved_password)
+    })
+    .await
 }
 
 #[tauri::command]
-pub fn forget_seedbox_cmd(
+pub async fn forget_seedbox_cmd(
     app: AppHandle,
     state: State<'_, AppState>,
     seedbox: SeedboxSettings,
 ) -> Result<(), String> {
-    state.rclone.disconnect_seedbox(&app, &seedbox)?;
-    delete_seedbox_password()
+    let rclone = state.rclone.clone();
+
+    run_blocking(move || {
+        rclone.disconnect_seedbox(&app, &seedbox)?;
+        delete_seedbox_password()
+    })
+    .await
 }
 
 #[tauri::command]
-pub fn unmount_all(app: AppHandle, state: State<'_, AppState>) -> Result<(), String> {
-    state.rclone.unmount_all(&app);
-    Ok(())
+pub async fn unmount_all(app: AppHandle, state: State<'_, AppState>) -> Result<(), String> {
+    let rclone = state.rclone.clone();
+
+    run_blocking(move || {
+        rclone.unmount_all(&app);
+        Ok(())
+    })
+    .await
 }
 
 #[tauri::command]
@@ -210,12 +255,16 @@ pub fn clear_logs(state: State<'_, AppState>) -> Result<(), String> {
 pub async fn browse_folder(app: AppHandle) -> Result<Option<String>, String> {
     #[cfg(target_os = "macos")]
     {
-        let path = app
+        let (tx, rx) = tokio::sync::oneshot::channel();
+        app
             .dialog()
             .file()
             .set_title("Choose mount folder")
-            .blocking_pick_folder();
-        Ok(path.map(|p| p.to_string()))
+            .pick_folder(move |path| {
+                let _ = tx.send(path.map(|p| p.to_string()));
+            });
+        rx.await
+            .map_err(|_| "Folder picker closed unexpectedly.".to_string())
     }
     #[cfg(not(target_os = "macos"))]
     {
@@ -225,15 +274,20 @@ pub async fn browse_folder(app: AppHandle) -> Result<Option<String>, String> {
 }
 
 #[tauri::command]
-pub fn restart_app(app: AppHandle, state: State<'_, AppState>) -> Result<(), String> {
-    state.rclone.unmount_all(&app);
+pub async fn restart_app(app: AppHandle, state: State<'_, AppState>) -> Result<(), String> {
+    let rclone = state.rclone.clone();
 
-    let exe = std::env::current_exe().map_err(|e| e.to_string())?;
-    let mut cmd = Command::new(exe);
-    cmd.arg("--show-settings");
-    cmd.spawn().map_err(|e| e.to_string())?;
-    app.exit(0);
-    Ok(())
+    run_blocking(move || {
+        rclone.unmount_all(&app);
+
+        let exe = std::env::current_exe().map_err(|e| e.to_string())?;
+        let mut cmd = Command::new(exe);
+        cmd.arg("--show-settings");
+        cmd.spawn().map_err(|e| e.to_string())?;
+        app.exit(0);
+        Ok(())
+    })
+    .await
 }
 
 pub fn attempt_auto_mount(app: &AppHandle, state: &AppState) {

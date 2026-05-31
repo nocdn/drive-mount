@@ -5,6 +5,7 @@ import { getCurrentWebviewWindow } from "@tauri-apps/api/webviewWindow";
 import { isEnabled, enable, disable } from "@tauri-apps/plugin-autostart";
 
 type CloudProvider = "B2" | "GoogleDrive" | "Seedbox";
+type MountOperation = "mounting" | "unmounting" | "restarting" | null;
 
 interface BucketMount {
   bucketName: string;
@@ -61,8 +62,13 @@ let platform = "macos";
 let mounted = false;
 let googleDriveConnected = false;
 let seedboxConfigured = false;
+let mountOperation: MountOperation = null;
 const WINDOW_WIDTH = 560;
 const DEFAULT_SEEDBOX_MOUNT_PATH = "~/Drives/Seedbox";
+const MAX_RENDERED_LOG_LINES = 1000;
+const pendingLogLines: string[] = [];
+const renderedLogNodes: Text[] = [];
+let logFlushScheduled = false;
 
 function measureRequiredInnerHeight(appEl: HTMLElement): number {
   const lastChild = appEl.lastElementChild;
@@ -167,6 +173,9 @@ const btnClearLogs = document.getElementById("btn-clear-logs") as HTMLButtonElem
 const btnCopyLogs = document.getElementById("btn-copy-logs") as HTMLButtonElement;
 const btnRestart = document.getElementById("btn-restart") as HTMLButtonElement;
 const logsEl = document.getElementById("logs") as HTMLPreElement;
+const mountButtonLabel = btnMount.textContent ?? "Save and Mount All";
+const unmountButtonLabel = btnUnmount.textContent ?? "Unmount All";
+const restartButtonLabel = btnRestart.textContent ?? "Restart";
 
 function isSelectableTarget(target: EventTarget | null): boolean {
   if (!(target instanceof Node)) {
@@ -201,12 +210,73 @@ function preventUiTextSelection() {
 
 preventUiTextSelection();
 
+function flushPendingLogLines() {
+  logFlushScheduled = false;
+  if (pendingLogLines.length === 0) {
+    return;
+  }
+
+  const shouldStickToBottom = logsEl.scrollTop + logsEl.clientHeight >= logsEl.scrollHeight - 8;
+  const lines = pendingLogLines.splice(0, pendingLogLines.length);
+  const fragment = document.createDocumentFragment();
+
+  for (const line of lines) {
+    const node = document.createTextNode(line);
+    renderedLogNodes.push(node);
+    fragment.appendChild(node);
+  }
+
+  logsEl.appendChild(fragment);
+
+  while (renderedLogNodes.length > MAX_RENDERED_LOG_LINES) {
+    renderedLogNodes.shift()?.remove();
+  }
+
+  if (shouldStickToBottom) {
+    logsEl.scrollTop = logsEl.scrollHeight;
+  }
+}
+
 function appendLog(line: LogLine) {
-  logsEl.textContent += `[${line.timestamp}] [${line.level}] ${line.message}\n`;
-  logsEl.scrollTop = logsEl.scrollHeight;
+  pendingLogLines.push(`[${line.timestamp}] [${line.level}] ${line.message}\n`);
+  if (!logFlushScheduled) {
+    logFlushScheduled = true;
+    requestAnimationFrame(flushPendingLogLines);
+  }
+}
+
+function clearRenderedLogs() {
+  pendingLogLines.length = 0;
+  renderedLogNodes.length = 0;
+  logsEl.textContent = "";
+}
+
+function waitForUiFeedback() {
+  return new Promise<void>((resolve) => {
+    requestAnimationFrame(() => {
+      requestAnimationFrame(() => resolve());
+    });
+  });
+}
+
+function setMountOperation(operation: MountOperation) {
+  mountOperation = operation;
+  updateMountButtons();
 }
 
 function updateMountButtons() {
+  btnMount.textContent = mountOperation === "mounting" ? "Mounting..." : mountButtonLabel;
+  btnUnmount.textContent =
+    mountOperation === "unmounting" || mountOperation === "restarting" ? "Unmounting..." : unmountButtonLabel;
+  btnRestart.textContent = mountOperation === "restarting" ? "Restarting..." : restartButtonLabel;
+  btnRestart.disabled = mountOperation !== null;
+
+  if (mountOperation) {
+    btnMount.disabled = true;
+    btnUnmount.disabled = true;
+    return;
+  }
+
   btnMount.disabled = mounted;
   btnUnmount.disabled = !mounted;
 }
@@ -320,9 +390,24 @@ function createBucketRow(bucket: BucketMount = { bucketName: "", mountPath: "", 
     browseBtn.type = "button";
     browseBtn.textContent = "Browse";
     browseBtn.addEventListener("click", async () => {
-      const selected = await invoke<string | null>("browse_folder");
-      if (selected && pathInput) {
-        pathInput.value = selected;
+      if (browseBtn.disabled) {
+        return;
+      }
+
+      browseBtn.disabled = true;
+      try {
+        const selected = await invoke<string | null>("browse_folder");
+        if (selected && pathInput) {
+          pathInput.value = selected;
+        }
+      } catch (err) {
+        appendLog({
+          level: "ERROR",
+          message: String(err),
+          timestamp: new Date().toLocaleTimeString(),
+        });
+      } finally {
+        browseBtn.disabled = false;
       }
     });
 
@@ -523,6 +608,13 @@ startMinimizedCheckbox.addEventListener("change", () => {
 });
 
 btnMount.addEventListener("click", async () => {
+  if (mountOperation || mounted) {
+    return;
+  }
+
+  setMountOperation("mounting");
+  await waitForUiFeedback();
+
   try {
     const settings = collectSettings();
     await invoke("save_settings_cmd", { settings });
@@ -551,27 +643,32 @@ btnMount.addEventListener("click", async () => {
       },
     });
     mounted = true;
-    updateMountButtons();
   } catch (err) {
     appendLog({
       level: "ERROR",
       message: String(err),
       timestamp: new Date().toLocaleTimeString(),
     });
+  } finally {
+    setMountOperation(null);
   }
 });
 
 btnConnectGdrive.addEventListener("click", async () => {
+  if (btnConnectGdrive.disabled) {
+    return;
+  }
+
   const settings = collectSettings();
   settings.selectedProvider = "GoogleDrive";
   providerSelect.value = "GoogleDrive";
   updateProviderPanels();
+  btnConnectGdrive.disabled = true;
+  btnTestGdrive.disabled = true;
+  btnConnectGdrive.textContent = googleDriveConnected ? "Disconnecting..." : "Connecting...";
 
   try {
     await invoke("save_settings_cmd", { settings });
-    btnConnectGdrive.disabled = true;
-    btnTestGdrive.disabled = true;
-    btnConnectGdrive.textContent = googleDriveConnected ? "Disconnecting..." : "Connecting...";
 
     if (googleDriveConnected) {
       await invoke("disconnect_google_drive_cmd", {
@@ -692,7 +789,13 @@ btnTestSeedbox.addEventListener("click", async () => {
 });
 
 btnForgetSeedbox.addEventListener("click", async () => {
+  if (btnForgetSeedbox.disabled) {
+    return;
+  }
+
   const settings = collectSettings();
+  btnForgetSeedbox.disabled = true;
+  btnTestSeedbox.disabled = true;
 
   try {
     await invoke("save_settings_cmd", { settings });
@@ -712,10 +815,17 @@ btnForgetSeedbox.addEventListener("click", async () => {
     });
   } finally {
     refreshSeedboxConnectionUi();
+    btnForgetSeedbox.disabled = false;
+    btnTestSeedbox.disabled = false;
   }
 });
 
 btnBrowseSeedbox.addEventListener("click", async () => {
+  if (btnBrowseSeedbox.disabled) {
+    return;
+  }
+
+  btnBrowseSeedbox.disabled = true;
   try {
     const selected = await invoke<string | null>("browse_folder");
     if (selected) {
@@ -728,6 +838,8 @@ btnBrowseSeedbox.addEventListener("click", async () => {
       message: String(err),
       timestamp: new Date().toLocaleTimeString(),
     });
+  } finally {
+    btnBrowseSeedbox.disabled = false;
   }
 });
 
@@ -750,16 +862,24 @@ for (const el of [
 }
 
 btnUnmount.addEventListener("click", async () => {
+  if (mountOperation || !mounted) {
+    return;
+  }
+
+  setMountOperation("unmounting");
+  await waitForUiFeedback();
+
   try {
     await invoke("unmount_all");
     mounted = false;
-    updateMountButtons();
   } catch (err) {
     appendLog({
       level: "ERROR",
       message: String(err),
       timestamp: new Date().toLocaleTimeString(),
     });
+  } finally {
+    setMountOperation(null);
   }
 });
 
@@ -774,11 +894,12 @@ btnOpenLogs.addEventListener("click", () => {
 });
 
 btnClearLogs.addEventListener("click", () => {
-  logsEl.textContent = "";
+  clearRenderedLogs();
   void invoke("clear_logs");
 });
 
 btnCopyLogs.addEventListener("click", async () => {
+  flushPendingLogLines();
   const text = logsEl.textContent ?? "";
   if (!text) {
     return;
@@ -795,6 +916,13 @@ btnCopyLogs.addEventListener("click", async () => {
 });
 
 btnRestart.addEventListener("click", async () => {
+  if (mountOperation) {
+    return;
+  }
+
+  setMountOperation("restarting");
+  await waitForUiFeedback();
+
   try {
     await savePreferences();
     await invoke("restart_app");
@@ -804,6 +932,8 @@ btnRestart.addEventListener("click", async () => {
       message: String(err),
       timestamp: new Date().toLocaleTimeString(),
     });
+  } finally {
+    setMountOperation(null);
   }
 });
 
