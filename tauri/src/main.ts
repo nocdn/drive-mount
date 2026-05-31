@@ -118,13 +118,22 @@ const btnRestart = document.getElementById("btn-restart") as HTMLButtonElement;
 const logsEl = document.getElementById("logs") as HTMLPreElement;
 
 function isSelectableTarget(target: EventTarget | null): boolean {
-  if (!(target instanceof Element)) {
+  if (!(target instanceof Node)) {
     return false;
   }
-  if (target instanceof HTMLInputElement) {
-    return true;
+
+  let el: Element | null = target instanceof Element ? target : target.parentElement;
+  while (el) {
+    if (el instanceof HTMLInputElement || el instanceof HTMLTextAreaElement) {
+      return true;
+    }
+    if (el.classList.contains("logs")) {
+      return true;
+    }
+    el = el.parentElement;
   }
-  return target.closest(".logs") !== null;
+
+  return false;
 }
 
 function preventUiTextSelection() {
@@ -133,31 +142,6 @@ function preventUiTextSelection() {
     (event) => {
       if (!isSelectableTarget(event.target)) {
         event.preventDefault();
-      }
-    },
-    true,
-  );
-
-  document.addEventListener(
-    "mousedown",
-    (event) => {
-      if (!isSelectableTarget(event.target)) {
-        window.getSelection()?.removeAllRanges();
-      }
-    },
-    true,
-  );
-
-  document.addEventListener(
-    "mouseup",
-    () => {
-      const selection = window.getSelection();
-      if (!selection || selection.isCollapsed) {
-        return;
-      }
-      const anchor = selection.anchorNode;
-      if (anchor && !isSelectableTarget(anchor instanceof Element ? anchor : anchor.parentElement)) {
-        selection.removeAllRanges();
       }
     },
     true,
