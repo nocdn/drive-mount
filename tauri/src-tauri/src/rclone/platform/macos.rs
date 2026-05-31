@@ -6,7 +6,10 @@ use std::time::{Duration, Instant};
 use crate::models::BucketMount;
 use crate::models::GoogleDriveSettings;
 use crate::models::SeedboxSettings;
-use crate::paths::{default_bucket_mount_path, default_google_drive_mount_path, default_seedbox_mount_path, expand_path};
+use crate::paths::{
+    default_bucket_mount_path, default_google_drive_mount_path, default_seedbox_mount_path,
+    expand_path,
+};
 
 pub fn is_fuse_installed() -> bool {
     let paths = [
@@ -160,7 +163,9 @@ fn is_mount_point(path: &str) -> bool {
         Err(_) => return false,
     };
 
-    let parent = Path::new(path).parent().map(|p| p.to_string_lossy().into_owned());
+    let parent = Path::new(path)
+        .parent()
+        .map(|p| p.to_string_lossy().into_owned());
     let Some(parent) = parent else {
         return true;
     };
@@ -171,4 +176,92 @@ fn is_mount_point(path: &str) -> bool {
     };
 
     path_meta.dev() != parent_meta.dev()
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn normalize_mount_target_uses_default_bucket_path_when_blank() {
+        let bucket = BucketMount {
+            bucket_name: " photos ".to_string(),
+            mount_path: "   ".to_string(),
+            drive_letter: String::new(),
+        };
+
+        let target = normalize_mount_target(&bucket).unwrap();
+
+        assert!(target.ends_with("/Drives/photos"));
+        assert!(target.starts_with('/'));
+    }
+
+    #[test]
+    fn normalize_mount_target_expands_custom_home_path() {
+        let home = dirs::home_dir().unwrap();
+        let bucket = BucketMount {
+            bucket_name: "docs".to_string(),
+            mount_path: "~/Mounts/docs".to_string(),
+            drive_letter: String::new(),
+        };
+
+        assert_eq!(
+            normalize_mount_target(&bucket).unwrap(),
+            home.join("Mounts").join("docs").to_string_lossy()
+        );
+    }
+
+    #[test]
+    fn normalize_mount_target_rejects_blank_bucket_and_relative_path() {
+        assert_eq!(
+            normalize_mount_target(&BucketMount::default()).unwrap_err(),
+            "Bucket name is required."
+        );
+        assert_eq!(
+            normalize_mount_target(&BucketMount {
+                bucket_name: "docs".to_string(),
+                mount_path: "relative/path".to_string(),
+                drive_letter: String::new(),
+            })
+            .unwrap_err(),
+            "Mount folder 'relative/path' is invalid."
+        );
+    }
+
+    #[test]
+    fn validate_mount_target_requires_absolute_path() {
+        assert!(validate_mount_target("/Volumes/docs").is_ok());
+        assert_eq!(
+            validate_mount_target("Volumes/docs").unwrap_err(),
+            "Mount folder 'Volumes/docs' is invalid."
+        );
+    }
+
+    #[test]
+    fn google_drive_and_seedbox_targets_use_defaults_or_custom_mount_paths() {
+        assert!(google_drive_mount_target(&GoogleDriveSettings::default())
+            .ends_with("/Drives/Google Drive"));
+        assert!(seedbox_mount_target(&SeedboxSettings::default()).ends_with("/Drives/Seedbox"));
+
+        let google = GoogleDriveSettings {
+            mount_path: "~/Google".to_string(),
+            ..GoogleDriveSettings::default()
+        };
+        let seedbox = SeedboxSettings {
+            mount_path: "/Volumes/Seedbox".to_string(),
+            ..SeedboxSettings::default()
+        };
+
+        assert!(google_drive_mount_target(&google).ends_with("/Google"));
+        assert_eq!(seedbox_mount_target(&seedbox), "/Volumes/Seedbox");
+    }
+
+    #[test]
+    fn mount_readiness_false_for_missing_target() {
+        let missing = tempfile::tempdir().unwrap().path().join("missing");
+        let missing = missing.to_string_lossy().to_string();
+
+        assert!(!is_mount_ready(&missing));
+        assert!(unmount_target(&missing));
+    }
 }

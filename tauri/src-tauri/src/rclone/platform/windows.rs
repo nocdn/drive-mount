@@ -4,6 +4,7 @@ use std::time::{Duration, Instant};
 
 use crate::models::BucketMount;
 use crate::models::GoogleDriveSettings;
+use crate::models::SeedboxSettings;
 
 const RC_BASE_PORT: u16 = 5572;
 
@@ -16,8 +17,10 @@ pub fn is_fuse_installed() -> bool {
         return true;
     }
 
-    use windows::Win32::System::Registry::{RegCloseKey, RegOpenKeyExW, HKEY_LOCAL_MACHINE, KEY_READ};
     use windows::core::w;
+    use windows::Win32::System::Registry::{
+        RegCloseKey, RegOpenKeyExW, HKEY_LOCAL_MACHINE, KEY_READ,
+    };
 
     unsafe {
         for subkey in [w!(r"Software\WinFsp"), w!(r"Software\WOW6432Node\WinFsp")] {
@@ -109,7 +112,13 @@ pub fn unmount_target(target: &str) -> bool {
         .output();
 
     let _ = Command::new("rclone")
-        .args(["rc", "core/quit", "--rc-addr", &format!("127.0.0.1:{port}"), "--rc-no-auth"])
+        .args([
+            "rc",
+            "core/quit",
+            "--rc-addr",
+            &format!("127.0.0.1:{port}"),
+            "--rc-no-auth",
+        ])
         .output();
 
     let _ = rc_url;
@@ -117,14 +126,25 @@ pub fn unmount_target(target: &str) -> bool {
 }
 
 pub fn notify_mount_change(target: &str, added: bool) {
-    use windows::Win32::UI::Shell::{SHChangeNotify, SHCNE_DRIVEADD, SHCNE_DRIVEREMOVE, SHCNF_FLUSH, SHCNF_PATHW};
+    use windows::Win32::UI::Shell::{
+        SHChangeNotify, SHCNE_DRIVEADD, SHCNE_DRIVEREMOVE, SHCNF_FLUSH, SHCNF_PATHW,
+    };
 
     let letter = target.chars().next().unwrap_or('Z').to_ascii_uppercase();
     let drive = format!("{}:\\", letter);
     let wide: Vec<u16> = drive.encode_utf16().chain(std::iter::once(0)).collect();
-    let event = if added { SHCNE_DRIVEADD } else { SHCNE_DRIVEREMOVE };
+    let event = if added {
+        SHCNE_DRIVEADD
+    } else {
+        SHCNE_DRIVEREMOVE
+    };
     unsafe {
-        SHChangeNotify(event, SHCNF_PATHW | SHCNF_FLUSH, Some(wide.as_ptr() as *const _), None);
+        SHChangeNotify(
+            event,
+            SHCNF_PATHW | SHCNF_FLUSH,
+            Some(wide.as_ptr() as *const _),
+            None,
+        );
     }
 }
 
@@ -155,8 +175,8 @@ fn normalize_drive_letter(input: &str) -> Result<String, String> {
 }
 
 fn drive_exists(target: &str) -> bool {
-    use windows::Win32::Storage::FileSystem::GetVolumeInformationW;
     use windows::core::w;
+    use windows::Win32::Storage::FileSystem::GetVolumeInformationW;
 
     let letter = target.chars().next().unwrap_or('A').to_ascii_uppercase();
     let root = format!("{letter}:\\");

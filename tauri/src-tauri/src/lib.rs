@@ -6,6 +6,30 @@ mod paths;
 mod rclone;
 mod settings;
 
+#[cfg(test)]
+pub(crate) mod test_support {
+    use std::sync::{Mutex, MutexGuard, OnceLock};
+
+    static ENV_LOCK: OnceLock<Mutex<()>> = OnceLock::new();
+
+    pub(crate) fn env_lock() -> MutexGuard<'static, ()> {
+        ENV_LOCK
+            .get_or_init(|| Mutex::new(()))
+            .lock()
+            .expect("test environment lock poisoned")
+    }
+
+    pub(crate) fn set_test_dirs(app_data_dir: &std::path::Path, log_dir: &std::path::Path) {
+        std::env::set_var("CLOUD_DRIVE_MOUNT_APP_DATA_DIR", app_data_dir);
+        std::env::set_var("CLOUD_DRIVE_MOUNT_LOG_DIR", log_dir);
+    }
+
+    pub(crate) fn clear_test_dirs() {
+        std::env::remove_var("CLOUD_DRIVE_MOUNT_APP_DATA_DIR");
+        std::env::remove_var("CLOUD_DRIVE_MOUNT_LOG_DIR");
+    }
+}
+
 use std::sync::{Arc, Mutex};
 
 use tauri::{
@@ -36,8 +60,8 @@ pub fn run() {
         logger: logger.clone(),
     };
 
-    let show_on_launch = std::env::args().any(|a| a == "--show-settings")
-        || !load_settings().start_minimized;
+    let show_on_launch =
+        std::env::args().any(|a| a == "--show-settings") || !load_settings().start_minimized;
 
     tauri::Builder::default()
         .manage(state)
@@ -60,8 +84,7 @@ pub fn run() {
             #[cfg(target_os = "macos")]
             app.set_activation_policy(tauri::ActivationPolicy::Accessory);
 
-            let settings_item =
-                MenuItem::with_id(app, "settings", "Settings", true, None::<&str>)?;
+            let settings_item = MenuItem::with_id(app, "settings", "Settings", true, None::<&str>)?;
             let quit_item = MenuItem::with_id(app, "quit", "Quit", true, None::<&str>)?;
             let menu = Menu::with_items(app, &[&settings_item, &quit_item])?;
 
@@ -138,17 +161,15 @@ pub fn run() {
         ])
         .build(tauri::generate_context!())
         .expect("error while running tauri application")
-        .run(move |app, event| {
-            match event {
-                RunEvent::Ready if show_on_launch => {
-                    show_settings_window(app);
-                }
-                RunEvent::ExitRequested { .. } => {
-                    if let Some(state) = app.try_state::<AppState>() {
-                        state.rclone.unmount_all(app);
-                    }
-                }
-                _ => {}
+        .run(move |app, event| match event {
+            RunEvent::Ready if show_on_launch => {
+                show_settings_window(app);
             }
+            RunEvent::ExitRequested { .. } => {
+                if let Some(state) = app.try_state::<AppState>() {
+                    state.rclone.unmount_all(app);
+                }
+            }
+            _ => {}
         });
 }

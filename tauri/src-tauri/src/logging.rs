@@ -108,12 +108,108 @@ fn rotate_if_needed() -> Result<(), String> {
 pub fn redact_sensitive_line(line: &str) -> String {
     let mut result = line.to_string();
     for marker in ["key=", "pass=", "token=", "secret="] {
-        if let Some(idx) = result.to_lowercase().find(marker) {
-            let rest = &result[idx + marker.len()..];
-            if let Some(end) = rest.find([' ', '\t', '"']) {
-                result.replace_range(idx + marker.len()..idx + marker.len() + end, "***");
+        let mut search_from = 0;
+        loop {
+            let lower = result.to_lowercase();
+            let Some(relative_idx) = lower[search_from..].find(marker) else {
+                break;
+            };
+            let value_start = search_from + relative_idx + marker.len();
+            let rest = &result[value_start..];
+            let value_len = rest.find([' ', '\t', '"', '\'', '&']).unwrap_or(rest.len());
+            if value_len == 0 {
+                search_from = value_start;
+                continue;
             }
+            result.replace_range(value_start..value_start + value_len, "***");
+            search_from = value_start + 3;
         }
     }
     result
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn redact_sensitive_line_masks_common_secret_markers() {
+        assert_eq!(
+            redact_sensitive_line("account=abc key=super-secret bucket=photos"),
+            "account=abc key=*** bucket=photos"
+        );
+        assert_eq!(
+            redact_sensitive_line("pass=hunter2 token=abc123 secret=top"),
+            "pass=*** token=*** secret=***"
+        );
+        assert_eq!(
+            redact_sensitive_line("TOKEN=abc&key=def"),
+            "TOKEN=***&key=***"
+        );
+        assert_eq!(redact_sensitive_line("key=end-of-line"), "key=***");
+    }
+
+    #[test]
+    fn redact_sensitive_line_preserves_non_secret_text() {
+        assert_eq!(
+            redact_sensitive_line("notice: mounted bucket at /Volumes/photos"),
+            "notice: mounted bucket at /Volumes/photos"
+        );
+        assert_eq!(
+            redact_sensitive_line("key= pass= token="),
+            "key= pass= token="
+        );
+    }
+
+    #[test]
+    fn log_emitter_writes_info_error_and_clear_resets_files() {
+        let _guard = crate::test_support::env_lock();
+        crate::test_support::clear_test_dirs();
+
+        let temp = tempfile::tempdir().unwrap();
+        crate::test_support::set_test_dirs(&temp.path().join("app"), &temp.path().join("logs"));
+
+        let emitter = LogEmitter::new(None);
+        emitter.info("started");
+        emitter.error("failed");
+
+        let content = fs::read_to_string(log_file_path()).unwrap();
+        assert!(content.contains("[INFO] started"));
+        assert!(content.contains("[ERROR] failed"));
+
+        fs::write(old_log_file_path(), "old").unwrap();
+        emitter.clear().unwrap();
+
+        assert_eq!(fs::read_to_string(log_file_path()).unwrap(), "");
+        assert!(!old_log_file_path().exists());
+
+        crate::test_support::clear_test_dirs();
+    }
+
+    #[test]
+    fn oversized_log_rotates_before_next_write() {
+        let _guard = crate::test_support::env_lock();
+        crate::test_support::clear_test_dirs();
+
+        let temp = tempfile::tempdir().unwrap();
+        crate::test_support::set_test_dirs(&temp.path().join("app"), &temp.path().join("logs"));
+        fs::create_dir_all(log_dir()).unwrap();
+        fs::write(
+            log_file_path(),
+            vec![b'x'; (MAX_LOG_SIZE_BYTES + 1) as usize],
+        )
+        .unwrap();
+
+        LogEmitter::new(None).info("after rotation");
+
+        assert!(old_log_file_path().exists());
+        assert_eq!(
+            fs::metadata(old_log_file_path()).unwrap().len(),
+            MAX_LOG_SIZE_BYTES + 1
+        );
+        let content = fs::read_to_string(log_file_path()).unwrap();
+        assert!(content.contains("[INFO] after rotation"));
+
+        crate::test_support::clear_test_dirs();
+    }
 }

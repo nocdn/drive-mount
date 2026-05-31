@@ -25,7 +25,6 @@ const MOUNT_STARTUP_TIMEOUT_SECS: u64 = 90;
 
 struct RunningMount {
     child: Child,
-    label: String,
 }
 
 pub struct RcloneManager {
@@ -47,11 +46,9 @@ impl RcloneManager {
 
     pub fn is_mounted(&self) -> bool {
         let mut mounts = self.mounts.lock().unwrap();
-        mounts.retain(|_, m| {
-            match m.child.try_wait() {
-                Ok(Some(_)) => false,
-                _ => true,
-            }
+        mounts.retain(|_, m| match m.child.try_wait() {
+            Ok(Some(_)) => false,
+            _ => true,
         });
         !mounts.is_empty()
     }
@@ -73,7 +70,10 @@ impl RcloneManager {
             return Ok(path);
         }
 
-        Err("rclone was not found. Bundle rclone with the app or install it with Homebrew.".to_string())
+        Err(
+            "rclone was not found. Bundle rclone with the app or install it with Homebrew."
+                .to_string(),
+        )
     }
 
     pub fn mount_all(&self, app: &AppHandle, request: &MountRequest) -> Result<(), String> {
@@ -114,9 +114,7 @@ impl RcloneManager {
 
         if has_seedbox_settings(&seedbox) {
             if !is_valid_seedbox(&seedbox) {
-                return Err(
-                    "Enter Seedbox host, username, port, and mount target.".to_string(),
-                );
+                return Err("Enter Seedbox host, username, port, and mount target.".to_string());
             }
             if !is_seedbox_configured() {
                 let password = resolve_seedbox_password(&request.seedbox_password)?;
@@ -129,7 +127,10 @@ impl RcloneManager {
 
         ensure_app_data_dir()?;
 
-        if specs.iter().any(|spec| spec.remote_path.starts_with("b2remote:")) {
+        if specs
+            .iter()
+            .any(|spec| spec.remote_path.starts_with("b2remote:"))
+        {
             let key_id = request.application_key_id.trim();
             let key = request.application_key.trim();
             if key_id.is_empty() || key.is_empty() {
@@ -267,7 +268,9 @@ impl RcloneManager {
 
         let rclone_path = self.resolve_rclone_path(app)?;
         let remote_path = build_google_drive_remote_path(&google_drive);
-        self.log_info(&format!("Testing Google Drive connection using {remote_path}."));
+        self.log_info(&format!(
+            "Testing Google Drive connection using {remote_path}."
+        ));
 
         let args = vec![
             "lsd".to_string(),
@@ -342,7 +345,11 @@ impl RcloneManager {
         Ok(())
     }
 
-    pub fn disconnect_seedbox(&self, app: &AppHandle, seedbox: &SeedboxSettings) -> Result<(), String> {
+    pub fn disconnect_seedbox(
+        &self,
+        app: &AppHandle,
+        seedbox: &SeedboxSettings,
+    ) -> Result<(), String> {
         let seedbox = seedbox.normalized();
         let target = platform::seedbox_mount_target(&seedbox);
         if !target.is_empty() {
@@ -365,7 +372,9 @@ impl RcloneManager {
 
         let rclone_path = self.resolve_rclone_path(app)?;
         let remote_path = build_seedbox_remote_path(&seedbox);
-        self.log_info(&format!("Testing Seedbox FTPS connection using {remote_path}."));
+        self.log_info(&format!(
+            "Testing Seedbox FTPS connection using {remote_path}."
+        ));
 
         let args = vec![
             "lsd".to_string(),
@@ -413,7 +422,9 @@ impl RcloneManager {
                 if !line.contains("rclone") || !line.contains("mount") {
                     continue;
                 }
-                if !line.contains(&config_str) && !line.contains(rclone_path.to_string_lossy().as_ref()) {
+                if !line.contains(&config_str)
+                    && !line.contains(rclone_path.to_string_lossy().as_ref())
+                {
                     continue;
                 }
                 if let Some(pid_str) = line.split_whitespace().next() {
@@ -425,14 +436,22 @@ impl RcloneManager {
         }
     }
 
-    fn mount_remote(&self, app: &AppHandle, rclone_path: &Path, spec: &MountSpec) -> Result<(), String> {
+    fn mount_remote(
+        &self,
+        app: &AppHandle,
+        rclone_path: &Path,
+        spec: &MountSpec,
+    ) -> Result<(), String> {
         platform::prepare_mount_target(&spec.target)?;
         if platform::is_mount_ready(&spec.target) {
             platform::unmount_target(&spec.target);
             thread::sleep(Duration::from_millis(500));
         }
         if platform::is_mount_ready(&spec.target) {
-            return Err(format!("Mount target '{}' is already mounted.", spec.target));
+            return Err(format!(
+                "Mount target '{}' is already mounted.",
+                spec.target
+            ));
         }
 
         ensure_app_data_dir()?;
@@ -491,13 +510,10 @@ impl RcloneManager {
         platform::notify_mount_change(&target, true);
         self.log_info(&format!("Mount startup completed for {label}"));
 
-        self.mounts.lock().unwrap().insert(
-            target.clone(),
-            RunningMount {
-                child,
-                label: label.clone(),
-            },
-        );
+        self.mounts
+            .lock()
+            .unwrap()
+            .insert(target.clone(), RunningMount { child });
 
         let mounts = self.mounts.clone();
         let intentional = self.intentional_stops.clone();
@@ -505,27 +521,27 @@ impl RcloneManager {
         let app_handle = app.clone();
         let target_watch = target.clone();
         let label_watch = label.clone();
-        thread::spawn(move || {
-            loop {
-                thread::sleep(Duration::from_millis(500));
-                let exited = {
-                    let mut map = mounts.lock().unwrap();
-                    if let Some(running) = map.get_mut(&target_watch) {
-                        matches!(running.child.try_wait(), Ok(Some(_)))
-                    } else {
-                        return;
-                    }
-                };
-                if exited {
-                    mounts.lock().unwrap().remove(&target_watch);
-                    if !intentional.lock().unwrap().remove(&target_watch) {
-                        if let Ok(logger) = logger.lock() {
-                            logger.error(format!("Mount process exited unexpectedly for {label_watch}"));
-                        }
-                        let _ = app_handle.emit("mount-state-changed", MountState { mounted: false });
-                    }
-                    break;
+        thread::spawn(move || loop {
+            thread::sleep(Duration::from_millis(500));
+            let exited = {
+                let mut map = mounts.lock().unwrap();
+                if let Some(running) = map.get_mut(&target_watch) {
+                    matches!(running.child.try_wait(), Ok(Some(_)))
+                } else {
+                    return;
                 }
+            };
+            if exited {
+                mounts.lock().unwrap().remove(&target_watch);
+                if !intentional.lock().unwrap().remove(&target_watch) {
+                    if let Ok(logger) = logger.lock() {
+                        logger.error(format!(
+                            "Mount process exited unexpectedly for {label_watch}"
+                        ));
+                    }
+                    let _ = app_handle.emit("mount-state-changed", MountState { mounted: false });
+                }
+                break;
             }
         });
 
@@ -533,7 +549,10 @@ impl RcloneManager {
     }
 
     fn unmount_one(&self, app: &AppHandle, target: &str) {
-        self.intentional_stops.lock().unwrap().insert(target.to_string());
+        self.intentional_stops
+            .lock()
+            .unwrap()
+            .insert(target.to_string());
         self.log_info(&format!("Unmounting {target}"));
 
         if let Some(mut running) = self.mounts.lock().unwrap().remove(target) {
@@ -561,7 +580,7 @@ impl RcloneManager {
     }
 }
 
-#[derive(Clone)]
+#[derive(Clone, Debug)]
 struct MountSpec {
     label: String,
     remote_path: String,
@@ -677,7 +696,7 @@ fn is_valid_seedbox(seedbox: &SeedboxSettings) -> bool {
     if seedbox.host.is_empty() || seedbox.username.is_empty() {
         return false;
     }
-    if seedbox.port == 0 || seedbox.port > 65535 {
+    if seedbox.port == 0 {
         return false;
     }
     let target = platform::seedbox_mount_target(&seedbox);
@@ -732,7 +751,8 @@ fn build_all_mount_specs(
 
     if specs.is_empty() {
         return Err(
-            "Nothing to mount. Configure Backblaze B2, connect Google Drive, or configure Seedbox.".to_string(),
+            "Nothing to mount. Configure Backblaze B2, connect Google Drive, or configure Seedbox."
+                .to_string(),
         );
     }
 
@@ -853,7 +873,11 @@ fn find_rclone_in_path() -> Option<PathBuf> {
 
     #[cfg(target_os = "macos")]
     {
-        for candidate in ["/opt/homebrew/bin/rclone", "/usr/local/bin/rclone", "/usr/bin/rclone"] {
+        for candidate in [
+            "/opt/homebrew/bin/rclone",
+            "/usr/local/bin/rclone",
+            "/usr/bin/rclone",
+        ] {
             let path = PathBuf::from(candidate);
             if path.exists() {
                 return Some(path);
@@ -901,7 +925,7 @@ fn stream_output(
 pub fn has_complete_b2_config(creds: &Option<B2Credentials>, buckets: &[BucketMount]) -> bool {
     if creds
         .as_ref()
-        .map(|c| c.application_key_id.is_empty() || c.application_key.is_empty())
+        .map(|c| c.application_key_id.trim().is_empty() || c.application_key.trim().is_empty())
         .unwrap_or(true)
     {
         return false;
@@ -975,11 +999,421 @@ fn run_rclone_blocking(
     let label_out = label.to_string();
     thread::spawn(move || stream_output(stdout, stderr, logger_out, label_out));
 
-    let status = child.wait().map_err(|e| format!("Failed to wait for rclone: {e}"))?;
+    let status = child
+        .wait()
+        .map_err(|e| format!("Failed to wait for rclone: {e}"))?;
     if !status.success() {
         if let Ok(logger) = logger.lock() {
             logger.error(format!("{label} failed."));
         }
     }
     Ok(status.success())
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::models::AppSettings;
+
+    fn empty_request() -> MountRequest {
+        MountRequest {
+            application_key_id: String::new(),
+            application_key: String::new(),
+            buckets: Vec::new(),
+            google_drive: GoogleDriveSettings::default(),
+            seedbox: SeedboxSettings::default(),
+            seedbox_password: String::new(),
+            selected_provider: CloudProvider::BackblazeB2,
+        }
+    }
+
+    #[cfg(any(target_os = "macos", windows))]
+    fn mountable_bucket(name: &str, target: &str) -> BucketMount {
+        #[cfg(target_os = "macos")]
+        {
+            BucketMount {
+                bucket_name: name.to_string(),
+                mount_path: target.to_string(),
+                drive_letter: String::new(),
+            }
+        }
+        #[cfg(windows)]
+        {
+            BucketMount {
+                bucket_name: name.to_string(),
+                mount_path: String::new(),
+                drive_letter: target.to_string(),
+            }
+        }
+    }
+
+    #[cfg(any(target_os = "macos", windows))]
+    fn expected_target(target: &str) -> String {
+        #[cfg(target_os = "macos")]
+        {
+            target.to_string()
+        }
+        #[cfg(windows)]
+        {
+            format!("{}:", target.trim().trim_end_matches(':').to_uppercase())
+        }
+    }
+
+    #[cfg(any(target_os = "macos", windows))]
+    fn valid_google_drive_settings(target: &str) -> GoogleDriveSettings {
+        #[cfg(target_os = "macos")]
+        {
+            GoogleDriveSettings {
+                mount_path: target.to_string(),
+                ..GoogleDriveSettings::default()
+            }
+        }
+        #[cfg(windows)]
+        {
+            let _ = target;
+            GoogleDriveSettings::default()
+        }
+    }
+
+    #[cfg(any(target_os = "macos", windows))]
+    fn valid_seedbox_settings(target: &str) -> SeedboxSettings {
+        #[cfg(target_os = "macos")]
+        {
+            SeedboxSettings {
+                host: "seedbox.example.com".to_string(),
+                username: "user".to_string(),
+                mount_path: target.to_string(),
+                ..SeedboxSettings::default()
+            }
+        }
+        #[cfg(windows)]
+        {
+            let _ = target;
+            SeedboxSettings {
+                host: "seedbox.example.com".to_string(),
+                username: "user".to_string(),
+                ..SeedboxSettings::default()
+            }
+        }
+    }
+
+    #[test]
+    fn b2_bucket_presence_ignores_blank_names() {
+        assert!(!has_actionable_b2_buckets(&[]));
+        assert!(!has_actionable_b2_buckets(&[BucketMount {
+            bucket_name: "   ".to_string(),
+            mount_path: "/tmp/blank".to_string(),
+            drive_letter: "P".to_string(),
+        }]));
+        assert!(has_actionable_b2_buckets(&[BucketMount {
+            bucket_name: "photos".to_string(),
+            mount_path: String::new(),
+            drive_letter: String::new(),
+        }]));
+    }
+
+    #[test]
+    fn google_drive_remote_path_and_volume_name_follow_remote_path() {
+        let root = GoogleDriveSettings::default().normalized();
+        assert_eq!(build_google_drive_remote_path(&root), "gdrive:");
+        assert_eq!(build_google_drive_volume_name(&root), "Google Drive");
+
+        let nested = GoogleDriveSettings {
+            remote_path: "Team/Docs".to_string(),
+            ..GoogleDriveSettings::default()
+        }
+        .normalized();
+        assert_eq!(build_google_drive_remote_path(&nested), "gdrive:Team/Docs");
+        assert_eq!(build_google_drive_volume_name(&nested), "Team/Docs");
+    }
+
+    #[test]
+    fn seedbox_remote_path_uses_remote_root_or_nested_path() {
+        assert_eq!(
+            build_seedbox_remote_path(&SeedboxSettings {
+                remote_path: String::new(),
+                ..SeedboxSettings::default()
+            }),
+            "seedbox:"
+        );
+        assert_eq!(
+            build_seedbox_remote_path(&SeedboxSettings {
+                remote_path: "downloads/movies".to_string(),
+                ..SeedboxSettings::default()
+            }),
+            "seedbox:downloads/movies"
+        );
+    }
+
+    #[test]
+    fn resolve_seedbox_password_prefers_trimmed_request_password() {
+        assert_eq!(
+            resolve_seedbox_password("  super-secret  ").unwrap(),
+            "super-secret"
+        );
+    }
+
+    #[test]
+    fn complete_b2_config_requires_real_credentials_and_mount_target() {
+        let bucket_with_mount = BucketMount {
+            bucket_name: "photos".to_string(),
+            mount_path: "/Volumes/photos".to_string(),
+            drive_letter: String::new(),
+        };
+        let bucket_with_drive = BucketMount {
+            bucket_name: "docs".to_string(),
+            mount_path: String::new(),
+            drive_letter: "P".to_string(),
+        };
+        let creds = Some(B2Credentials {
+            application_key_id: "id".to_string(),
+            application_key: "key".to_string(),
+        });
+
+        assert!(!has_complete_b2_config(&None, &[bucket_with_mount.clone()]));
+        assert!(!has_complete_b2_config(
+            &Some(B2Credentials {
+                application_key_id: "   ".to_string(),
+                application_key: "key".to_string(),
+            }),
+            &[bucket_with_mount.clone()]
+        ));
+        assert!(!has_complete_b2_config(
+            &creds,
+            &[BucketMount {
+                bucket_name: "photos".to_string(),
+                mount_path: "  ".to_string(),
+                drive_letter: "  ".to_string(),
+            }]
+        ));
+        assert!(has_complete_b2_config(&creds, &[bucket_with_mount]));
+        assert!(has_complete_b2_config(&creds, &[bucket_with_drive]));
+    }
+
+    #[cfg(any(target_os = "macos", windows))]
+    #[test]
+    fn build_mount_specs_builds_b2_specs_and_ignores_whitespace() {
+        #[cfg(target_os = "macos")]
+        let target = "/tmp/photos";
+        #[cfg(windows)]
+        let target = "P";
+        let bucket = mountable_bucket(" photos ", target);
+
+        let specs = build_mount_specs(&[bucket]).unwrap();
+
+        assert_eq!(specs.len(), 1);
+        assert_eq!(specs[0].label, "B2 photos");
+        assert_eq!(specs[0].remote_path, "b2remote:photos");
+        assert_eq!(specs[0].target, expected_target(target));
+        assert_eq!(specs[0].volume_name, "photos");
+        assert_eq!(specs[0].vfs_cache_mode, "writes");
+        assert!(!specs[0].read_only);
+        assert!(specs[0].extra_args.is_empty());
+    }
+
+    #[cfg(any(target_os = "macos", windows))]
+    #[test]
+    fn build_mount_specs_rejects_duplicate_buckets_case_insensitively() {
+        #[cfg(target_os = "macos")]
+        let targets = ("/tmp/photos-a", "/tmp/photos-b");
+        #[cfg(windows)]
+        let targets = ("P", "Q");
+
+        let err = build_mount_specs(&[
+            mountable_bucket("Photos", targets.0),
+            mountable_bucket("photos", targets.1),
+        ])
+        .unwrap_err();
+
+        assert_eq!(err, "Bucket 'photos' is listed more than once.");
+    }
+
+    #[cfg(any(target_os = "macos", windows))]
+    #[test]
+    fn build_mount_specs_rejects_duplicate_targets_case_insensitively() {
+        #[cfg(target_os = "macos")]
+        let targets = ("/tmp/photos", "/TMP/PHOTOS");
+        #[cfg(windows)]
+        let targets = ("P", "p");
+
+        let err = build_mount_specs(&[
+            mountable_bucket("photos", targets.0),
+            mountable_bucket("docs", targets.1),
+        ])
+        .unwrap_err();
+
+        assert!(err.contains("is used more than once"));
+    }
+
+    #[cfg(target_os = "macos")]
+    #[test]
+    fn build_mount_specs_rejects_relative_macos_targets() {
+        let err = build_mount_specs(&[mountable_bucket("photos", "relative/path")]).unwrap_err();
+
+        assert_eq!(err, "Mount folder 'relative/path' is invalid.");
+    }
+
+    #[cfg(any(target_os = "macos", windows))]
+    #[test]
+    fn build_all_mount_specs_returns_error_when_nothing_is_configured() {
+        let _guard = crate::test_support::env_lock();
+        crate::test_support::clear_test_dirs();
+        let temp = tempfile::tempdir().unwrap();
+        crate::test_support::set_test_dirs(&temp.path().join("app"), &temp.path().join("logs"));
+
+        let err = build_all_mount_specs(
+            &empty_request(),
+            &GoogleDriveSettings::default(),
+            &SeedboxSettings::default(),
+        )
+        .unwrap_err();
+
+        assert_eq!(
+            err,
+            "Nothing to mount. Configure Backblaze B2, connect Google Drive, or configure Seedbox."
+        );
+
+        crate::test_support::clear_test_dirs();
+    }
+
+    #[cfg(any(target_os = "macos", windows))]
+    #[test]
+    fn build_all_mount_specs_combines_b2_google_drive_and_seedbox() {
+        let _guard = crate::test_support::env_lock();
+        crate::test_support::clear_test_dirs();
+        let temp = tempfile::tempdir().unwrap();
+        let app_data = temp.path().join("app");
+        crate::test_support::set_test_dirs(&app_data, &temp.path().join("logs"));
+
+        config::upsert_config_section(
+            &rclone_config_path(),
+            GDRIVE_REMOTE,
+            &["type = drive".to_string()],
+        )
+        .unwrap();
+        config::upsert_config_section(
+            &rclone_config_path(),
+            SEEDBOX_REMOTE,
+            &["type = ftp".to_string()],
+        )
+        .unwrap();
+
+        let google_target = temp.path().join("google").to_string_lossy().into_owned();
+        let seedbox_target = temp.path().join("seedbox").to_string_lossy().into_owned();
+        let google = GoogleDriveSettings {
+            remote_path: "Team Docs".to_string(),
+            ..valid_google_drive_settings(&google_target)
+        }
+        .normalized();
+        let seedbox = SeedboxSettings {
+            remote_path: "downloads/movies".to_string(),
+            read_only: true,
+            ..valid_seedbox_settings(&seedbox_target)
+        }
+        .normalized();
+        #[cfg(target_os = "macos")]
+        let b2_target = "/tmp/photos";
+        #[cfg(windows)]
+        let b2_target = "P";
+        let request = MountRequest {
+            buckets: vec![mountable_bucket("photos", b2_target)],
+            google_drive: google.clone(),
+            seedbox: seedbox.clone(),
+            ..empty_request()
+        };
+
+        let specs = build_all_mount_specs(&request, &google, &seedbox).unwrap();
+
+        assert_eq!(specs.len(), 3);
+        assert_eq!(specs[0].label, "B2 photos");
+        assert_eq!(specs[0].remote_path, "b2remote:photos");
+        assert_eq!(specs[1].label, "Google Drive");
+        assert_eq!(specs[1].remote_path, "gdrive:Team Docs");
+        assert_eq!(specs[1].vfs_cache_mode, "full");
+        assert!(!specs[1].read_only);
+        assert_eq!(specs[2].label, "Seedbox");
+        assert_eq!(specs[2].remote_path, "seedbox:downloads/movies");
+        assert!(specs[2].read_only);
+
+        crate::test_support::clear_test_dirs();
+    }
+
+    #[cfg(any(target_os = "macos", windows))]
+    #[test]
+    fn build_all_mount_specs_rejects_seedbox_settings_without_config() {
+        let _guard = crate::test_support::env_lock();
+        crate::test_support::clear_test_dirs();
+        let temp = tempfile::tempdir().unwrap();
+        crate::test_support::set_test_dirs(&temp.path().join("app"), &temp.path().join("logs"));
+
+        let seedbox_target = temp.path().join("seedbox").to_string_lossy().into_owned();
+        let seedbox = valid_seedbox_settings(&seedbox_target).normalized();
+        let request = MountRequest {
+            seedbox: seedbox.clone(),
+            selected_provider: CloudProvider::Seedbox,
+            ..empty_request()
+        };
+
+        let err =
+            build_all_mount_specs(&request, &GoogleDriveSettings::default(), &seedbox).unwrap_err();
+
+        assert_eq!(
+            err,
+            "Seedbox is not configured. Enter your FTPS password and click Test Connection first."
+        );
+
+        crate::test_support::clear_test_dirs();
+    }
+
+    #[cfg(any(target_os = "macos", windows))]
+    #[test]
+    fn complete_seedbox_config_requires_saved_settings_and_rclone_section() {
+        let _guard = crate::test_support::env_lock();
+        crate::test_support::clear_test_dirs();
+        let temp = tempfile::tempdir().unwrap();
+        crate::test_support::set_test_dirs(&temp.path().join("app"), &temp.path().join("logs"));
+
+        assert!(!has_complete_seedbox_config());
+
+        config::upsert_config_section(
+            &rclone_config_path(),
+            SEEDBOX_REMOTE,
+            &["type = ftp".to_string()],
+        )
+        .unwrap();
+        assert!(!has_complete_seedbox_config());
+
+        let seedbox_target = temp.path().join("seedbox").to_string_lossy().into_owned();
+        crate::settings::save_settings(&AppSettings {
+            seedbox: valid_seedbox_settings(&seedbox_target),
+            ..AppSettings::default()
+        })
+        .unwrap();
+
+        assert!(has_complete_seedbox_config());
+
+        crate::test_support::clear_test_dirs();
+    }
+
+    #[test]
+    fn ensure_b2_config_upserts_expected_remote() {
+        let _guard = crate::test_support::env_lock();
+        crate::test_support::clear_test_dirs();
+        let temp = tempfile::tempdir().unwrap();
+        crate::test_support::set_test_dirs(&temp.path().join("app"), &temp.path().join("logs"));
+
+        ensure_b2_config(&B2Credentials {
+            application_key_id: "account-id".to_string(),
+            application_key: "application-key".to_string(),
+        })
+        .unwrap();
+
+        let config = std::fs::read_to_string(rclone_config_path()).unwrap();
+        assert!(config.contains("[b2remote]"));
+        assert!(config.contains("type = b2"));
+        assert!(config.contains("account = account-id"));
+        assert!(config.contains("key = application-key"));
+
+        crate::test_support::clear_test_dirs();
+    }
 }

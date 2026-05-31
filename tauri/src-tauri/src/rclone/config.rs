@@ -1,7 +1,11 @@
 use std::fs;
 use std::path::Path;
 
-pub fn upsert_config_section(config_path: &Path, section: &str, lines: &[String]) -> Result<(), String> {
+pub fn upsert_config_section(
+    config_path: &Path,
+    section: &str,
+    lines: &[String],
+) -> Result<(), String> {
     let parent = config_path.parent().ok_or("Invalid config path")?;
     fs::create_dir_all(parent).map_err(|e| e.to_string())?;
 
@@ -95,4 +99,119 @@ pub fn remove_config_section(config_path: &Path, section: &str) -> Result<(), St
     }
 
     Ok(())
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn upsert_config_section_creates_parent_and_new_section() {
+        let temp = tempfile::tempdir().unwrap();
+        let config = temp.path().join("nested").join("rclone.conf");
+
+        upsert_config_section(
+            &config,
+            "b2remote",
+            &[
+                "type = b2".to_string(),
+                "account = account-id".to_string(),
+                "key = app-key".to_string(),
+            ],
+        )
+        .unwrap();
+
+        assert_eq!(
+            fs::read_to_string(&config).unwrap(),
+            "[b2remote]\ntype = b2\naccount = account-id\nkey = app-key\n\n"
+        );
+    }
+
+    #[test]
+    fn upsert_config_section_replaces_only_matching_section() {
+        let temp = tempfile::tempdir().unwrap();
+        let config = temp.path().join("rclone.conf");
+        fs::write(
+            &config,
+            "[before]\ntype = local\n\n[gdrive]\ntype = drive\nold = yes\n\n[gdrive-extra]\ntype = alias\n\n[after]\ntype = sftp\n",
+        )
+        .unwrap();
+
+        upsert_config_section(
+            &config,
+            "gdrive",
+            &["type = drive".to_string(), "scope = drive".to_string()],
+        )
+        .unwrap();
+
+        let content = fs::read_to_string(&config).unwrap();
+        assert!(content.contains("[before]\ntype = local\n"));
+        assert!(content.contains("[gdrive-extra]\ntype = alias\n"));
+        assert!(content.contains("[after]\ntype = sftp\n"));
+        assert!(content.ends_with("[gdrive]\ntype = drive\nscope = drive\n\n"));
+        assert!(!content.contains("old = yes"));
+    }
+
+    #[test]
+    fn has_config_section_matches_trimmed_header_only() {
+        let temp = tempfile::tempdir().unwrap();
+        let config = temp.path().join("rclone.conf");
+        fs::write(
+            &config,
+            "  [gdrive]  \n[gdrive-extra]\n[seedbox]\ntype = ftp\n",
+        )
+        .unwrap();
+
+        assert!(has_config_section(&config, "gdrive"));
+        assert!(has_config_section(&config, "seedbox"));
+        assert!(!has_config_section(&config, "drive"));
+        assert!(!has_config_section(&config, "missing"));
+    }
+
+    #[test]
+    fn remove_config_section_deletes_only_target_section() {
+        let temp = tempfile::tempdir().unwrap();
+        let config = temp.path().join("rclone.conf");
+        fs::write(
+            &config,
+            "[before]\ntype = local\n\n[gdrive]\ntype = drive\nold = yes\n\n[after]\ntype = sftp\n",
+        )
+        .unwrap();
+
+        remove_config_section(&config, "gdrive").unwrap();
+
+        let content = fs::read_to_string(&config).unwrap();
+        assert!(content.contains("[before]\ntype = local\n"));
+        assert!(content.contains("[after]\ntype = sftp\n"));
+        assert!(!content.contains("[gdrive]"));
+        assert!(!content.contains("old = yes"));
+        assert!(content.ends_with('\n'));
+    }
+
+    #[test]
+    fn remove_config_section_removes_file_when_last_section_is_deleted() {
+        let temp = tempfile::tempdir().unwrap();
+        let config = temp.path().join("rclone.conf");
+        fs::write(&config, "[seedbox]\ntype = ftp\n").unwrap();
+
+        remove_config_section(&config, "seedbox").unwrap();
+
+        assert!(!config.exists());
+    }
+
+    #[test]
+    fn remove_config_section_is_noop_for_missing_file_or_section() {
+        let temp = tempfile::tempdir().unwrap();
+        let missing = temp.path().join("missing.conf");
+        remove_config_section(&missing, "gdrive").unwrap();
+        assert!(!missing.exists());
+
+        let config = temp.path().join("rclone.conf");
+        fs::write(&config, "[seedbox]\ntype = ftp\n").unwrap();
+        remove_config_section(&config, "gdrive").unwrap();
+        assert_eq!(
+            fs::read_to_string(&config).unwrap(),
+            "[seedbox]\ntype = ftp\n"
+        );
+    }
 }

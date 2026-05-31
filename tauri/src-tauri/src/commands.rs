@@ -6,8 +6,8 @@ use tauri_plugin_dialog::DialogExt;
 use tauri_plugin_opener::OpenerExt;
 
 use crate::credentials::{
-    delete_seedbox_password, has_saved_seedbox_password, load_b2_credentials, load_seedbox_password,
-    save_b2_credentials, save_seedbox_password,
+    delete_seedbox_password, has_saved_seedbox_password, load_b2_credentials,
+    load_seedbox_password, save_b2_credentials, save_seedbox_password,
 };
 use crate::logging::LogEmitter;
 use crate::models::{
@@ -143,10 +143,7 @@ pub async fn disconnect_google_drive_cmd(
 ) -> Result<(), String> {
     let rclone = state.rclone.clone();
 
-    run_blocking(move || {
-        rclone.disconnect_google_drive(&app, &google_drive)
-    })
-    .await
+    run_blocking(move || rclone.disconnect_google_drive(&app, &google_drive)).await
 }
 
 #[tauri::command]
@@ -157,10 +154,7 @@ pub async fn test_google_drive_connection_cmd(
 ) -> Result<(), String> {
     let rclone = state.rclone.clone();
 
-    run_blocking(move || {
-        rclone.test_google_drive_connection(&app, &google_drive)
-    })
-    .await
+    run_blocking(move || rclone.test_google_drive_connection(&app, &google_drive)).await
 }
 
 #[tauri::command]
@@ -244,11 +238,7 @@ pub fn open_log_folder(app: AppHandle) -> Result<(), String> {
 
 #[tauri::command]
 pub fn clear_logs(state: State<'_, AppState>) -> Result<(), String> {
-    state
-        .logger
-        .lock()
-        .map_err(|e| e.to_string())?
-        .clear()
+    state.logger.lock().map_err(|e| e.to_string())?.clear()
 }
 
 #[tauri::command]
@@ -256,8 +246,7 @@ pub async fn browse_folder(app: AppHandle) -> Result<Option<String>, String> {
     #[cfg(target_os = "macos")]
     {
         let (tx, rx) = tokio::sync::oneshot::channel();
-        app
-            .dialog()
+        app.dialog()
             .file()
             .set_title("Choose mount folder")
             .pick_folder(move |path| {
@@ -321,11 +310,7 @@ pub fn attempt_auto_mount(app: &AppHandle, state: &AppState) {
             .as_ref()
             .map(|c| c.application_key.clone())
             .unwrap_or_default(),
-        buckets: if has_b2 {
-            settings.buckets
-        } else {
-            Vec::new()
-        },
+        buckets: if has_b2 { settings.buckets } else { Vec::new() },
         google_drive: settings.google_drive,
         seedbox: settings.seedbox,
         seedbox_password: load_seedbox_password().ok().flatten().unwrap_or_default(),
@@ -357,20 +342,18 @@ pub fn show_settings_window(app: &AppHandle) {
 pub fn setup_window_events(app: &AppHandle) {
     if let Some(window) = app.get_webview_window("main") {
         let window_clone = window.clone();
-        window.on_window_event(move |event| {
-            match event {
-                tauri::WindowEvent::CloseRequested { api, .. } => {
-                    api.prevent_close();
-                    let _ = window_clone.hide();
-                }
-                tauri::WindowEvent::Resized(_) => {
-                    if window_clone.is_minimized().unwrap_or(false) {
-                        let _ = window_clone.hide();
-                        let _ = window_clone.unminimize();
-                    }
-                }
-                _ => {}
+        window.on_window_event(move |event| match event {
+            tauri::WindowEvent::CloseRequested { api, .. } => {
+                api.prevent_close();
+                let _ = window_clone.hide();
             }
+            tauri::WindowEvent::Resized(_) => {
+                if window_clone.is_minimized().unwrap_or(false) {
+                    let _ = window_clone.hide();
+                    let _ = window_clone.unminimize();
+                }
+            }
+            _ => {}
         });
     }
 }
@@ -378,4 +361,61 @@ pub fn setup_window_events(app: &AppHandle) {
 pub fn emit_mount_state(app: &AppHandle, state: &AppState) {
     let mounted = state.rclone.is_mounted();
     let _ = app.emit("mount-state-changed", MountState { mounted });
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::models::{CloudProvider, GDRIVE_REMOTE, SEEDBOX_REMOTE};
+
+    #[test]
+    fn get_platform_delegates_to_platform_name() {
+        assert_eq!(get_platform(), crate::paths::platform_name());
+    }
+
+    #[test]
+    fn save_settings_cmd_normalizes_cloud_specific_settings_before_writing() {
+        let _guard = crate::test_support::env_lock();
+        crate::test_support::clear_test_dirs();
+
+        let temp = tempfile::tempdir().unwrap();
+        crate::test_support::set_test_dirs(&temp.path().join("app"), &temp.path().join("logs"));
+
+        save_settings_cmd(AppSettings {
+            selected_provider: CloudProvider::Seedbox,
+            google_drive: GoogleDriveSettings {
+                remote_name: "custom-drive".to_string(),
+                remote_path: " :/Team\\Docs ".to_string(),
+                root_folder_id: " root ".to_string(),
+                drive_letter: "Z".to_string(),
+                ..GoogleDriveSettings::default()
+            },
+            seedbox: SeedboxSettings {
+                remote_name: "custom-seedbox".to_string(),
+                host: "https://seedbox.example.com///".to_string(),
+                username: " user ".to_string(),
+                port: 0,
+                remote_path: " :/downloads\\movies ".to_string(),
+                drive_letter: "X".to_string(),
+                ..SeedboxSettings::default()
+            },
+            ..AppSettings::default()
+        })
+        .unwrap();
+
+        let saved = load_settings();
+        assert_eq!(saved.selected_provider, CloudProvider::Seedbox);
+        assert_eq!(saved.google_drive.remote_name, GDRIVE_REMOTE);
+        assert_eq!(saved.google_drive.remote_path, "Team/Docs");
+        assert_eq!(saved.google_drive.root_folder_id, "root");
+        assert_eq!(saved.google_drive.drive_letter, "G");
+        assert_eq!(saved.seedbox.remote_name, SEEDBOX_REMOTE);
+        assert_eq!(saved.seedbox.host, "seedbox.example.com");
+        assert_eq!(saved.seedbox.username, "user");
+        assert_eq!(saved.seedbox.port, 21);
+        assert_eq!(saved.seedbox.remote_path, "downloads/movies");
+        assert_eq!(saved.seedbox.drive_letter, "S");
+
+        crate::test_support::clear_test_dirs();
+    }
 }

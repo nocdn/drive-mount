@@ -69,8 +69,8 @@ fn load_from_keyring() -> Result<Option<B2Credentials>, String> {
     match keyring::Entry::new(B2_SERVICE, B2_ACCOUNT) {
         Ok(entry) => match entry.get_password() {
             Ok(json) => {
-                let creds: B2Credentials =
-                    serde_json::from_str(&json).map_err(|_| "Invalid saved B2 credentials".to_string())?;
+                let creds: B2Credentials = serde_json::from_str(&json)
+                    .map_err(|_| "Invalid saved B2 credentials".to_string())?;
                 Ok(Some(creds))
             }
             Err(keyring::Error::NoEntry) => Ok(None),
@@ -85,7 +85,9 @@ fn load_legacy_dpapi() -> Result<Option<B2Credentials>, String> {
     use std::fs;
     use std::path::PathBuf;
 
-    let path: PathBuf = crate::paths::app_data_dir().join("credentials").join("b2.bin");
+    let path: PathBuf = crate::paths::app_data_dir()
+        .join("credentials")
+        .join("b2.bin");
     if !path.exists() {
         return Ok(None);
     }
@@ -93,7 +95,8 @@ fn load_legacy_dpapi() -> Result<Option<B2Credentials>, String> {
     let encrypted = fs::read(&path).map_err(|e| e.to_string())?;
     let entropy = b"CloudDriveMount.WindowsSecureStore.v1";
     let decrypted = dpapi_decrypt(&encrypted, Some(entropy)).map_err(|e| e.to_string())?;
-    let json = String::from_utf8(decrypted).map_err(|_| "Invalid legacy credential file".to_string())?;
+    let json =
+        String::from_utf8(decrypted).map_err(|_| "Invalid legacy credential file".to_string())?;
     let creds: B2Credentials =
         serde_json::from_str(&json).map_err(|_| "Invalid legacy credential JSON".to_string())?;
     Ok(Some(creds))
@@ -137,9 +140,4 @@ fn dpapi_decrypt(data: &[u8], entropy: Option<&[u8]>) -> Result<Vec<u8>, String>
         let _ = LocalFree(windows::Win32::Foundation::HLOCAL(output.pbData as _));
         Ok(out)
     }
-}
-
-#[cfg(not(windows))]
-fn load_legacy_dpapi() -> Result<Option<B2Credentials>, String> {
-    Ok(None)
 }
