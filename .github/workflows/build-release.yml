@@ -148,7 +148,7 @@ jobs:
           ls -lh release
 
       - name: Upload Tauri release asset
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v7
         with:
           name: tauri-${{ matrix.name }}
           path: release/*.${{ matrix.extension }}
@@ -162,7 +162,7 @@ jobs:
 
     steps:
       - name: Download Tauri release assets
-        uses: actions/download-artifact@v5
+        uses: actions/download-artifact@v8
         with:
           pattern: tauri-*
           path: release
@@ -197,7 +197,7 @@ jobs:
           EOF
 
       - name: Upload workflow release bundle
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v7
         with:
           name: CloudDriveMount-${{ needs.metadata.outputs.app_version }}-${{ needs.metadata.outputs.short_sha }}
           path: |

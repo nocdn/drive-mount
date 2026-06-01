@@ -91,8 +91,8 @@ fn release_workflow_uses_tauri_installers_only() {
     assert!(workflow.contains("TAURI_ENV_TARGET_TRIPLE: ${{ matrix.rust_target }}"));
     assert!(workflow.contains("--bundles dmg"));
     assert!(workflow.contains("--bundles msi"));
-    assert!(workflow.contains("actions/upload-artifact@v4"));
-    assert!(workflow.contains("actions/download-artifact@v5"));
+    assert!(workflow.contains("actions/upload-artifact@v7"));
+    assert!(workflow.contains("actions/download-artifact@v8"));
     assert!(workflow.contains("release/*.dmg"));
     assert!(workflow.contains("release/*.msi"));
     assert!(workflow.contains("bundles_file=\"$(mktemp)\""));
@@ -106,6 +106,8 @@ fn release_workflow_uses_tauri_installers_only() {
     assert!(!workflow.contains("release/*.zip"));
     assert!(!workflow.contains("release/*.exe"));
     assert!(!workflow.contains("mapfile"));
+    assert!(!workflow.contains("actions/upload-artifact@v4"));
+    assert!(!workflow.contains("actions/download-artifact@v5"));
 
     let sidecar_step = workflow.find("Prepare Tauri sidecars").unwrap();
     let test_step = workflow.find("Run Tauri tests").unwrap();
