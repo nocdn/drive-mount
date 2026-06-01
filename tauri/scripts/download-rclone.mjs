@@ -95,18 +95,29 @@ async function existingBinaryMatches(dest, targetTriple) {
   return false;
 }
 
+function powerShellSingleQuoted(value) {
+  return `'${value.replace(/'/g, "''")}'`;
+}
+
 async function extractZip(zipPath, destDir) {
   await fs.mkdir(destDir, { recursive: true });
 
   if (process.platform === "win32") {
+    const command = [
+      "Expand-Archive",
+      "-LiteralPath",
+      powerShellSingleQuoted(zipPath),
+      "-DestinationPath",
+      powerShellSingleQuoted(destDir),
+      "-Force",
+    ].join(" ");
+
     await run("powershell.exe", [
       "-NoProfile",
       "-ExecutionPolicy",
       "Bypass",
       "-Command",
-      "Expand-Archive -LiteralPath $args[0] -DestinationPath $args[1] -Force",
-      zipPath,
-      destDir,
+      command,
     ]);
     return;
   }

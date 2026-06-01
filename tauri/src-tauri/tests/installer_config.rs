@@ -94,11 +94,14 @@ fn release_workflow_uses_tauri_installers_only() {
     assert!(workflow.contains("actions/download-artifact@v5"));
     assert!(workflow.contains("release/*.dmg"));
     assert!(workflow.contains("release/*.msi"));
+    assert!(workflow.contains("bundles_file=\"$(mktemp)\""));
+    assert!(workflow.contains("bundle_count=\"$(wc -l"));
 
     assert!(!workflow.contains("win/installer"));
     assert!(!workflow.contains("mac/CloudDriveMount"));
     assert!(!workflow.contains("release/*.zip"));
     assert!(!workflow.contains("release/*.exe"));
+    assert!(!workflow.contains("mapfile"));
 
     let sidecar_step = workflow.find("Prepare Tauri sidecars").unwrap();
     let test_step = workflow.find("Run Tauri tests").unwrap();
@@ -106,4 +109,17 @@ fn release_workflow_uses_tauri_installers_only() {
         sidecar_step < test_step,
         "sidecars must be prepared before cargo test because Tauri validates externalBin paths"
     );
+}
+
+#[test]
+fn sidecar_downloader_supports_ci_targets_without_powershell_args() {
+    let script = read_repo_file("tauri/scripts/download-rclone.mjs");
+
+    assert!(script.contains("rclone-aarch64-apple-darwin"));
+    assert!(script.contains("rclone-x86_64-apple-darwin"));
+    assert!(script.contains("rclone-x86_64-pc-windows-msvc.exe"));
+    assert!(script.contains("powerShellSingleQuoted"));
+    assert!(script.contains("Expand-Archive"));
+    assert!(!script.contains("$args[0]"));
+    assert!(!script.contains("$args[1]"));
 }

@@ -124,15 +124,18 @@ jobs:
           esac
 
           mkdir -p release
-          mapfile -t bundles < <(find "$bundle_dir" -maxdepth 1 -type f -name '*.${{ matrix.extension }}' | sort)
+          bundles_file="$(mktemp)"
+          find "$bundle_dir" -maxdepth 1 -type f -name '*.${{ matrix.extension }}' | sort > "$bundles_file"
+          bundle_count="$(wc -l < "$bundles_file" | tr -d '[:space:]')"
 
-          if [[ "${#bundles[@]}" -ne 1 ]]; then
-            echo "Expected exactly one .${{ matrix.extension }} bundle in $bundle_dir, found ${#bundles[@]}" >&2
-            printf '%s\n' "${bundles[@]}" >&2
+          if [[ "$bundle_count" -ne 1 ]]; then
+            echo "Expected exactly one .${{ matrix.extension }} bundle in $bundle_dir, found $bundle_count" >&2
+            cat "$bundles_file" >&2
             exit 1
           fi
 
-          cp "${bundles[0]}" "release/$asset_name"
+          bundle_path="$(sed -n '1p' "$bundles_file")"
+          cp "$bundle_path" "release/$asset_name"
           ls -lh release
 
       - name: Upload Tauri release asset
