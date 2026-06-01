@@ -86,6 +86,8 @@ fn release_workflow_uses_tauri_installers_only() {
     let workflow = read_repo_file(".github/workflows/build-release.yml");
 
     assert!(workflow.contains("tauri-apps/tauri-action@v0.6.2"));
+    assert!(workflow.contains("Prepare Tauri sidecars"));
+    assert!(workflow.contains("TAURI_ENV_TARGET_TRIPLE: ${{ matrix.rust_target }}"));
     assert!(workflow.contains("--bundles dmg"));
     assert!(workflow.contains("--bundles msi"));
     assert!(workflow.contains("actions/upload-artifact@v4"));
@@ -97,4 +99,11 @@ fn release_workflow_uses_tauri_installers_only() {
     assert!(!workflow.contains("mac/CloudDriveMount"));
     assert!(!workflow.contains("release/*.zip"));
     assert!(!workflow.contains("release/*.exe"));
+
+    let sidecar_step = workflow.find("Prepare Tauri sidecars").unwrap();
+    let test_step = workflow.find("Run Tauri tests").unwrap();
+    assert!(
+        sidecar_step < test_step,
+        "sidecars must be prepared before cargo test because Tauri validates externalBin paths"
+    );
 }

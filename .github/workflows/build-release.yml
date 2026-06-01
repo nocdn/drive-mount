@@ -87,6 +87,12 @@ jobs:
         working-directory: tauri
         run: bun install --frozen-lockfile
 
+      - name: Prepare Tauri sidecars
+        working-directory: tauri
+        env:
+          TAURI_ENV_TARGET_TRIPLE: ${{ matrix.rust_target }}
+        run: bun run prepare:sidecars
+
       - name: Run Tauri tests
         working-directory: tauri/src-tauri
         run: cargo test --locked
