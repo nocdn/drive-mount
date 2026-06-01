@@ -96,6 +96,9 @@ fn release_workflow_uses_tauri_installers_only() {
     assert!(workflow.contains("release/*.msi"));
     assert!(workflow.contains("bundles_file=\"$(mktemp)\""));
     assert!(workflow.contains("bundle_count=\"$(wc -l"));
+    assert!(workflow.contains("runner.os"));
+    assert!(workflow.contains("cargo test --locked --no-run"));
+    assert!(workflow.contains("cargo test --locked --test installer_config"));
 
     assert!(!workflow.contains("win/installer"));
     assert!(!workflow.contains("mac/CloudDriveMount"));

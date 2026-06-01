@@ -95,7 +95,16 @@ jobs:
 
       - name: Run Tauri tests
         working-directory: tauri/src-tauri
-        run: cargo test --locked
+        shell: bash
+        run: |
+          if [[ "${{ runner.os }}" == "Windows" ]]; then
+            # The Windows Tauri lib test executable can fail before test code runs
+            # because GUI/WebView runtime DLLs are loaded at process startup.
+            cargo test --locked --no-run
+            cargo test --locked --test installer_config
+          else
+            cargo test --locked
+          fi
 
       - name: Write release version override
         working-directory: tauri
