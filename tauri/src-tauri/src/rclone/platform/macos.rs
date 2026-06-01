@@ -55,8 +55,8 @@ pub fn extra_mount_args(_target: &str) -> Vec<String> {
     vec!["--option".to_string(), "nobrowse".to_string()]
 }
 
-pub fn volume_name_args(_volume_name: &str) -> Vec<String> {
-    Vec::new()
+pub fn volume_name_args(volume_name: &str) -> Vec<String> {
+    vec!["--volname".to_string(), volume_name.to_string()]
 }
 
 pub fn is_mount_ready(target: &str) -> bool {
@@ -290,7 +290,10 @@ mod tests {
             extra_mount_args("/tmp/mount"),
             vec!["--option".to_string(), "nobrowse".to_string()]
         );
-        assert!(volume_name_args("google-drive").is_empty());
+        assert_eq!(
+            volume_name_args("google-drive"),
+            vec!["--volname".to_string(), "google-drive".to_string()]
+        );
     }
 
     #[test]

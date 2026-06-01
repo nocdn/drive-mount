@@ -1218,9 +1218,27 @@ mod tests {
         );
     }
 
+    #[cfg(any(target_os = "macos", windows))]
+    #[test]
+    fn fixed_service_volume_names_ignore_remote_paths() {
+        let google = GoogleDriveSettings {
+            remote_path: "Team/Docs".to_string(),
+            ..GoogleDriveSettings::default()
+        }
+        .normalized();
+        let seedbox = SeedboxSettings {
+            remote_path: "downloads/movies".to_string(),
+            ..valid_seedbox_settings("")
+        }
+        .normalized();
+
+        assert_eq!(build_google_drive_volume_name(&google), "google-drive");
+        assert_eq!(build_seedbox_spec(&seedbox).unwrap().volume_name, "seedbox");
+    }
+
     #[cfg(target_os = "macos")]
     #[test]
-    fn macos_mount_command_args_mount_as_hidden_folder_not_finder_volume() {
+    fn macos_mount_command_args_use_clean_hidden_volume_name() {
         let _guard = crate::test_support::env_lock();
         crate::test_support::clear_test_dirs();
         let temp = tempfile::tempdir().unwrap();
@@ -1230,7 +1248,7 @@ mod tests {
             label: "B2 nocdn-main".to_string(),
             remote_path: "b2remote:nocdn-main".to_string(),
             target: crate::paths::default_bucket_mount_path("nocdn-main"),
-            volume_name: "b2 nocdn-main".to_string(),
+            volume_name: "nocdn-main".to_string(),
             vfs_cache_mode: "writes".to_string(),
             read_only: false,
             extra_args: Vec::new(),
@@ -1238,8 +1256,10 @@ mod tests {
 
         let args = build_mount_command_args(&spec, &temp.path().join("cache"));
 
-        assert!(!args.iter().any(|arg| arg == "--volname"));
-        assert!(!args.iter().any(|arg| arg == "b2 nocdn-main"));
+        assert!(args
+            .windows(2)
+            .any(|pair| pair[0] == "--volname" && pair[1] == "nocdn-main"));
+        assert!(!args.iter().any(|arg| arg == "b2remote nocdn-main"));
         assert!(args
             .windows(2)
             .any(|pair| pair[0] == "--option" && pair[1] == "nobrowse"));
