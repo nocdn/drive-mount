@@ -15,8 +15,9 @@ fn read_json(path: &str) -> Value {
 
 fn read_repo_file(path: &str) -> String {
     let path = manifest_dir().join("../..").join(path);
-    fs::read_to_string(&path)
-        .unwrap_or_else(|error| panic!("failed to read {}: {error}", path.display()))
+    let contents = fs::read_to_string(&path)
+        .unwrap_or_else(|error| panic!("failed to read {}: {error}", path.display()));
+    contents.replace("\r\n", "\n")
 }
 
 fn string_array(value: &Value) -> Vec<&str> {
