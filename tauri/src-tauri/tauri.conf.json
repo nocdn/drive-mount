@@ -28,8 +28,7 @@
     }
   },
   "bundle": {
-    "active": false,
-    "targets": "all",
+    "active": true,
     "externalBin": ["binaries/rclone"],
     "icon": [
       "icons/32x32.png",

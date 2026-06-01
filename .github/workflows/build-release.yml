@@ -1,4 +1,4 @@
-name: Build And Release Installer
+name: Build And Release Tauri Installers
 
 on:
   push:
@@ -14,15 +14,12 @@ jobs:
     outputs:
       run_number: ${{ steps.metadata.outputs.run_number }}
       short_sha: ${{ steps.metadata.outputs.short_sha }}
-      package_version: ${{ steps.metadata.outputs.package_version }}
-      windows_package_version: ${{ steps.metadata.outputs.windows_package_version }}
+      app_version: ${{ steps.metadata.outputs.app_version }}
       tag_name: ${{ steps.metadata.outputs.tag_name }}
       release_name: ${{ steps.metadata.outputs.release_name }}
-      setup_name: ${{ steps.metadata.outputs.setup_name }}
-      msi_name: ${{ steps.metadata.outputs.msi_name }}
-      portable_zip_name: ${{ steps.metadata.outputs.portable_zip_name }}
-      mac_arm64_zip_name: ${{ steps.metadata.outputs.mac_arm64_zip_name }}
-      mac_x64_zip_name: ${{ steps.metadata.outputs.mac_x64_zip_name }}
+      windows_msi_name: ${{ steps.metadata.outputs.windows_msi_name }}
+      mac_arm64_dmg_name: ${{ steps.metadata.outputs.mac_arm64_dmg_name }}
+      mac_x64_dmg_name: ${{ steps.metadata.outputs.mac_x64_dmg_name }}
 
     steps:
       - name: Compute build metadata
@@ -30,210 +27,164 @@ jobs:
         shell: bash
         run: |
           short_sha="${GITHUB_SHA::7}"
-          version="${GITHUB_RUN_NUMBER}"
-          windows_package_version="0.0.${GITHUB_RUN_NUMBER}"
-          tag_name="v$version"
-          release_name="v$version"
-          setup_name="CloudDriveMount-$version-x64-setup.exe"
-          msi_name="CloudDriveMount-$version-x64.msi"
-          portable_zip_name="CloudDriveMount-$version-x64-portable.zip"
-          mac_arm64_zip_name="CloudDriveMount-macos-arm64.zip"
-          mac_x64_zip_name="CloudDriveMount-macos-x64.zip"
+          app_version="0.1.${GITHUB_RUN_NUMBER}"
+          tag_name="v$app_version"
+          release_name="Cloud Drive Mount $app_version"
+          windows_msi_name="CloudDriveMount-$app_version-windows-x64.msi"
+          mac_arm64_dmg_name="CloudDriveMount-$app_version-macos-arm64.dmg"
+          mac_x64_dmg_name="CloudDriveMount-$app_version-macos-x64.dmg"
 
           echo "run_number=${GITHUB_RUN_NUMBER}" >> "$GITHUB_OUTPUT"
           echo "short_sha=$short_sha" >> "$GITHUB_OUTPUT"
-          echo "package_version=$version" >> "$GITHUB_OUTPUT"
-          echo "windows_package_version=$windows_package_version" >> "$GITHUB_OUTPUT"
+          echo "app_version=$app_version" >> "$GITHUB_OUTPUT"
           echo "tag_name=$tag_name" >> "$GITHUB_OUTPUT"
           echo "release_name=$release_name" >> "$GITHUB_OUTPUT"
-          echo "setup_name=$setup_name" >> "$GITHUB_OUTPUT"
-          echo "msi_name=$msi_name" >> "$GITHUB_OUTPUT"
-          echo "portable_zip_name=$portable_zip_name" >> "$GITHUB_OUTPUT"
-          echo "mac_arm64_zip_name=$mac_arm64_zip_name" >> "$GITHUB_OUTPUT"
-          echo "mac_x64_zip_name=$mac_x64_zip_name" >> "$GITHUB_OUTPUT"
+          echo "windows_msi_name=$windows_msi_name" >> "$GITHUB_OUTPUT"
+          echo "mac_arm64_dmg_name=$mac_arm64_dmg_name" >> "$GITHUB_OUTPUT"
+          echo "mac_x64_dmg_name=$mac_x64_dmg_name" >> "$GITHUB_OUTPUT"
 
-  build-windows:
-    needs: metadata
-    runs-on: windows-2022
-    env:
-      DOTNET_NOLOGO: true
-      DOTNET_CLI_TELEMETRY_OPTOUT: true
-      Configuration: Release
-      InstallerProject: win/installer/CloudDriveMount.bootstrapper.wixproj
-      BootstrapperOutput: ${{ github.workspace }}\win\installer\bin\Release\CloudDriveMount.bootstrapper.exe
-      InstallerOutput: ${{ github.workspace }}\win\installer\bin\Release\CloudDriveMount.installer.msi
-      AppPayloadOutput: ${{ github.workspace }}\win\CloudDriveMount\bin\Release\net10.0-windows\win-x64\publish
-
-    steps:
-      - name: Check out repository
-        uses: actions/checkout@v6
-
-      - name: Set up .NET SDK
-        uses: actions/setup-dotnet@v5
-        with:
-          dotnet-version: 10.0.x
-
-      - name: Build installer
-        shell: pwsh
-        run: |
-          dotnet build $env:InstallerProject -c $env:Configuration -p:PackageVersion=${{ needs.metadata.outputs.windows_package_version }}
-
-      - name: Prepare release assets
-        shell: pwsh
-        run: |
-          New-Item -ItemType Directory -Path release -Force | Out-Null
-
-          Copy-Item $env:BootstrapperOutput (Join-Path release '${{ needs.metadata.outputs.setup_name }}') -Force
-          Copy-Item $env:InstallerOutput (Join-Path release '${{ needs.metadata.outputs.msi_name }}') -Force
-
-          if (Test-Path $env:AppPayloadOutput) {
-            Compress-Archive -Path (Join-Path $env:AppPayloadOutput '*') -DestinationPath (Join-Path release '${{ needs.metadata.outputs.portable_zip_name }}') -Force
-          }
-          else {
-            throw "App payload folder not found: $env:AppPayloadOutput"
-          }
-
-      - name: Upload Windows release assets
-        uses: actions/upload-artifact@v7
-        with:
-          name: release-windows
-          path: |
-            release/*.exe
-            release/*.msi
-            release/*.zip
-          if-no-files-found: error
-
-  build-macos:
+  build-tauri:
     needs: metadata
     strategy:
       fail-fast: false
       matrix:
         include:
-          - runner: macos-15
-            uname: arm64
-            asset_name: CloudDriveMount-macos-arm64.zip
-          - runner: macos-15-intel
-            uname: x86_64
-            asset_name: CloudDriveMount-macos-x64.zip
+          - name: macos-arm64
+            runner: macos-15
+            rust_target: aarch64-apple-darwin
+            tauri_args: --target aarch64-apple-darwin --bundles dmg
+            bundle_dir: dmg
+            extension: dmg
+          - name: macos-x64
+            runner: macos-15-intel
+            rust_target: x86_64-apple-darwin
+            tauri_args: --target x86_64-apple-darwin --bundles dmg
+            bundle_dir: dmg
+            extension: dmg
+          - name: windows-x64
+            runner: windows-2022
+            rust_target: x86_64-pc-windows-msvc
+            tauri_args: --target x86_64-pc-windows-msvc --bundles msi
+            bundle_dir: msi
+            extension: msi
     runs-on: ${{ matrix.runner }}
 
     steps:
       - name: Check out repository
         uses: actions/checkout@v6
 
-      - name: Confirm runner architecture
-        shell: bash
-        run: |
-          actual_arch="$(uname -m)"
-          echo "Runner architecture: $actual_arch"
-          if [[ "$actual_arch" != "${{ matrix.uname }}" ]]; then
-            echo "Expected ${{ matrix.uname }}, got $actual_arch" >&2
-            exit 1
-          fi
-
-      - name: Build macOS app bundle
-        shell: bash
-        env:
-          APP_VERSION: ${{ needs.metadata.outputs.package_version }}
-          APP_BUILD: ${{ github.run_number }}
-        run: bash mac/CloudDriveMount/scripts/build-app.sh
-
-      - name: Verify macOS app bundle
-        shell: bash
-        run: |
-          app_dir="mac/CloudDriveMount/.build/app/Cloud Drive Mount.app"
-          executable="$app_dir/Contents/MacOS/CloudDriveMount"
-          bundled_rclone="$app_dir/Contents/Resources/rclone"
-
-          test -d "$app_dir"
-          test -x "$executable"
-          test -x "$bundled_rclone"
-
-          plutil -lint "$app_dir/Contents/Info.plist"
-          bundle_executable="$(/usr/libexec/PlistBuddy -c 'Print :CFBundleExecutable' "$app_dir/Contents/Info.plist")"
-          if [[ "$bundle_executable" != "CloudDriveMount" ]]; then
-            echo "Unexpected CFBundleExecutable: $bundle_executable" >&2
-            exit 1
-          fi
-
-          app_arch="$(lipo -archs "$executable")"
-          rclone_arch="$(lipo -archs "$bundled_rclone")"
-          echo "CloudDriveMount architecture: $app_arch"
-          echo "rclone architecture: $rclone_arch"
-          if [[ "$app_arch" != "${{ matrix.uname }}" ]]; then
-            echo "Unexpected CloudDriveMount architecture: $app_arch" >&2
-            exit 1
-          fi
-          if [[ "$rclone_arch" != "${{ matrix.uname }}" ]]; then
-            echo "Unexpected rclone architecture: $rclone_arch" >&2
-            exit 1
-          fi
-
-          codesign --verify --deep --strict --verbose=2 "$app_dir"
-
-      - name: Zip macOS app bundle
-        shell: bash
-        run: |
-          mkdir -p release
-          ditto -c -k --keepParent \
-            "mac/CloudDriveMount/.build/app/Cloud Drive Mount.app" \
-            "release/${{ matrix.asset_name }}"
-          unzip -t "release/${{ matrix.asset_name }}"
-          ditto -x -k "release/${{ matrix.asset_name }}" release/verify-unzip
-          codesign --verify --deep --strict --verbose=2 "release/verify-unzip/Cloud Drive Mount.app"
-
-      - name: Upload macOS release asset
-        uses: actions/upload-artifact@v7
+      - name: Set up Bun
+        uses: oven-sh/setup-bun@v2
         with:
-          name: release-macos-${{ matrix.uname }}
-          path: release/${{ matrix.asset_name }}
+          bun-version: 1.3.14
+
+      - name: Set up Rust
+        uses: dtolnay/rust-toolchain@stable
+        with:
+          targets: ${{ matrix.rust_target }}
+
+      - name: Install frontend dependencies
+        working-directory: tauri
+        run: bun install --frozen-lockfile
+
+      - name: Run Tauri tests
+        working-directory: tauri/src-tauri
+        run: cargo test --locked
+
+      - name: Write release version override
+        working-directory: tauri
+        shell: bash
+        run: |
+          printf '{"version":"%s"}\n' '${{ needs.metadata.outputs.app_version }}' > tauri-release-version.json
+
+      - name: Build Tauri installer
+        uses: tauri-apps/tauri-action@v0.6.2
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        with:
+          projectPath: tauri
+          tauriScript: bun run tauri
+          args: ${{ matrix.tauri_args }} --config tauri-release-version.json
+
+      - name: Prepare release asset
+        shell: bash
+        run: |
+          bundle_dir="tauri/src-tauri/target/${{ matrix.rust_target }}/release/bundle/${{ matrix.bundle_dir }}"
+          case "${{ matrix.name }}" in
+            macos-arm64) asset_name="${{ needs.metadata.outputs.mac_arm64_dmg_name }}" ;;
+            macos-x64) asset_name="${{ needs.metadata.outputs.mac_x64_dmg_name }}" ;;
+            windows-x64) asset_name="${{ needs.metadata.outputs.windows_msi_name }}" ;;
+            *) echo "Unknown release matrix item: ${{ matrix.name }}" >&2; exit 1 ;;
+          esac
+
+          mkdir -p release
+          mapfile -t bundles < <(find "$bundle_dir" -maxdepth 1 -type f -name '*.${{ matrix.extension }}' | sort)
+
+          if [[ "${#bundles[@]}" -ne 1 ]]; then
+            echo "Expected exactly one .${{ matrix.extension }} bundle in $bundle_dir, found ${#bundles[@]}" >&2
+            printf '%s\n' "${bundles[@]}" >&2
+            exit 1
+          fi
+
+          cp "${bundles[0]}" "release/$asset_name"
+          ls -lh release
+
+      - name: Upload Tauri release asset
+        uses: actions/upload-artifact@v4
+        with:
+          name: tauri-${{ matrix.name }}
+          path: release/*.${{ matrix.extension }}
           if-no-files-found: error
 
   publish-release:
     needs:
       - metadata
-      - build-windows
-      - build-macos
+      - build-tauri
     runs-on: ubuntu-latest
 
     steps:
-      - name: Download release assets
-        uses: actions/download-artifact@v7
+      - name: Download Tauri release assets
+        uses: actions/download-artifact@v5
         with:
-          pattern: release-*
+          pattern: tauri-*
           path: release
           merge-multiple: true
+
+      - name: Verify release assets
+        shell: bash
+        run: |
+          test -f "release/${{ needs.metadata.outputs.windows_msi_name }}"
+          test -f "release/${{ needs.metadata.outputs.mac_arm64_dmg_name }}"
+          test -f "release/${{ needs.metadata.outputs.mac_x64_dmg_name }}"
+          find release -maxdepth 1 -type f -print | sort
 
       - name: Generate release notes
         shell: bash
         run: |
           cat > release-notes.md <<'EOF'
-          ## Cloud Drive Mount ${{ needs.metadata.outputs.release_name }}
+          ## ${{ needs.metadata.outputs.release_name }}
 
           Commit: `${{ github.sha }}`
           Branch: `${{ github.ref_name }}`
           GitHub Actions run: `#${{ needs.metadata.outputs.run_number }}`
-          Published app version: `${{ needs.metadata.outputs.package_version }}`
+          Published app version: `${{ needs.metadata.outputs.app_version }}`
 
           ### Assets
-          - `${{ needs.metadata.outputs.setup_name }}` - Recommended Windows installer; installs WinFsp if needed, then Cloud Drive Mount
-          - `${{ needs.metadata.outputs.msi_name }}` - Windows app MSI only; requires WinFsp to already be installed
-          - `${{ needs.metadata.outputs.portable_zip_name }}` - Portable Windows app files
-          - `${{ needs.metadata.outputs.mac_arm64_zip_name }}` - macOS app bundle for Apple Silicon Macs
-          - `${{ needs.metadata.outputs.mac_x64_zip_name }}` - macOS app bundle for Intel Macs
+          - `${{ needs.metadata.outputs.windows_msi_name }}` - Tauri Windows x64 MSI. WinFsp must already be installed for mounting to work.
+          - `${{ needs.metadata.outputs.mac_arm64_dmg_name }}` - Tauri macOS DMG for Apple Silicon Macs.
+          - `${{ needs.metadata.outputs.mac_x64_dmg_name }}` - Tauri macOS DMG for Intel Macs.
 
           ### macOS security note
           The macOS app is not Developer ID signed or notarized. On first launch, macOS may block it; after trying to open it, go to System Settings > Privacy & Security and choose Open Anyway/Open for Cloud Drive Mount. Only do this if you trust this release.
           EOF
 
-      - name: Upload workflow artifacts
-        uses: actions/upload-artifact@v7
+      - name: Upload workflow release bundle
+        uses: actions/upload-artifact@v4
         with:
-          name: CloudDriveMount-${{ needs.metadata.outputs.package_version }}-${{ needs.metadata.outputs.short_sha }}
+          name: CloudDriveMount-${{ needs.metadata.outputs.app_version }}-${{ needs.metadata.outputs.short_sha }}
           path: |
-            release/*.exe
+            release/*.dmg
             release/*.msi
-            release/*.zip
             release-notes.md
           if-no-files-found: error
 
@@ -248,6 +199,5 @@ jobs:
           make_latest: true
           fail_on_unmatched_files: true
           files: |
-            release/*.exe
+            release/*.dmg
             release/*.msi
-            release/*.zip

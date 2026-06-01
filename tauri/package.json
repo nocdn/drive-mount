@@ -4,8 +4,13 @@
   "version": "0.1.0",
   "type": "module",
   "scripts": {
+    "prepare:sidecars": "bun scripts/download-rclone.mjs",
+    "build:frontend": "tsc && vite build",
     "dev": "vite",
-    "build": "tsc && vite build",
+    "build": "bun run prepare:sidecars && bun run build:frontend",
+    "build:installer": "tauri build",
+    "build:installer:mac": "tauri build --bundles dmg",
+    "build:installer:windows": "tauri build --bundles msi",
     "preview": "vite preview",
     "tauri": "tauri"
   },
