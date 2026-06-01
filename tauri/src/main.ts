@@ -330,7 +330,9 @@ function readSeedboxSettings(): SeedboxSettings {
 function refreshSeedboxConnectionUi() {
   btnForgetSeedbox.classList.toggle("hidden", !seedboxConfigured);
   seedboxHelp.textContent = seedboxConfigured
-    ? "Seedbox FTPS is configured. Use Save and Mount All to mount it."
+    ? platform === "macos"
+      ? "Seedbox FTPS is configured. Use Save and Mount All to mount it at ~/Drives/seedbox."
+      : "Seedbox FTPS is configured. Use Save and Mount All to mount it as S: named seedbox."
     : "Use your Ultra.cc FTP/SFTP connection details. Host is usually your server name, port is 21, and Remote Folder is usually downloads.";
 }
 
@@ -480,10 +482,11 @@ async function loadUi() {
     bucketsHelp.textContent = "Each bucket is mounted directly to its own drive letter.";
     startMinimizedLabel.textContent = "Start minimized to tray";
     gdriveHelp.textContent =
-      "Click Connect Google Drive and sign in through the browser. After it connects, use Save and Mount All. Google Drive mounts to G:.";
+      "Click Connect Google Drive and sign in through the browser. After it connects, use Save and Mount All. Google Drive mounts to G: named google-drive.";
   } else {
+    bucketsHelp.textContent = "Each bucket mounts as a folder under ~/Drives.";
     gdriveHelp.textContent =
-      "Click Connect Google Drive and sign in through the browser. After it connects, use Save and Mount All. Google Drive will mount as a disk named Google Drive under ~/Drives/Google Drive.";
+      "Click Connect Google Drive and sign in through the browser. After it connects, use Save and Mount All. Google Drive mounts as a folder at ~/Drives/google-drive.";
   }
 
   const loaded = await invoke<LoadedSettings>("load_settings_cmd");

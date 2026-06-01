@@ -1,4 +1,4 @@
-use std::path::Path;
+use std::path::{Component, Path};
 use std::process::{Command, Stdio};
 use std::thread;
 use std::time::{Duration, Instant};
@@ -29,12 +29,20 @@ pub fn normalize_mount_target(bucket: &BucketMount) -> Result<String, String> {
         return Err("Bucket name is required.".to_string());
     }
 
-    Ok(default_bucket_mount_path(bucket_name))
+    validate_mount_folder_name(bucket_name, "Bucket")?;
+    let target = default_bucket_mount_path(bucket_name);
+    validate_mount_target(&target)?;
+    Ok(target)
 }
 
 pub fn validate_mount_target(target: &str) -> Result<(), String> {
-    if !target.starts_with('/') {
+    let path = Path::new(target);
+    if !path.is_absolute() {
         return Err(format!("Mount folder '{target}' is invalid."));
+    }
+    let drives_dir = drives_dir();
+    if path == drives_dir.as_path() || path.parent() != Some(drives_dir.as_path()) {
+        return Err("Mount folder must be directly inside ~/Drives.".to_string());
     }
     Ok(())
 }
@@ -44,7 +52,11 @@ pub fn prepare_mount_target(target: &str) -> Result<(), String> {
 }
 
 pub fn extra_mount_args(_target: &str) -> Vec<String> {
-    vec![]
+    vec!["--option".to_string(), "nobrowse".to_string()]
+}
+
+pub fn volume_name_args(_volume_name: &str) -> Vec<String> {
+    Vec::new()
 }
 
 pub fn is_mount_ready(target: &str) -> bool {
@@ -164,6 +176,14 @@ pub fn seedbox_mount_target(_settings: &SeedboxSettings) -> String {
     default_seedbox_mount_path()
 }
 
+fn validate_mount_folder_name(name: &str, label: &str) -> Result<(), String> {
+    let mut components = Path::new(name).components();
+    match (components.next(), components.next()) {
+        (Some(Component::Normal(_)), None) => Ok(()),
+        _ => Err(format!("{label} name must be a single folder name.")),
+    }
+}
+
 fn is_mount_point(path: &str) -> bool {
     use std::os::unix::fs::MetadataExt;
 
@@ -219,6 +239,22 @@ mod tests {
     }
 
     #[test]
+    fn normalize_mount_target_rejects_path_components() {
+        for bucket_name in ["../outside", "nested/bucket", "."] {
+            let bucket = BucketMount {
+                bucket_name: bucket_name.to_string(),
+                mount_path: String::new(),
+                drive_letter: String::new(),
+            };
+
+            assert_eq!(
+                normalize_mount_target(&bucket).unwrap_err(),
+                "Bucket name must be a single folder name."
+            );
+        }
+    }
+
+    #[test]
     fn normalize_mount_target_rejects_blank_bucket() {
         assert_eq!(
             normalize_mount_target(&BucketMount::default()).unwrap_err(),
@@ -227,19 +263,41 @@ mod tests {
     }
 
     #[test]
-    fn validate_mount_target_requires_absolute_path() {
-        assert!(validate_mount_target("/Volumes/docs").is_ok());
+    fn validate_mount_target_requires_direct_child_of_drives() {
+        let drives = drives_dir();
+        assert!(validate_mount_target(&drives.join("docs").to_string_lossy()).is_ok());
         assert_eq!(
             validate_mount_target("Volumes/docs").unwrap_err(),
             "Mount folder 'Volumes/docs' is invalid."
         );
+        assert_eq!(
+            validate_mount_target("/Volumes/docs").unwrap_err(),
+            "Mount folder must be directly inside ~/Drives."
+        );
+        assert_eq!(
+            validate_mount_target(&drives.to_string_lossy()).unwrap_err(),
+            "Mount folder must be directly inside ~/Drives."
+        );
+        assert_eq!(
+            validate_mount_target(&drives.join("nested/docs").to_string_lossy()).unwrap_err(),
+            "Mount folder must be directly inside ~/Drives."
+        );
+    }
+
+    #[test]
+    fn extra_mount_args_marks_macos_mounts_non_browsable() {
+        assert_eq!(
+            extra_mount_args("/tmp/mount"),
+            vec!["--option".to_string(), "nobrowse".to_string()]
+        );
+        assert!(volume_name_args("google-drive").is_empty());
     }
 
     #[test]
     fn google_drive_and_seedbox_targets_ignore_custom_mount_paths() {
         assert!(google_drive_mount_target(&GoogleDriveSettings::default())
-            .ends_with("/Drives/Google Drive"));
-        assert!(seedbox_mount_target(&SeedboxSettings::default()).ends_with("/Drives/Seedbox"));
+            .ends_with("/Drives/google-drive"));
+        assert!(seedbox_mount_target(&SeedboxSettings::default()).ends_with("/Drives/seedbox"));
 
         let google = GoogleDriveSettings {
             mount_path: "~/Google".to_string(),
@@ -250,8 +308,10 @@ mod tests {
             ..SeedboxSettings::default()
         };
 
-        assert!(google_drive_mount_target(&google).ends_with("/Drives/Google Drive"));
-        assert!(seedbox_mount_target(&seedbox).ends_with("/Drives/Seedbox"));
+        assert!(google_drive_mount_target(&google).ends_with("/Drives/google-drive"));
+        assert!(seedbox_mount_target(&seedbox).ends_with("/Drives/seedbox"));
+        assert!(validate_mount_target(&google_drive_mount_target(&google)).is_ok());
+        assert!(validate_mount_target(&seedbox_mount_target(&seedbox)).is_ok());
     }
 
     #[test]

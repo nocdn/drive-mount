@@ -50,6 +50,11 @@ pub fn extra_mount_args(_target: &str) -> Vec<String> {
 }
 
 #[cfg(not(any(target_os = "macos", windows)))]
+pub fn volume_name_args(_volume_name: &str) -> Vec<String> {
+    vec![]
+}
+
+#[cfg(not(any(target_os = "macos", windows)))]
 pub fn prepare_mount_target(_target: &str) -> Result<(), String> {
     Ok(())
 }

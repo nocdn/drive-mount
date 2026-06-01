@@ -2,6 +2,8 @@ use std::path::PathBuf;
 
 const APP_DATA_DIR_ENV: &str = "CLOUD_DRIVE_MOUNT_APP_DATA_DIR";
 const LOG_DIR_ENV: &str = "CLOUD_DRIVE_MOUNT_LOG_DIR";
+pub const GOOGLE_DRIVE_MOUNT_NAME: &str = "google-drive";
+pub const SEEDBOX_MOUNT_NAME: &str = "seedbox";
 
 pub fn app_data_dir() -> PathBuf {
     if let Some(dir) = path_from_env(APP_DATA_DIR_ENV) {
@@ -85,7 +87,7 @@ pub fn default_bucket_mount_path(bucket_name: &str) -> String {
 
 pub fn default_google_drive_mount_path() -> String {
     drives_dir()
-        .join("Google Drive")
+        .join(GOOGLE_DRIVE_MOUNT_NAME)
         .to_string_lossy()
         .into_owned()
 }
@@ -117,7 +119,10 @@ pub fn normalize_seedbox_host(host: &str) -> String {
 }
 
 pub fn default_seedbox_mount_path() -> String {
-    drives_dir().join("Seedbox").to_string_lossy().into_owned()
+    drives_dir()
+        .join(SEEDBOX_MOUNT_NAME)
+        .to_string_lossy()
+        .into_owned()
 }
 
 pub fn platform_name() -> &'static str {
@@ -186,6 +191,12 @@ mod tests {
     #[test]
     fn normalize_google_drive_path_uses_remote_path_rules() {
         assert_eq!(normalize_google_drive_path(":\\Team Drive"), "Team Drive");
+    }
+
+    #[test]
+    fn default_service_mount_paths_use_stable_lowercase_names() {
+        assert!(default_google_drive_mount_path().ends_with("/Drives/google-drive"));
+        assert!(default_seedbox_mount_path().ends_with("/Drives/seedbox"));
     }
 
     #[test]

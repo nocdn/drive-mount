@@ -20,7 +20,9 @@ use crate::models::{
     B2Credentials, BucketMount, CloudProvider, GoogleDriveSettings, MountRequest, MountState,
     SeedboxSettings, GDRIVE_REMOTE, SEEDBOX_REMOTE,
 };
-use crate::paths::{rclone_cache_dir, rclone_config_path};
+use crate::paths::{
+    rclone_cache_dir, rclone_config_path, GOOGLE_DRIVE_MOUNT_NAME, SEEDBOX_MOUNT_NAME,
+};
 use crate::settings::{ensure_app_data_dir, load_settings};
 
 pub use platform::is_fuse_installed;
@@ -465,27 +467,7 @@ impl RcloneManager {
         let cache_dir = rclone_cache_dir();
         std::fs::create_dir_all(&cache_dir).map_err(|e| e.to_string())?;
 
-        let mut args = vec![
-            "mount".to_string(),
-            spec.remote_path.clone(),
-            spec.target.clone(),
-            "--config".to_string(),
-            rclone_config_path().to_string_lossy().into_owned(),
-            "--cache-dir".to_string(),
-            cache_dir.to_string_lossy().into_owned(),
-            "--vfs-cache-mode".to_string(),
-            spec.vfs_cache_mode.clone(),
-            "--volname".to_string(),
-            spec.volume_name.clone(),
-            "--links".to_string(),
-            "--log-level".to_string(),
-            "NOTICE".to_string(),
-        ];
-        args.extend(platform::extra_mount_args(&spec.target));
-        if spec.read_only {
-            args.push("--read-only".to_string());
-        }
-        args.extend(spec.extra_args.clone());
+        let args = build_mount_command_args(spec, &cache_dir);
 
         self.log_info(&format!("Mounting {} at {}", spec.label, spec.target));
 
@@ -613,6 +595,32 @@ struct MountSpec {
     extra_args: Vec<String>,
 }
 
+fn build_mount_command_args(spec: &MountSpec, cache_dir: &Path) -> Vec<String> {
+    let mut args = vec![
+        "mount".to_string(),
+        spec.remote_path.clone(),
+        spec.target.clone(),
+        "--config".to_string(),
+        rclone_config_path().to_string_lossy().into_owned(),
+        "--cache-dir".to_string(),
+        cache_dir.to_string_lossy().into_owned(),
+        "--vfs-cache-mode".to_string(),
+        spec.vfs_cache_mode.clone(),
+    ];
+    args.extend(platform::volume_name_args(&spec.volume_name));
+    args.extend([
+        "--links".to_string(),
+        "--log-level".to_string(),
+        "NOTICE".to_string(),
+    ]);
+    args.extend(platform::extra_mount_args(&spec.target));
+    if spec.read_only {
+        args.push("--read-only".to_string());
+    }
+    args.extend(spec.extra_args.clone());
+    args
+}
+
 fn has_actionable_b2_buckets(buckets: &[BucketMount]) -> bool {
     buckets
         .iter()
@@ -678,12 +686,8 @@ fn build_google_drive_remote_path(google_drive: &GoogleDriveSettings) -> String 
     }
 }
 
-fn build_google_drive_volume_name(google_drive: &GoogleDriveSettings) -> String {
-    if google_drive.remote_path.is_empty() {
-        "Google Drive".to_string()
-    } else {
-        google_drive.remote_path.clone()
-    }
+fn build_google_drive_volume_name(_google_drive: &GoogleDriveSettings) -> String {
+    GOOGLE_DRIVE_MOUNT_NAME.to_string()
 }
 
 fn build_google_drive_spec(google_drive: &GoogleDriveSettings) -> Result<MountSpec, String> {
@@ -725,7 +729,7 @@ fn build_seedbox_spec(seedbox: &SeedboxSettings) -> Result<MountSpec, String> {
         label: "Seedbox".to_string(),
         remote_path: build_seedbox_remote_path(seedbox),
         target,
-        volume_name: "Seedbox".to_string(),
+        volume_name: SEEDBOX_MOUNT_NAME.to_string(),
         vfs_cache_mode: "full".to_string(),
         read_only: seedbox.read_only,
         extra_args: seedbox_large_file_mount_args(),
@@ -1185,7 +1189,7 @@ mod tests {
     fn google_drive_remote_path_and_volume_name_follow_remote_path() {
         let root = GoogleDriveSettings::default().normalized();
         assert_eq!(build_google_drive_remote_path(&root), "gdrive:");
-        assert_eq!(build_google_drive_volume_name(&root), "Google Drive");
+        assert_eq!(build_google_drive_volume_name(&root), "google-drive");
 
         let nested = GoogleDriveSettings {
             remote_path: "Team/Docs".to_string(),
@@ -1193,7 +1197,7 @@ mod tests {
         }
         .normalized();
         assert_eq!(build_google_drive_remote_path(&nested), "gdrive:Team/Docs");
-        assert_eq!(build_google_drive_volume_name(&nested), "Team/Docs");
+        assert_eq!(build_google_drive_volume_name(&nested), "google-drive");
     }
 
     #[test]
@@ -1212,6 +1216,85 @@ mod tests {
             }),
             "seedbox:downloads/movies"
         );
+    }
+
+    #[cfg(target_os = "macos")]
+    #[test]
+    fn macos_mount_command_args_mount_as_hidden_folder_not_finder_volume() {
+        let _guard = crate::test_support::env_lock();
+        crate::test_support::clear_test_dirs();
+        let temp = tempfile::tempdir().unwrap();
+        crate::test_support::set_test_dirs(&temp.path().join("app"), &temp.path().join("logs"));
+
+        let spec = MountSpec {
+            label: "B2 nocdn-main".to_string(),
+            remote_path: "b2remote:nocdn-main".to_string(),
+            target: crate::paths::default_bucket_mount_path("nocdn-main"),
+            volume_name: "b2 nocdn-main".to_string(),
+            vfs_cache_mode: "writes".to_string(),
+            read_only: false,
+            extra_args: Vec::new(),
+        };
+
+        let args = build_mount_command_args(&spec, &temp.path().join("cache"));
+
+        assert!(!args.iter().any(|arg| arg == "--volname"));
+        assert!(!args.iter().any(|arg| arg == "b2 nocdn-main"));
+        assert!(args
+            .windows(2)
+            .any(|pair| pair[0] == "--option" && pair[1] == "nobrowse"));
+
+        crate::test_support::clear_test_dirs();
+    }
+
+    #[cfg(windows)]
+    #[test]
+    fn windows_mount_specs_and_args_use_named_drive_letters() {
+        let _guard = crate::test_support::env_lock();
+        crate::test_support::clear_test_dirs();
+        let temp = tempfile::tempdir().unwrap();
+        let app_data = temp.path().join("app");
+        crate::test_support::set_test_dirs(&app_data, &temp.path().join("logs"));
+
+        config::upsert_config_section(
+            &rclone_config_path(),
+            GDRIVE_REMOTE,
+            &["type = drive".to_string()],
+        )
+        .unwrap();
+        config::upsert_config_section(
+            &rclone_config_path(),
+            SEEDBOX_REMOTE,
+            &["type = ftp".to_string()],
+        )
+        .unwrap();
+
+        let google = GoogleDriveSettings::default().normalized();
+        let seedbox = valid_seedbox_settings("").normalized();
+        let request = MountRequest {
+            buckets: vec![mountable_bucket("photos", "P")],
+            google_drive: google.clone(),
+            seedbox: seedbox.clone(),
+            ..empty_request()
+        };
+
+        let specs = build_all_mount_specs(&request, &google, &seedbox).unwrap();
+        assert_eq!(specs[0].target, "P:");
+        assert_eq!(specs[0].volume_name, "photos");
+        assert_eq!(specs[1].target, "G:");
+        assert_eq!(specs[1].volume_name, "google-drive");
+        assert_eq!(specs[2].target, "S:");
+        assert_eq!(specs[2].volume_name, "seedbox");
+
+        for spec in &specs {
+            let args = build_mount_command_args(spec, &temp.path().join("cache"));
+            assert!(args.iter().any(|arg| arg == &spec.target));
+            assert!(args.windows(2).any(|pair| pair[0].as_str() == "--volname"
+                && pair[1].as_str() == spec.volume_name.as_str()));
+            assert!(!args.iter().any(|arg| arg == "nobrowse"));
+        }
+
+        crate::test_support::clear_test_dirs();
     }
 
     #[test]

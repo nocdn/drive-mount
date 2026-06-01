@@ -76,6 +76,10 @@ pub fn extra_mount_args(target: &str) -> Vec<String> {
     ]
 }
 
+pub fn volume_name_args(volume_name: &str) -> Vec<String> {
+    vec!["--volname".to_string(), volume_name.to_string()]
+}
+
 pub fn is_mount_ready(target: &str) -> bool {
     drive_exists(target)
 }
