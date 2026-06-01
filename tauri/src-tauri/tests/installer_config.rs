@@ -123,3 +123,21 @@ fn sidecar_downloader_supports_ci_targets_without_powershell_args() {
     assert!(!script.contains("$args[0]"));
     assert!(!script.contains("$args[1]"));
 }
+
+#[test]
+fn windows_platform_uses_current_windows_crate_api() {
+    let source = read_repo_file("tauri/src-tauri/src/rclone/platform/windows.rs");
+
+    assert!(source.contains("SHCNE_DRIVEREMOVED"));
+    assert!(!source.contains("SHCNE_DRIVEREMOVE,"));
+    assert!(
+        source.contains("RegOpenKeyExW(HKEY_LOCAL_MACHINE, subkey, Some(0), KEY_READ, &mut key)")
+    );
+    assert!(!source.contains("RegOpenKeyExW(HKEY_LOCAL_MACHINE, subkey, 0, KEY_READ, &mut key)"));
+    assert!(source.contains(
+        "GetVolumeInformationW(\n            windows::core::PCWSTR(wide.as_ptr()),\n            None,\n            None,\n            None,\n            None,\n            None,\n        )"
+    ));
+    assert!(!source.contains(
+        "use windows::core::w;\n    use windows::Win32::Storage::FileSystem::GetVolumeInformationW;"
+    ));
+}

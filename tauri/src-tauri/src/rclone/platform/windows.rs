@@ -25,7 +25,7 @@ pub fn is_fuse_installed() -> bool {
     unsafe {
         for subkey in [w!(r"Software\WinFsp"), w!(r"Software\WOW6432Node\WinFsp")] {
             let mut key = Default::default();
-            if RegOpenKeyExW(HKEY_LOCAL_MACHINE, subkey, 0, KEY_READ, &mut key).is_ok() {
+            if RegOpenKeyExW(HKEY_LOCAL_MACHINE, subkey, Some(0), KEY_READ, &mut key).is_ok() {
                 let _ = RegCloseKey(key);
                 return true;
             }
@@ -131,7 +131,7 @@ pub fn cleanup_mount_target(_target: &str) -> Result<bool, String> {
 
 pub fn notify_mount_change(target: &str, added: bool) {
     use windows::Win32::UI::Shell::{
-        SHChangeNotify, SHCNE_DRIVEADD, SHCNE_DRIVEREMOVE, SHCNF_FLUSH, SHCNF_PATHW,
+        SHChangeNotify, SHCNE_DRIVEADD, SHCNE_DRIVEREMOVED, SHCNF_FLUSH, SHCNF_PATHW,
     };
 
     let letter = target.chars().next().unwrap_or('Z').to_ascii_uppercase();
@@ -140,7 +140,7 @@ pub fn notify_mount_change(target: &str, added: bool) {
     let event = if added {
         SHCNE_DRIVEADD
     } else {
-        SHCNE_DRIVEREMOVE
+        SHCNE_DRIVEREMOVED
     };
     unsafe {
         SHChangeNotify(
@@ -156,7 +156,7 @@ pub fn google_drive_mount_target(_settings: &GoogleDriveSettings) -> String {
     "G:".to_string()
 }
 
-pub fn seedbox_mount_target(settings: &SeedboxSettings) -> String {
+pub fn seedbox_mount_target(_settings: &SeedboxSettings) -> String {
     "S:".to_string()
 }
 
@@ -179,7 +179,6 @@ fn normalize_drive_letter(input: &str) -> Result<String, String> {
 }
 
 fn drive_exists(target: &str) -> bool {
-    use windows::core::w;
     use windows::Win32::Storage::FileSystem::GetVolumeInformationW;
 
     let letter = target.chars().next().unwrap_or('A').to_ascii_uppercase();
@@ -188,8 +187,6 @@ fn drive_exists(target: &str) -> bool {
     unsafe {
         GetVolumeInformationW(
             windows::core::PCWSTR(wide.as_ptr()),
-            None,
-            None,
             None,
             None,
             None,
