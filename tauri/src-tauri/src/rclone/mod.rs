@@ -445,6 +445,16 @@ impl RcloneManager {
         }
     }
 
+    pub fn refresh_configured_mount_targets(&self) {
+        let mut targets = configured_mount_targets();
+        let mut seen = HashSet::new();
+        targets.retain(|target| seen.insert(target.clone()));
+
+        for target in targets {
+            platform::notify_mount_change(&target, false);
+        }
+    }
+
     fn mount_remote(
         &self,
         app: &AppHandle,

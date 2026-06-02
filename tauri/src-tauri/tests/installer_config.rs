@@ -147,3 +147,17 @@ fn windows_platform_uses_current_windows_crate_api() {
         "use windows::core::w;\n    use windows::Win32::Storage::FileSystem::GetVolumeInformationW;"
     ));
 }
+
+#[test]
+fn tauri_startup_supports_clean_restart_and_windows_explorer_refresh() {
+    let lib = read_repo_file("tauri/src-tauri/src/lib.rs");
+    let commands = read_repo_file("tauri/src-tauri/src/commands.rs");
+    let rclone = read_repo_file("tauri/src-tauri/src/rclone/mod.rs");
+
+    assert!(lib.contains("let clean_restart = launch_args.iter().any(|a| a == \"--clean-restart\");"));
+    assert!(lib.contains("if clean_restart {\n                    if let Err(err) = log.clear()"));
+    assert!(commands.contains("cmd.args([\"--show-settings\", \"--clean-restart\"]);"));
+    assert!(lib.contains("state.rclone.refresh_configured_mount_targets();"));
+    assert!(rclone.contains("pub fn refresh_configured_mount_targets(&self)"));
+    assert!(rclone.contains("platform::notify_mount_change(&target, false);"));
+}

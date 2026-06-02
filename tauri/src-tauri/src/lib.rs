@@ -60,8 +60,10 @@ pub fn run() {
         logger: logger.clone(),
     };
 
+    let launch_args: Vec<String> = std::env::args().skip(1).collect();
+    let clean_restart = launch_args.iter().any(|a| a == "--clean-restart");
     let show_on_launch =
-        std::env::args().any(|a| a == "--show-settings") || !load_settings().start_minimized;
+        launch_args.iter().any(|a| a == "--show-settings") || !load_settings().start_minimized;
 
     tauri::Builder::default()
         .manage(state)
@@ -78,6 +80,11 @@ pub fn run() {
         .setup(move |app| {
             if let Ok(mut log) = logger.lock() {
                 log.set_app(app.handle().clone());
+                if clean_restart {
+                    if let Err(err) = log.clear() {
+                        eprintln!("Could not clear logs during clean restart: {err}");
+                    }
+                }
                 log.info("Cloud Drive Mount starting.");
             }
 
@@ -124,6 +131,7 @@ pub fn run() {
                 std::thread::spawn(move || {
                     if let Some(state) = app_handle.try_state::<AppState>() {
                         state.rclone.cleanup_stale_processes(&app_handle);
+                        state.rclone.refresh_configured_mount_targets();
 
                         if is_fuse_installed_cmd() {
                             attempt_auto_mount(&app_handle, state.inner());

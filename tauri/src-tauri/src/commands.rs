@@ -272,7 +272,7 @@ pub async fn restart_app(app: AppHandle, state: State<'_, AppState>) -> Result<(
 
         let exe = std::env::current_exe().map_err(|e| e.to_string())?;
         let mut cmd = Command::new(exe);
-        cmd.arg("--show-settings");
+        cmd.args(["--show-settings", "--clean-restart"]);
         cmd.spawn().map_err(|e| e.to_string())?;
         app.exit(0);
         Ok(())
