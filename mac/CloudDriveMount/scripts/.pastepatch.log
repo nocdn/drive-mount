@@ -1,9 +1,0 @@
-[2026-05-26T22:33:13.581Z] HISTORY saved /Users/bartosz/github/drive-mount/.git/pastepatch/history/2026-05-26T22-33-13-568Z-11538.json
-[2026-05-26T22:33:13.582Z] TOOL 1/9 {"tool":"replace_in_file","path":"mac/CloudDriveMount/Sources/CloudDriveMount/SettingsWindowController.swift","old":"<183 bytes>","new":"<237 bytes>"}
-[2026-05-26T22:33:13.583Z] ERROR Error: ENOENT: no such file or directory, open '/Users/bartosz/github/drive-mount/mac/CloudDriveMount/scripts/mac/CloudDriveMount/Sources/CloudDriveMount/SettingsWindowController.swift'
-    at async open (node:internal/fs/promises:640:25)
-    at async readFile (node:internal/fs/promises:1283:14)
-    at async replaceInFile (file:///Users/bartosz/.bun/install/global/node_modules/@nocdn/pastepatch/bin/cli.js:788:19)
-    at async executeToolCall (file:///Users/bartosz/.bun/install/global/node_modules/@nocdn/pastepatch/bin/cli.js:754:7)
-    at async runEdit (file:///Users/bartosz/.bun/install/global/node_modules/@nocdn/pastepatch/bin/cli.js:373:5)
-    at async main (file:///Users/bartosz/.bun/install/global/node_modules/@nocdn/pastepatch/bin/cli.js:50:7)

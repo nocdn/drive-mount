@@ -1,6 +1,6 @@
-# Cloud Drive Mount Tauri App
+# Cloud Drive Mount
 
-This is the Tauri version of Cloud Drive Mount for macOS and Windows.
+Cross-platform Tauri app for mounting cloud storage as a local drive on macOS and Windows, powered by `rclone`.
 
 ## Development
 

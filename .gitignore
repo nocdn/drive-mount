@@ -1,68 +1,34 @@
-# Build output (shared)
-**/bin/
-**/obj/
+# Build output
 release/
+dist/
+dist-ssr/
 
-# Windows
-win/**/publish/
-win/**/*.exe
-win/**/*.msi
-win/**/*.wixpdb
-win/**/*.zip
-win/**/rclone.exe
-win/**/winfsp.msi
-win/**/.vs/
-win/**/assets/
-win/**/*.user
-win/**/*.suo
+# Node
+node_modules/
+*.log
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+pnpm-debug.log*
+lerna-debug.log*
 
-# macOS
-mac/**/.build/
-mac/**/.swiftpm/
-mac/**/DerivedData/
-mac/**/build/
-mac/**/vendor/rclone/
-mac/**/*.app
-mac/**/*.dmg
-mac/**/*.pkg
-mac/**/*.ipa
-mac/**/*.dSYM.zip
-mac/**/*.dSYM
-mac/**/*.xcworkspace
-mac/**/xcuserdata/
-mac/**/*.xcuserstate
-mac/**/*.xcbkptlist
-mac/**/*.xccheckout
-mac/**/*.xcscmblueprint
-mac/**/*.pbxuser
-mac/**/!default.pbxuser
-mac/**/*.mode1v3
-mac/**/!default.mode1v3
-mac/**/*.mode2v3
-mac/**/!default.mode2v3
-mac/**/*.perspectivev3
-mac/**/!default.perspectivev3
-mac/**/*.moved-aside
-mac/**/*.hmap
-mac/**/*.gcno
-mac/**/*.gcda
-mac/**/Timeline.xctimeline
-mac/**/playground.xcworkspace
-mac/**/IDEWorkspaceChecks.plist
-mac/**/Carthage/
-mac/**/Pods/
-mac/**/.DS_Store
+# Tauri / Rust
+src-tauri/target/
+src-tauri/binaries/rclone-*
 
-# Tauri
-tauri/src-tauri/target/
-tauri/dist/
-tauri/src-tauri/binaries/rclone-*
-
-# OS/editor noise
-.vs/
-.vscode/
-*.user
+# Editor / IDE
+.vscode/*
+!.vscode/extensions.json
+.idea
 *.suo
+*.user
+*.ntvs*
+*.njsproj
+*.sln
+*.sw?
+
+# OS noise
+.DS_Store
 Thumbs.db
 Desktop.ini
-.DS_Store
+*.local

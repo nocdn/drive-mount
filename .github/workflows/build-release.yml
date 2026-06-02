@@ -84,17 +84,15 @@ jobs:
           targets: ${{ matrix.rust_target }}
 
       - name: Install frontend dependencies
-        working-directory: tauri
         run: bun install --frozen-lockfile
 
       - name: Prepare Tauri sidecars
-        working-directory: tauri
         env:
           TAURI_ENV_TARGET_TRIPLE: ${{ matrix.rust_target }}
         run: bun run prepare:sidecars
 
       - name: Run Tauri tests
-        working-directory: tauri/src-tauri
+        working-directory: src-tauri
         shell: bash
         run: |
           if [[ "${{ runner.os }}" == "Windows" ]]; then
@@ -107,7 +105,6 @@ jobs:
           fi
 
       - name: Write release version override
-        working-directory: tauri
         shell: bash
         run: |
           printf '{"version":"%s"}\n' '${{ needs.metadata.outputs.app_version }}' > tauri-release-version.json
@@ -117,14 +114,13 @@ jobs:
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         with:
-          projectPath: tauri
           tauriScript: bun run tauri
           args: ${{ matrix.tauri_args }} --config tauri-release-version.json
 
       - name: Prepare release asset
         shell: bash
         run: |
-          bundle_dir="tauri/src-tauri/target/${{ matrix.rust_target }}/release/bundle/${{ matrix.bundle_dir }}"
+          bundle_dir="src-tauri/target/${{ matrix.rust_target }}/release/bundle/${{ matrix.bundle_dir }}"
           case "${{ matrix.name }}" in
             macos-arm64) asset_name="${{ needs.metadata.outputs.mac_arm64_dmg_name }}" ;;
             macos-x64) asset_name="${{ needs.metadata.outputs.mac_x64_dmg_name }}" ;;

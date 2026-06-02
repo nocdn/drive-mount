@@ -14,7 +14,7 @@ fn read_json(path: &str) -> Value {
 }
 
 fn read_repo_file(path: &str) -> String {
-    let path = manifest_dir().join("../..").join(path);
+    let path = manifest_dir().join("..").join(path);
     let contents = fs::read_to_string(&path)
         .unwrap_or_else(|error| panic!("failed to read {}: {error}", path.display()));
     contents.replace("\r\n", "\n")
@@ -119,7 +119,7 @@ fn release_workflow_uses_tauri_installers_only() {
 
 #[test]
 fn sidecar_downloader_supports_ci_targets_without_powershell_args() {
-    let script = read_repo_file("tauri/scripts/download-rclone.mjs");
+    let script = read_repo_file("scripts/download-rclone.mjs");
 
     assert!(script.contains("rclone-aarch64-apple-darwin"));
     assert!(script.contains("rclone-x86_64-apple-darwin"));
@@ -132,7 +132,7 @@ fn sidecar_downloader_supports_ci_targets_without_powershell_args() {
 
 #[test]
 fn windows_platform_uses_current_windows_crate_api() {
-    let source = read_repo_file("tauri/src-tauri/src/rclone/platform/windows.rs");
+    let source = read_repo_file("src-tauri/src/rclone/platform/windows.rs");
 
     assert!(source.contains("SHCNE_DRIVEREMOVED"));
     assert!(!source.contains("SHCNE_DRIVEREMOVE,"));
@@ -150,9 +150,9 @@ fn windows_platform_uses_current_windows_crate_api() {
 
 #[test]
 fn tauri_startup_supports_clean_restart_and_windows_explorer_refresh() {
-    let lib = read_repo_file("tauri/src-tauri/src/lib.rs");
-    let commands = read_repo_file("tauri/src-tauri/src/commands.rs");
-    let rclone = read_repo_file("tauri/src-tauri/src/rclone/mod.rs");
+    let lib = read_repo_file("src-tauri/src/lib.rs");
+    let commands = read_repo_file("src-tauri/src/commands.rs");
+    let rclone = read_repo_file("src-tauri/src/rclone/mod.rs");
 
     assert!(lib.contains("let clean_restart = launch_args.iter().any(|a| a == \"--clean-restart\");"));
     assert!(lib.contains("if clean_restart {\n                    if let Err(err) = log.clear()"));
