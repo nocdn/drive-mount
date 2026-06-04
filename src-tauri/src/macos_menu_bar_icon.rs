@@ -31,7 +31,7 @@ fn try_load() -> Option<Image<'static>> {
     let rgba = decoded.to_rgba8();
     let (width, height) = rgba.dimensions();
 
-    Some(Image::new(rgba.into_raw(), width, height))
+    Some(Image::new_owned(rgba.into_raw(), width, height))
 }
 
 #[cfg(test)]
