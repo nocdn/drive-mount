@@ -72,12 +72,14 @@ pub fn rclone_cache_dir() -> PathBuf {
     app_data_dir().join("cache")
 }
 
+#[cfg(target_os = "macos")]
 pub fn drives_dir() -> PathBuf {
     dirs::home_dir()
         .unwrap_or_else(|| PathBuf::from("/"))
         .join("Drives")
 }
 
+#[cfg(target_os = "macos")]
 pub fn default_bucket_mount_path(bucket_name: &str) -> String {
     drives_dir()
         .join(bucket_name)
@@ -85,6 +87,7 @@ pub fn default_bucket_mount_path(bucket_name: &str) -> String {
         .into_owned()
 }
 
+#[cfg(target_os = "macos")]
 pub fn default_google_drive_mount_path() -> String {
     drives_dir()
         .join(GOOGLE_DRIVE_MOUNT_NAME)
@@ -118,6 +121,7 @@ pub fn normalize_seedbox_host(host: &str) -> String {
     normalized.trim().to_string()
 }
 
+#[cfg(target_os = "macos")]
 pub fn default_seedbox_mount_path() -> String {
     drives_dir()
         .join(SEEDBOX_MOUNT_NAME)
@@ -193,6 +197,7 @@ mod tests {
         assert_eq!(normalize_google_drive_path(":\\Team Drive"), "Team Drive");
     }
 
+    #[cfg(target_os = "macos")]
     #[test]
     fn default_service_mount_paths_use_stable_lowercase_names() {
         assert!(default_google_drive_mount_path().ends_with("/Drives/google-drive"));

@@ -136,6 +136,8 @@ fn windows_platform_uses_current_windows_crate_api() {
 
     assert!(source.contains("SHCNE_DRIVEREMOVED"));
     assert!(!source.contains("SHCNE_DRIVEREMOVE,"));
+    assert!(source.contains("ch.is_ascii_uppercase()"));
+    assert!(!source.contains("('A'..='Z').contains(&ch)"));
     assert!(
         source.contains("RegOpenKeyExW(HKEY_LOCAL_MACHINE, subkey, Some(0), KEY_READ, &mut key)")
     );

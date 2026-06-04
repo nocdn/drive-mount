@@ -96,10 +96,6 @@ pub fn wait_for_mount_ready(target: &str, timeout_secs: u64) -> bool {
     false
 }
 
-pub fn unmount_target(target: &str) -> bool {
-    unmount_target_with_rclone(target, None)
-}
-
 pub fn unmount_target_with_rclone(target: &str, rclone_path: Option<&Path>) -> bool {
     if !drive_exists(target) {
         return true;
@@ -178,7 +174,7 @@ fn normalize_drive_letter(input: &str) -> Result<String, String> {
         return Err("Drive letter must be a single letter A-Z.".to_string());
     }
     let ch = trimmed.chars().next().unwrap().to_ascii_uppercase();
-    if !('A'..='Z').contains(&ch) {
+    if !ch.is_ascii_uppercase() {
         return Err("Drive letter must be A-Z.".to_string());
     }
     if ch.to_string() == GOOGLE_DRIVE_WINDOWS_DRIVE {
