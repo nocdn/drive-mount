@@ -1,136 +1,33 @@
 import { invoke } from "@tauri-apps/api/core";
-import { LogicalSize } from "@tauri-apps/api/dpi";
 import { listen } from "@tauri-apps/api/event";
-import { getCurrentWebviewWindow } from "@tauri-apps/api/webviewWindow";
 import { isEnabled, enable, disable } from "@tauri-apps/plugin-autostart";
-
-type CloudProvider = "B2" | "GoogleDrive" | "Seedbox";
-type MountOperation = "mounting" | "unmounting" | "restarting" | null;
-
-interface BucketMount {
-  bucketName: string;
-  mountPath: string;
-  driveLetter: string;
-}
-
-interface GoogleDriveSettings {
-  remoteName: string;
-  remotePath: string;
-  rootFolderId: string;
-  mountPath: string;
-  driveLetter: string;
-}
-
-interface SeedboxSettings {
-  remoteName: string;
-  host: string;
-  username: string;
-  port: number;
-  remotePath: string;
-  mountPath: string;
-  driveLetter: string;
-  allowUnverifiedCertificate: boolean;
-  readOnly: boolean;
-}
-
-interface AppSettings {
-  selectedProvider: CloudProvider;
-  buckets: BucketMount[];
-  googleDrive: GoogleDriveSettings;
-  seedbox: SeedboxSettings;
-  startAtLogin: boolean;
-  startMinimized: boolean;
-}
-
-interface LoadedSettings {
-  settings: AppSettings;
-  hasSavedCredentials: boolean;
-  applicationKeyId: string;
-  applicationKey: string;
-  isGoogleDriveConfigured: boolean;
-  isSeedboxConfigured: boolean;
-  hasSavedSeedboxPassword: boolean;
-}
-
-interface LogLine {
-  level: string;
-  message: string;
-  timestamp: string;
-}
+import { createLogController } from "./logs";
+import type {
+  AppSettings,
+  BucketMount,
+  CloudProvider,
+  GoogleDriveSettings,
+  LoadedSettings,
+  LogLine,
+  MountOperation,
+  MountState,
+  SeedboxSettings,
+} from "./types";
+import { createValidationController } from "./validation";
+import {
+  installVisibilityWindowFit,
+  scheduleFitWindow,
+  startWindowFitWatcher,
+} from "./windowSizing";
 
 let platform = "macos";
 let mounted = false;
 let googleDriveConnected = false;
 let seedboxConfigured = false;
+let hasSavedB2Credentials = false;
+let hasSavedSeedboxPassword = false;
 let mountOperation: MountOperation = null;
 const logOperations = new Set<string>();
-const WINDOW_WIDTH = 560;
-const MAX_RENDERED_LOG_LINES = 1000;
-const pendingLogLines: string[] = [];
-const renderedLogNodes: Text[] = [];
-let logFlushScheduled = false;
-
-function measureRequiredInnerHeight(appEl: HTMLElement): number {
-  const lastChild = appEl.lastElementChild;
-  if (!(lastChild instanceof HTMLElement)) {
-    return Math.ceil(appEl.getBoundingClientRect().height);
-  }
-
-  const appTop = appEl.getBoundingClientRect().top;
-  const lastBottom = lastChild.getBoundingClientRect().bottom;
-  const paddingBottom = Number.parseFloat(getComputedStyle(appEl).paddingBottom) || 0;
-  return Math.ceil(lastBottom - appTop + paddingBottom);
-}
-
-async function fitWindowToContent() {
-  const appEl = document.getElementById("app");
-  if (!appEl) {
-    return;
-  }
-
-  const tauriWindow = getCurrentWebviewWindow();
-  let targetHeight = measureRequiredInnerHeight(appEl);
-
-  // setSize sets the inner (client) area — CSS pixels, not outer frame size.
-  await tauriWindow.setSize(new LogicalSize(WINDOW_WIDTH, targetHeight));
-
-  await new Promise<void>((resolve) => {
-    requestAnimationFrame(() => resolve());
-  });
-
-  const clippedBy = measureRequiredInnerHeight(appEl) - window.innerHeight;
-  if (clippedBy > 0) {
-    targetHeight += Math.ceil(clippedBy);
-    await tauriWindow.setSize(new LogicalSize(WINDOW_WIDTH, targetHeight));
-  }
-}
-
-function scheduleFitWindow() {
-  requestAnimationFrame(() => {
-    requestAnimationFrame(() => {
-      void fitWindowToContent();
-    });
-  });
-}
-
-function startWindowFitWatcher() {
-  const appEl = document.getElementById("app");
-  if (!appEl) {
-    return;
-  }
-
-  const observer = new ResizeObserver(() => {
-    scheduleFitWindow();
-  });
-  observer.observe(appEl);
-  scheduleFitWindow();
-}
-
-document.addEventListener("visibilitychange", () => {
-  if (document.visibilityState === "visible") {
-    scheduleFitWindow();
-  }
-});
 
 const providerSelect = document.getElementById("provider") as HTMLSelectElement;
 const b2Panel = document.getElementById("b2-panel") as HTMLDivElement;
@@ -141,8 +38,6 @@ const seedboxPortInput = document.getElementById("seedbox-port") as HTMLInputEle
 const seedboxUsernameInput = document.getElementById("seedbox-username") as HTMLInputElement;
 const seedboxPasswordInput = document.getElementById("seedbox-password") as HTMLInputElement;
 const seedboxRemotePathInput = document.getElementById("seedbox-remote-path") as HTMLInputElement;
-const seedboxDriveLetterInput = document.getElementById("seedbox-drive-letter") as HTMLInputElement;
-const seedboxDriveRow = document.getElementById("seedbox-drive-row") as HTMLDivElement;
 const seedboxReadOnlyCheckbox = document.getElementById("seedbox-read-only") as HTMLInputElement;
 const seedboxAllowUnverifiedCheckbox = document.getElementById("seedbox-allow-unverified") as HTMLInputElement;
 const seedboxHelp = document.getElementById("seedbox-help") as HTMLParagraphElement;
@@ -156,6 +51,7 @@ const btnTestGdrive = document.getElementById("btn-test-gdrive") as HTMLButtonEl
 const gdriveTestLoader = document.getElementById("gdrive-test-loader") as HTMLSpanElement;
 const keyIdInput = document.getElementById("key-id") as HTMLInputElement;
 const keyInput = document.getElementById("key") as HTMLInputElement;
+const b2CredentialsStatus = document.getElementById("b2-credentials-status") as HTMLParagraphElement;
 const bucketsList = document.getElementById("buckets-list") as HTMLDivElement;
 const bucketsHelp = document.getElementById("buckets-help") as HTMLParagraphElement;
 const addBucketBtn = document.getElementById("add-bucket") as HTMLButtonElement;
@@ -170,9 +66,30 @@ const btnCopyLogs = document.getElementById("btn-copy-logs") as HTMLButtonElemen
 const btnRestart = document.getElementById("btn-restart") as HTMLButtonElement;
 const logsOperationLoader = document.getElementById("logs-operation-loader") as HTMLSpanElement;
 const logsEl = document.getElementById("logs") as HTMLPreElement;
+const mountsList = document.getElementById("mounts-list") as HTMLDivElement;
+const { appendLog, clearRenderedLogs, flushPendingLogLines } = createLogController(logsEl);
+const { parseSeedboxPort, validateB2ForMount, validateSeedboxForConnection } =
+  createValidationController(
+    {
+      bucketsList,
+      keyIdInput,
+      keyInput,
+      seedboxHostInput,
+      seedboxPortInput,
+      seedboxUsernameInput,
+      seedboxPasswordInput,
+    },
+    {
+      platform: () => platform,
+      hasSavedB2Credentials: () => hasSavedB2Credentials,
+      hasSavedSeedboxPassword: () => hasSavedSeedboxPassword,
+      appendLog,
+      normalizeSeedboxHostInUi,
+    },
+  );
 const mountButtonLabel = btnMount.textContent ?? "Save and Mount All";
 const unmountButtonLabel = btnUnmount.textContent ?? "Unmount All";
-const restartButtonLabel = btnRestart.textContent ?? "Restart";
+const restartButtonLabel = btnRestart.textContent ?? "Restart Mounts";
 
 function isSelectableTarget(target: EventTarget | null): boolean {
   if (!(target instanceof Node)) {
@@ -207,47 +124,6 @@ function preventUiTextSelection() {
 
 preventUiTextSelection();
 
-function flushPendingLogLines() {
-  logFlushScheduled = false;
-  if (pendingLogLines.length === 0) {
-    return;
-  }
-
-  const shouldStickToBottom = logsEl.scrollTop + logsEl.clientHeight >= logsEl.scrollHeight - 8;
-  const lines = pendingLogLines.splice(0, pendingLogLines.length);
-  const fragment = document.createDocumentFragment();
-
-  for (const line of lines) {
-    const node = document.createTextNode(line);
-    renderedLogNodes.push(node);
-    fragment.appendChild(node);
-  }
-
-  logsEl.appendChild(fragment);
-
-  while (renderedLogNodes.length > MAX_RENDERED_LOG_LINES) {
-    renderedLogNodes.shift()?.remove();
-  }
-
-  if (shouldStickToBottom) {
-    logsEl.scrollTop = logsEl.scrollHeight;
-  }
-}
-
-function appendLog(line: LogLine) {
-  pendingLogLines.push(`[${line.timestamp}] [${line.level}] ${line.message}\n`);
-  if (!logFlushScheduled) {
-    logFlushScheduled = true;
-    requestAnimationFrame(flushPendingLogLines);
-  }
-}
-
-function clearRenderedLogs() {
-  pendingLogLines.length = 0;
-  renderedLogNodes.length = 0;
-  logsEl.textContent = "";
-}
-
 function waitForUiFeedback() {
   return new Promise<void>((resolve) => {
     requestAnimationFrame(() => {
@@ -275,7 +151,7 @@ function updateMountButtons() {
   btnMount.textContent = mountOperation === "mounting" ? "Mounting..." : mountButtonLabel;
   btnUnmount.textContent =
     mountOperation === "unmounting" || mountOperation === "restarting" ? "Unmounting..." : unmountButtonLabel;
-  btnRestart.textContent = mountOperation === "restarting" ? "Restarting..." : restartButtonLabel;
+  btnRestart.textContent = mountOperation === "restarting" ? "Restarting Mounts..." : restartButtonLabel;
   btnRestart.disabled = mountOperation !== null;
 
   if (mountOperation) {
@@ -286,6 +162,51 @@ function updateMountButtons() {
 
   btnMount.disabled = mounted;
   btnUnmount.disabled = !mounted;
+}
+
+function renderMountState(state: MountState) {
+  mounted = state.mounted;
+  mountsList.innerHTML = "";
+  const mounts = state.mounts ?? [];
+
+  if (mounts.length === 0) {
+    const empty = document.createElement("div");
+    empty.className = "mount-row-empty";
+    empty.textContent = "No active mounts.";
+    mountsList.appendChild(empty);
+  } else {
+    for (const mount of mounts) {
+      const row = document.createElement("div");
+      row.className = "mount-row";
+
+      const label = document.createElement("div");
+      label.textContent = mount.label;
+
+      const target = document.createElement("div");
+      target.className = "mount-target";
+      target.title = mount.target;
+      target.textContent = mount.target;
+
+      const openButton = document.createElement("button");
+      openButton.type = "button";
+      openButton.textContent = "Open";
+      openButton.addEventListener("click", () => {
+        void invoke("open_mount_target", { target: mount.target }).catch((err) => {
+          appendLog({
+            level: "ERROR",
+            message: String(err),
+            timestamp: new Date().toLocaleTimeString(),
+          });
+        });
+      });
+
+      row.append(label, target, openButton);
+      mountsList.appendChild(row);
+    }
+  }
+
+  updateMountButtons();
+  scheduleFitWindow();
 }
 
 function updateProviderPanels() {
@@ -313,23 +234,19 @@ function normalizeSeedboxHostInUi() {
 }
 
 function readSeedboxSettings(): SeedboxSettings {
-  const port = Number.parseInt(seedboxPortInput.value.trim(), 10) || 21;
   return {
-    remoteName: "seedbox",
     host: seedboxHostInput.value.trim(),
     username: seedboxUsernameInput.value.trim(),
-    port,
+    port: parseSeedboxPort(),
     remotePath: seedboxRemotePathInput.value.trim(),
-    mountPath: "",
-    driveLetter: seedboxDriveLetterInput.value.trim() || "S",
     allowUnverifiedCertificate: seedboxAllowUnverifiedCheckbox.checked,
     readOnly: seedboxReadOnlyCheckbox.checked,
   };
 }
 
 function refreshSeedboxConnectionUi() {
-  btnForgetSeedbox.classList.toggle("hidden", !seedboxConfigured);
-  seedboxHelp.textContent = seedboxConfigured
+  btnForgetSeedbox.classList.toggle("hidden", !seedboxConfigured && !hasSavedSeedboxPassword);
+  seedboxHelp.textContent = seedboxConfigured || hasSavedSeedboxPassword
     ? platform === "macos"
       ? "Seedbox FTPS is configured. Use Save and Mount All to mount it at ~/Drives/seedbox."
       : "Seedbox FTPS is configured. Use Save and Mount All to mount it as S: named seedbox."
@@ -337,17 +254,13 @@ function refreshSeedboxConnectionUi() {
 }
 
 function configureSeedboxPlatformUi() {
-  const isMac = platform === "macos";
-  seedboxDriveRow.classList.toggle("hidden", isMac);
+  scheduleFitWindow();
 }
 
 function readGoogleDriveSettings(): GoogleDriveSettings {
   return {
-    remoteName: "gdrive",
     remotePath: gdriveRemotePathInput.value.trim(),
     rootFolderId: gdriveRootFolderIdInput.value.trim(),
-    mountPath: "",
-    driveLetter: "G",
   };
 }
 
@@ -360,7 +273,7 @@ function refreshGoogleDriveConnectionUi() {
   gdriveHelp.classList.toggle("hidden", googleDriveConnected);
 }
 
-function createBucketRow(bucket: BucketMount = { bucketName: "", mountPath: "", driveLetter: "Z" }) {
+function createBucketRow(bucket: BucketMount = { bucketName: "", driveLetter: "Z" }) {
   const row = document.createElement("div");
   row.className = "bucket-row";
 
@@ -420,13 +333,11 @@ function collectBuckets(): BucketMount[] {
     if (platform === "macos") {
       buckets.push({
         bucketName,
-        mountPath: "",
         driveLetter: "",
       });
     } else {
       buckets.push({
         bucketName,
-        mountPath: "",
         driveLetter: second,
       });
     }
@@ -436,7 +347,7 @@ function collectBuckets(): BucketMount[] {
 
 function renderBuckets(buckets: BucketMount[]) {
   bucketsList.innerHTML = "";
-  const rows = buckets.length > 0 ? buckets : [{ bucketName: "", mountPath: "", driveLetter: "Z" }];
+  const rows = buckets.length > 0 ? buckets : [{ bucketName: "", driveLetter: "Z" }];
   rows.forEach((bucket) => createBucketRow(bucket));
   scheduleFitWindow();
 }
@@ -490,9 +401,16 @@ async function loadUi() {
   }
 
   const loaded = await invoke<LoadedSettings>("load_settings_cmd");
+  hasSavedB2Credentials = loaded.hasSavedCredentials;
+  hasSavedSeedboxPassword = loaded.hasSavedSeedboxPassword;
   providerSelect.value = loaded.settings.selectedProvider;
-  keyIdInput.value = loaded.applicationKeyId;
-  keyInput.value = loaded.applicationKey;
+  keyIdInput.value = "";
+  keyInput.value = "";
+  keyIdInput.placeholder = loaded.hasSavedCredentials ? "Saved. Leave blank to keep existing." : "";
+  keyInput.placeholder = loaded.hasSavedCredentials ? "Saved. Leave blank to keep existing." : "";
+  b2CredentialsStatus.textContent = loaded.hasSavedCredentials
+    ? "B2 credentials are saved. Leave both fields blank to keep using them."
+    : "B2 credentials are stored securely after a successful save or mount.";
   gdriveRemotePathInput.value = loaded.settings.googleDrive?.remotePath ?? "";
   gdriveRootFolderIdInput.value = loaded.settings.googleDrive?.rootFolderId ?? "";
 
@@ -501,7 +419,6 @@ async function loadUi() {
   seedboxUsernameInput.value = seedbox?.username ?? "";
   seedboxPortInput.value = String(seedbox?.port ?? 21);
   seedboxRemotePathInput.value = seedbox?.remotePath ?? "downloads";
-  seedboxDriveLetterInput.value = seedbox?.driveLetter ?? "S";
   seedboxReadOnlyCheckbox.checked = seedbox?.readOnly ?? true;
   seedboxAllowUnverifiedCheckbox.checked = seedbox?.allowUnverifiedCertificate ?? true;
   startAtLoginCheckbox.checked = loaded.settings.startAtLogin;
@@ -516,7 +433,7 @@ async function loadUi() {
   await applyAutostart(loaded.settings.startAtLogin);
 
   mounted = await invoke<boolean>("is_mounted");
-  updateMountButtons();
+  renderMountState({ mounted });
 
   const fuseOk = await invoke<boolean>("is_fuse_installed_cmd");
   if (!fuseOk) {
@@ -565,18 +482,32 @@ btnMount.addEventListener("click", async () => {
 
   try {
     const settings = collectSettings();
+    const seedboxNeedsValidation =
+      settings.seedbox.host.trim() !== "" || settings.seedbox.username.trim() !== "";
+    if (!validateB2ForMount(settings)) {
+      return;
+    }
+    if (seedboxNeedsValidation && !validateSeedboxForConnection(false)) {
+      return;
+    }
+
     await invoke("save_settings_cmd", { settings });
     await applyAutostart(settings.startAtLogin);
 
-    if (settings.selectedProvider === "B2") {
-      if (keyIdInput.value.trim() || keyInput.value.trim()) {
-        await invoke("save_b2_credentials_cmd", {
-          credentials: {
-            applicationKeyId: keyIdInput.value.trim(),
-            applicationKey: keyInput.value.trim(),
-          },
-        });
-      }
+    if (keyIdInput.value.trim() || keyInput.value.trim()) {
+      await invoke("save_b2_credentials_cmd", {
+        credentials: {
+          applicationKeyId: keyIdInput.value.trim(),
+          applicationKey: keyInput.value.trim(),
+        },
+      });
+      hasSavedB2Credentials = true;
+      keyIdInput.value = "";
+      keyInput.value = "";
+      keyIdInput.placeholder = "Saved. Leave blank to keep existing.";
+      keyInput.placeholder = "Saved. Leave blank to keep existing.";
+      b2CredentialsStatus.textContent =
+        "B2 credentials are saved. Leave both fields blank to keep using them.";
     }
 
     await invoke("mount_all", {
@@ -703,7 +634,10 @@ btnTestSeedbox.addEventListener("click", async () => {
     return;
   }
 
-  normalizeSeedboxHostInUi();
+  if (!validateSeedboxForConnection(true)) {
+    return;
+  }
+
   const settings = collectSettings();
   btnTestSeedbox.disabled = true;
   btnForgetSeedbox.disabled = true;
@@ -719,6 +653,7 @@ btnTestSeedbox.addEventListener("click", async () => {
       seedboxPasswordInput.value = "";
     }
     seedboxConfigured = true;
+    hasSavedSeedboxPassword = true;
     appendLog({
       level: "INFO",
       message: "Seedbox connection test succeeded.",
@@ -753,6 +688,7 @@ btnForgetSeedbox.addEventListener("click", async () => {
     await invoke("forget_seedbox_cmd", { seedbox: settings.seedbox });
     seedboxPasswordInput.value = "";
     seedboxConfigured = false;
+    hasSavedSeedboxPassword = false;
     appendLog({
       level: "INFO",
       message: "Seedbox is disconnected.",
@@ -777,7 +713,6 @@ for (const el of [
   seedboxPortInput,
   seedboxUsernameInput,
   seedboxRemotePathInput,
-  seedboxDriveLetterInput,
   seedboxReadOnlyCheckbox,
   seedboxAllowUnverifiedCheckbox,
 ]) {
@@ -853,7 +788,7 @@ btnRestart.addEventListener("click", async () => {
 
   try {
     await savePreferences();
-    await invoke("restart_app");
+    await invoke("restart_mounts");
   } catch (err) {
     appendLog({
       level: "ERROR",
@@ -865,13 +800,14 @@ btnRestart.addEventListener("click", async () => {
   }
 });
 
+installVisibilityWindowFit();
+
 void listen<LogLine>("log-line", (event) => {
   appendLog(event.payload);
 });
 
-void listen<{ mounted: boolean }>("mount-state-changed", (event) => {
-  mounted = event.payload.mounted;
-  updateMountButtons();
+void listen<MountState>("mount-state-changed", (event) => {
+  renderMountState(event.payload);
 });
 
 void loadUi();

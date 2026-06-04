@@ -149,15 +149,36 @@ fn windows_platform_uses_current_windows_crate_api() {
 }
 
 #[test]
-fn tauri_startup_supports_clean_restart_and_windows_explorer_refresh() {
+fn restart_mounts_keeps_app_running_and_refreshes_platform_mount_state() {
     let lib = read_repo_file("src-tauri/src/lib.rs");
     let commands = read_repo_file("src-tauri/src/commands.rs");
     let rclone = read_repo_file("src-tauri/src/rclone/mod.rs");
+    let frontend = read_repo_file("src/main.ts");
+    let index = read_repo_file("index.html");
 
-    assert!(lib.contains("let clean_restart = launch_args.iter().any(|a| a == \"--clean-restart\");"));
+    assert!(lib.contains("const ARG_AUTOSTART: &str = \"--autostart\";"));
+    assert!(lib.contains("const ARG_CLEAN_RESTART: &str = \"--clean-restart\";"));
+    assert!(lib.contains("const ARG_SHOW_SETTINGS: &str = \"--show-settings\";"));
+    assert!(lib.contains("Some(vec![ARG_AUTOSTART])"));
+    assert!(lib.contains("let clean_restart = launch_args.iter().any(|a| a == ARG_CLEAN_RESTART);"));
+    assert!(lib.contains("restart_mounts,"));
+    assert!(commands.contains("pub async fn restart_mounts("));
+    assert!(commands.contains("rclone.restart_mount_cleanup(&app);"));
+    assert!(commands.contains("let Some(request) = saved_mount_request() else"));
+    assert!(commands.contains("rclone.mount_all(&app, &request)"));
+    assert!(commands.contains("Mount background processes restarted."));
+    assert!(frontend.contains("await invoke(\"restart_mounts\");"));
+    assert!(frontend.contains("Restarting Mounts..."));
+    assert!(index.contains("Restart Mounts"));
     assert!(lib.contains("if clean_restart {\n                    if let Err(err) = log.clear()"));
-    assert!(commands.contains("cmd.args([\"--show-settings\", \"--clean-restart\"]);"));
     assert!(lib.contains("state.rclone.refresh_configured_mount_targets();"));
     assert!(rclone.contains("pub fn refresh_configured_mount_targets(&self)"));
+    assert!(rclone.contains("pub fn restart_mount_cleanup(&self, app: &AppHandle)"));
+    assert!(rclone.contains("cleanup_windows_rclone_processes(rclone_path.as_deref());"));
     assert!(rclone.contains("platform::notify_mount_change(&target, false);"));
+    assert!(!lib.contains("RESTART_PARENT_PID"));
+    assert!(!commands.contains("restart_app"));
+    assert!(!commands.contains("tauri::process::current_binary"));
+    assert!(!commands.contains("detach_restart_command"));
+    assert!(!commands.contains("Spawned clean restart replacement process"));
 }

@@ -26,6 +26,7 @@
           <label for="key">B2 Application Key</label>
           <input id="key" type="password" autocomplete="off" />
         </div>
+        <p class="help-text" id="b2-credentials-status"></p>
 
         <div class="buckets-intro">
           <div class="buckets-heading">Buckets</div>
@@ -81,10 +82,6 @@
           <label for="seedbox-remote-path">Remote Folder</label>
           <input id="seedbox-remote-path" type="text" autocomplete="off" value="downloads" />
         </div>
-        <div id="seedbox-drive-row" class="field-row hidden">
-          <label for="seedbox-drive-letter">Drive</label>
-          <input id="seedbox-drive-letter" type="text" maxlength="3" autocomplete="off" value="S" />
-        </div>
         <div class="checkbox-group">
           <label class="checkbox-row">
             <input type="checkbox" id="seedbox-read-only" checked />
@@ -119,7 +116,12 @@
         <button type="button" id="btn-mount">Save and Mount All</button>
         <button type="button" id="btn-unmount">Unmount All</button>
         <button type="button" id="btn-open-logs">Open Log Folder</button>
-        <button type="button" id="btn-restart">Restart</button>
+        <button type="button" id="btn-restart">Restart Mounts</button>
+      </div>
+
+      <div class="mount-status">
+        <div class="mounts-heading">Mounted Targets</div>
+        <div id="mounts-list" class="mounts-list"></div>
       </div>
 
       <div class="logs-header">

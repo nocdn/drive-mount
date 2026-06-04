@@ -13,57 +13,31 @@ pub enum CloudProvider {
 
 pub const GDRIVE_REMOTE: &str = "gdrive";
 pub const SEEDBOX_REMOTE: &str = "seedbox";
+#[cfg(windows)]
+pub const GOOGLE_DRIVE_WINDOWS_DRIVE: &str = "G";
+#[cfg(windows)]
+pub const SEEDBOX_WINDOWS_DRIVE: &str = "S";
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, Default)]
 #[serde(rename_all = "camelCase")]
 pub struct BucketMount {
     pub bucket_name: String,
     #[serde(default)]
-    pub mount_path: String,
-    #[serde(default)]
     pub drive_letter: String,
 }
 
-#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, Default)]
 #[serde(rename_all = "camelCase")]
 pub struct GoogleDriveSettings {
-    #[serde(default = "default_gdrive_remote")]
-    pub remote_name: String,
     #[serde(default)]
     pub remote_path: String,
     #[serde(default)]
     pub root_folder_id: String,
-    #[serde(default)]
-    pub mount_path: String,
-    #[serde(default = "default_gdrive_drive_letter")]
-    pub drive_letter: String,
-}
-
-fn default_gdrive_remote() -> String {
-    GDRIVE_REMOTE.to_string()
-}
-
-fn default_gdrive_drive_letter() -> String {
-    "G".to_string()
-}
-
-impl Default for GoogleDriveSettings {
-    fn default() -> Self {
-        Self {
-            remote_name: default_gdrive_remote(),
-            remote_path: String::new(),
-            root_folder_id: String::new(),
-            mount_path: String::new(),
-            drive_letter: default_gdrive_drive_letter(),
-        }
-    }
 }
 
 impl GoogleDriveSettings {
     pub fn normalized(&self) -> Self {
         let mut settings = self.clone();
-        settings.remote_name = GDRIVE_REMOTE.to_string();
-        settings.drive_letter = default_gdrive_drive_letter();
         settings.remote_path = crate::paths::normalize_google_drive_path(&settings.remote_path);
         settings.root_folder_id = settings.root_folder_id.trim().to_string();
         settings
@@ -73,8 +47,6 @@ impl GoogleDriveSettings {
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct SeedboxSettings {
-    #[serde(default = "default_seedbox_remote")]
-    pub remote_name: String,
     #[serde(default)]
     pub host: String,
     #[serde(default)]
@@ -83,18 +55,10 @@ pub struct SeedboxSettings {
     pub port: u16,
     #[serde(default = "default_seedbox_remote_path")]
     pub remote_path: String,
-    #[serde(default)]
-    pub mount_path: String,
-    #[serde(default = "default_seedbox_drive_letter")]
-    pub drive_letter: String,
     #[serde(default = "default_true")]
     pub allow_unverified_certificate: bool,
     #[serde(default = "default_true")]
     pub read_only: bool,
-}
-
-fn default_seedbox_remote() -> String {
-    SEEDBOX_REMOTE.to_string()
 }
 
 fn default_seedbox_port() -> u16 {
@@ -105,20 +69,13 @@ fn default_seedbox_remote_path() -> String {
     "downloads".to_string()
 }
 
-fn default_seedbox_drive_letter() -> String {
-    "S".to_string()
-}
-
 impl Default for SeedboxSettings {
     fn default() -> Self {
         Self {
-            remote_name: default_seedbox_remote(),
             host: String::new(),
             username: String::new(),
             port: default_seedbox_port(),
             remote_path: default_seedbox_remote_path(),
-            mount_path: String::new(),
-            drive_letter: default_seedbox_drive_letter(),
             allow_unverified_certificate: true,
             read_only: true,
         }
@@ -128,16 +85,11 @@ impl Default for SeedboxSettings {
 impl SeedboxSettings {
     pub fn normalized(&self) -> Self {
         let mut settings = self.clone();
-        settings.remote_name = SEEDBOX_REMOTE.to_string();
-        settings.drive_letter = default_seedbox_drive_letter();
         settings.host = crate::paths::normalize_seedbox_host(&settings.host);
         settings.username = settings.username.trim().to_string();
         settings.remote_path = crate::paths::normalize_remote_path(&settings.remote_path);
         if settings.remote_path.is_empty() {
             settings.remote_path = default_seedbox_remote_path();
-        }
-        if settings.port == 0 {
-            settings.port = default_seedbox_port();
         }
         settings
     }
@@ -154,7 +106,7 @@ pub struct AppSettings {
     pub google_drive: GoogleDriveSettings,
     #[serde(default)]
     pub seedbox: SeedboxSettings,
-    #[serde(default = "default_true")]
+    #[serde(default)]
     pub start_at_login: bool,
     #[serde(default)]
     pub start_minimized: bool,
@@ -175,9 +127,26 @@ impl Default for AppSettings {
             buckets: default_buckets(),
             google_drive: GoogleDriveSettings::default(),
             seedbox: SeedboxSettings::default(),
-            start_at_login: true,
+            start_at_login: false,
             start_minimized: false,
         }
+    }
+}
+
+impl AppSettings {
+    pub fn normalized(&self) -> Self {
+        let mut settings = self.clone();
+        settings.google_drive = settings.google_drive.normalized();
+        settings.seedbox = settings.seedbox.normalized();
+        settings.buckets = settings
+            .buckets
+            .iter()
+            .map(|bucket| BucketMount {
+                bucket_name: bucket.bucket_name.trim().to_string(),
+                drive_letter: bucket.drive_letter.trim().to_string(),
+            })
+            .collect();
+        settings
     }
 }
 
@@ -193,8 +162,6 @@ pub struct B2Credentials {
 pub struct LoadedSettings {
     pub settings: AppSettings,
     pub has_saved_credentials: bool,
-    pub application_key_id: String,
-    pub application_key: String,
     pub is_google_drive_configured: bool,
     pub is_seedbox_configured: bool,
     pub has_saved_seedbox_password: bool,
@@ -222,8 +189,22 @@ pub struct LogLine {
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
+pub struct MountEntry {
+    pub label: String,
+    pub target: String,
+    pub provider: CloudProvider,
+    pub status: String,
+    pub pid: Option<u32>,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, Default)]
+#[serde(rename_all = "camelCase")]
 pub struct MountState {
     pub mounted: bool,
+    #[serde(default)]
+    pub mounts: Vec<MountEntry>,
+    #[serde(default)]
+    pub errors: Vec<String>,
 }
 
 #[cfg(test)]
@@ -265,58 +246,42 @@ mod tests {
 
         assert_eq!(settings.selected_provider, CloudProvider::BackblazeB2);
         assert_eq!(settings.buckets, vec![BucketMount::default()]);
-        assert_eq!(settings.google_drive.remote_name, GDRIVE_REMOTE);
-        assert_eq!(settings.google_drive.drive_letter, "G");
-        assert_eq!(settings.seedbox.remote_name, SEEDBOX_REMOTE);
         assert_eq!(settings.seedbox.port, 21);
         assert_eq!(settings.seedbox.remote_path, "downloads");
-        assert_eq!(settings.seedbox.drive_letter, "S");
         assert!(settings.seedbox.allow_unverified_certificate);
         assert!(settings.seedbox.read_only);
-        assert!(settings.start_at_login);
+        assert!(!settings.start_at_login);
         assert!(!settings.start_minimized);
     }
 
     #[test]
-    fn google_drive_normalized_restores_reserved_values_and_cleans_paths() {
+    fn google_drive_normalized_cleans_paths() {
         let settings = GoogleDriveSettings {
-            remote_name: "user-provided".to_string(),
             remote_path: " :/Team\\Shared ".to_string(),
             root_folder_id: " root-id \n".to_string(),
-            mount_path: "  ~/Drives/GDrive ".to_string(),
-            drive_letter: "Z".to_string(),
         }
         .normalized();
 
-        assert_eq!(settings.remote_name, GDRIVE_REMOTE);
         assert_eq!(settings.remote_path, "Team/Shared");
         assert_eq!(settings.root_folder_id, "root-id");
-        assert_eq!(settings.mount_path, "  ~/Drives/GDrive ");
-        assert_eq!(settings.drive_letter, "G");
     }
 
     #[test]
-    fn seedbox_normalized_restores_reserved_values_and_defaults() {
+    fn seedbox_normalized_cleans_values_and_defaults() {
         let settings = SeedboxSettings {
-            remote_name: "custom".to_string(),
             host: " FTPS://seedbox.example.com/// ".to_string(),
             username: " user ".to_string(),
-            port: 0,
+            port: 2121,
             remote_path: " :/media\\shows ".to_string(),
-            mount_path: "/mnt/seedbox".to_string(),
-            drive_letter: "X".to_string(),
             allow_unverified_certificate: false,
             read_only: false,
         }
         .normalized();
 
-        assert_eq!(settings.remote_name, SEEDBOX_REMOTE);
         assert_eq!(settings.host, "seedbox.example.com");
         assert_eq!(settings.username, "user");
-        assert_eq!(settings.port, 21);
+        assert_eq!(settings.port, 2121);
         assert_eq!(settings.remote_path, "media/shows");
-        assert_eq!(settings.mount_path, "/mnt/seedbox");
-        assert_eq!(settings.drive_letter, "S");
         assert!(!settings.allow_unverified_certificate);
         assert!(!settings.read_only);
     }
@@ -337,8 +302,6 @@ mod tests {
         let loaded = LoadedSettings {
             settings: AppSettings::default(),
             has_saved_credentials: true,
-            application_key_id: "id".to_string(),
-            application_key: "key".to_string(),
             is_google_drive_configured: true,
             is_seedbox_configured: false,
             has_saved_seedbox_password: true,
@@ -346,11 +309,34 @@ mod tests {
 
         let value = serde_json::to_value(loaded).unwrap();
         assert_eq!(value["hasSavedCredentials"], true);
-        assert_eq!(value["applicationKeyId"], "id");
-        assert_eq!(value["applicationKey"], "key");
+        assert!(value.get("applicationKeyId").is_none());
+        assert!(value.get("applicationKey").is_none());
         assert_eq!(value["isGoogleDriveConfigured"], true);
         assert_eq!(value["isSeedboxConfigured"], false);
         assert_eq!(value["hasSavedSeedboxPassword"], true);
+    }
+
+    #[test]
+    fn mount_state_serializes_mounted_flag_and_entries() {
+        let state = MountState {
+            mounted: true,
+            mounts: vec![MountEntry {
+                label: "Google Drive".to_string(),
+                target: "G:".to_string(),
+                provider: CloudProvider::GoogleDrive,
+                status: "mounted".to_string(),
+                pid: Some(42),
+            }],
+            errors: Vec::new(),
+        };
+
+        let value = serde_json::to_value(state).unwrap();
+
+        assert_eq!(value["mounted"], true);
+        assert_eq!(value["mounts"][0]["label"], "Google Drive");
+        assert_eq!(value["mounts"][0]["provider"], "GoogleDrive");
+        assert_eq!(value["mounts"][0]["pid"], 42);
+        assert!(value["errors"].as_array().unwrap().is_empty());
     }
 
     #[test]
@@ -358,9 +344,9 @@ mod tests {
         let json = r#"{
             "applicationKeyId": "id",
             "applicationKey": "key",
-            "buckets": [{ "bucketName": "bucket", "mountPath": "/mnt/bucket" }],
-            "googleDrive": { "remotePath": "docs" },
-            "seedbox": { "host": "ftp://example.com", "username": "user" },
+            "buckets": [{ "bucketName": "bucket", "driveLetter": "P" }],
+            "googleDrive": { "remotePath": "docs", "remoteName": "legacy" },
+            "seedbox": { "host": "ftp://example.com", "username": "user", "driveLetter": "S" },
             "seedboxPassword": "secret",
             "selectedProvider": "Seedbox"
         }"#;
@@ -370,7 +356,7 @@ mod tests {
         assert_eq!(request.application_key_id, "id");
         assert_eq!(request.application_key, "key");
         assert_eq!(request.buckets[0].bucket_name, "bucket");
-        assert_eq!(request.google_drive.remote_name, GDRIVE_REMOTE);
+        assert_eq!(request.buckets[0].drive_letter, "P");
         assert_eq!(request.google_drive.remote_path, "docs");
         assert_eq!(request.seedbox.host, "ftp://example.com");
         assert_eq!(request.seedbox.username, "user");

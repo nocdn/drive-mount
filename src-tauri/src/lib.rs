@@ -40,16 +40,24 @@ use tauri::{
 use tauri_plugin_autostart::MacosLauncher;
 
 use commands::{
-    attempt_auto_mount, browse_folder, clear_logs, configure_google_drive_cmd,
-    disconnect_google_drive_cmd, emit_mount_state, forget_seedbox_cmd, get_platform,
-    is_fuse_installed_cmd, is_google_drive_configured_cmd, is_mounted, is_seedbox_configured_cmd,
-    load_settings_cmd, mount_all, open_log_folder, restart_app, save_b2_credentials_cmd,
+    attempt_auto_mount, clear_logs, configure_google_drive_cmd, disconnect_google_drive_cmd,
+    emit_mount_state, forget_seedbox_cmd, get_platform, is_fuse_installed_cmd,
+    is_google_drive_configured_cmd, is_mounted, is_seedbox_configured_cmd, load_settings_cmd,
+    mount_all, open_log_folder, open_mount_target, restart_mounts, save_b2_credentials_cmd,
     save_settings_cmd, setup_window_events, show_settings_window, test_google_drive_connection_cmd,
     test_seedbox_connection_cmd, unmount_all, AppState,
 };
 use logging::LogEmitter;
 use rclone::RcloneManager;
 use settings::load_settings;
+
+const ARG_AUTOSTART: &str = "--autostart";
+const ARG_CLEAN_RESTART: &str = "--clean-restart";
+const ARG_SHOW_SETTINGS: &str = "--show-settings";
+
+fn should_show_on_launch(launch_args: &[String], start_minimized: bool) -> bool {
+    launch_args.iter().any(|arg| arg == ARG_SHOW_SETTINGS) || !start_minimized
+}
 
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
 pub fn run() {
@@ -61,9 +69,8 @@ pub fn run() {
     };
 
     let launch_args: Vec<String> = std::env::args().skip(1).collect();
-    let clean_restart = launch_args.iter().any(|a| a == "--clean-restart");
-    let show_on_launch =
-        launch_args.iter().any(|a| a == "--show-settings") || !load_settings().start_minimized;
+    let clean_restart = launch_args.iter().any(|a| a == ARG_CLEAN_RESTART);
+    let show_on_launch = should_show_on_launch(&launch_args, load_settings().start_minimized);
 
     tauri::Builder::default()
         .manage(state)
@@ -72,10 +79,8 @@ pub fn run() {
         }))
         .plugin(tauri_plugin_autostart::init(
             MacosLauncher::LaunchAgent,
-            Some(vec!["--show-settings"]),
+            Some(vec![ARG_AUTOSTART]),
         ))
-        .plugin(tauri_plugin_dialog::init())
-        .plugin(tauri_plugin_shell::init())
         .plugin(tauri_plugin_opener::init())
         .setup(move |app| {
             if let Ok(mut log) = logger.lock() {
@@ -163,9 +168,9 @@ pub fn run() {
             test_seedbox_connection_cmd,
             forget_seedbox_cmd,
             open_log_folder,
+            open_mount_target,
             clear_logs,
-            browse_folder,
-            restart_app,
+            restart_mounts,
         ])
         .build(tauri::generate_context!())
         .expect("error while running tauri application")
@@ -180,4 +185,26 @@ pub fn run() {
             }
             _ => {}
         });
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    fn args(values: &[&str]) -> Vec<String> {
+        values.iter().map(|value| value.to_string()).collect()
+    }
+
+    #[test]
+    fn launch_visibility_respects_explicit_show_and_start_minimized() {
+        assert!(!should_show_on_launch(&args(&[]), true));
+        assert!(should_show_on_launch(&args(&[]), false));
+        assert!(should_show_on_launch(&args(&["--show-settings"]), true));
+        assert!(!should_show_on_launch(&args(&["--autostart"]), true));
+        assert!(should_show_on_launch(&args(&["--autostart"]), false));
+        assert!(should_show_on_launch(
+            &args(&["--show-settings", "--clean-restart"]),
+            true,
+        ));
+    }
 }

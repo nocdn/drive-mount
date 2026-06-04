@@ -1,4 +1,5 @@
 mod config;
+mod discovery;
 mod platform;
 
 use std::collections::{HashMap, HashSet};
@@ -8,22 +9,27 @@ use std::sync::{Arc, Mutex};
 use std::thread;
 use std::time::Duration;
 
-use tauri::{AppHandle, Emitter, Manager};
+use tauri::{AppHandle, Emitter};
 
-use crate::credentials::{delete_google_drive_config, save_google_drive_config};
+use crate::credentials::{
+    delete_google_drive_config, load_b2_credentials, load_seedbox_password,
+    save_google_drive_config, save_seedbox_password,
+};
 #[cfg(not(test))]
 use crate::credentials::{
     has_saved_google_drive_config, has_saved_seedbox_password, load_google_drive_config,
 };
 use crate::logging::{redact_sensitive_line, LogEmitter};
 use crate::models::{
-    B2Credentials, BucketMount, CloudProvider, GoogleDriveSettings, MountRequest, MountState,
-    SeedboxSettings, GDRIVE_REMOTE, SEEDBOX_REMOTE,
+    B2Credentials, BucketMount, CloudProvider, GoogleDriveSettings, MountEntry, MountRequest,
+    MountState, SeedboxSettings, GDRIVE_REMOTE, SEEDBOX_REMOTE,
 };
 use crate::paths::{
     rclone_cache_dir, rclone_config_path, GOOGLE_DRIVE_MOUNT_NAME, SEEDBOX_MOUNT_NAME,
 };
 use crate::settings::{ensure_app_data_dir, load_settings};
+
+use discovery::{find_bundled_rclone, find_rclone_in_path};
 
 pub use platform::is_fuse_installed;
 
@@ -32,6 +38,8 @@ const MOUNT_STARTUP_TIMEOUT_SECS: u64 = 90;
 
 struct RunningMount {
     child: Child,
+    label: String,
+    provider: CloudProvider,
 }
 
 pub struct RcloneManager {
@@ -52,12 +60,11 @@ impl RcloneManager {
     }
 
     pub fn is_mounted(&self) -> bool {
-        let mut mounts = self.mounts.lock().unwrap();
-        mounts.retain(|_, m| match m.child.try_wait() {
-            Ok(Some(_)) => false,
-            _ => true,
-        });
-        !mounts.is_empty()
+        self.mount_state().mounted
+    }
+
+    pub fn mount_state(&self) -> MountState {
+        current_mount_state(&self.mounts)
     }
 
     pub fn resolve_rclone_path(&self, app: &AppHandle) -> Result<PathBuf, String> {
@@ -74,6 +81,10 @@ impl RcloneManager {
 
         if let Some(path) = find_rclone_in_path() {
             *self.rclone_path.lock().unwrap() = Some(path.clone());
+            self.log_info(&format!(
+                "Using rclone from PATH instead of a bundled sidecar: {}",
+                path.display()
+            ));
             return Ok(path);
         }
 
@@ -95,30 +106,7 @@ impl RcloneManager {
 
         let google_drive = request.google_drive.normalized();
         let seedbox = request.seedbox.normalized();
-        let has_b2_buckets = has_actionable_b2_buckets(&request.buckets);
         ensure_google_drive_config()?;
-
-        if request.selected_provider == CloudProvider::GoogleDrive
-            && !has_b2_buckets
-            && !is_google_drive_configured()
-        {
-            return Err(
-                "Google Drive is not connected. Click Connect Google Drive first.".to_string(),
-            );
-        }
-
-        if request.selected_provider == CloudProvider::Seedbox
-            && !has_b2_buckets
-            && !is_google_drive_configured()
-            && !is_seedbox_configured()
-        {
-            let password = resolve_seedbox_password(&request.seedbox_password)?;
-            if password.is_empty() {
-                return Err(
-                    "Seedbox is not configured. Enter your FTPS password and click Test Connection first.".to_string(),
-                );
-            }
-        }
 
         if has_seedbox_settings(&seedbox) {
             if !is_valid_seedbox(&seedbox) {
@@ -126,6 +114,9 @@ impl RcloneManager {
             }
             let password = resolve_seedbox_password(&request.seedbox_password)?;
             self.configure_seedbox(app, &seedbox, &password)?;
+            if !request.seedbox_password.trim().is_empty() {
+                save_seedbox_password(request.seedbox_password.trim())?;
+            }
         }
 
         let specs = build_all_mount_specs(request, &google_drive, &seedbox)?;
@@ -137,17 +128,8 @@ impl RcloneManager {
             .iter()
             .any(|spec| spec.remote_path.starts_with("b2remote:"))
         {
-            let key_id = request.application_key_id.trim();
-            let key = request.application_key.trim();
-            if key_id.is_empty() || key.is_empty() {
-                return Err(
-                    "Enter your Backblaze B2 Application Key ID and Application Key.".to_string(),
-                );
-            }
-            ensure_b2_config(&B2Credentials {
-                application_key_id: key_id.to_string(),
-                application_key: key.to_string(),
-            })?;
+            let credentials = resolve_b2_credentials(request)?;
+            ensure_b2_config(&credentials)?;
             self.log_info(&format!(
                 "B2 rclone config written to: {}",
                 rclone_config_path().display()
@@ -169,7 +151,7 @@ impl RcloneManager {
             }
         }
 
-        let _ = app.emit("mount-state-changed", MountState { mounted: true });
+        let _ = app.emit("mount-state-changed", self.mount_state());
         Ok(())
     }
 
@@ -310,16 +292,26 @@ impl RcloneManager {
         if !is_valid_seedbox(&seedbox) {
             return Err("Enter Seedbox host, username, port, and mount target.".to_string());
         }
-        if password.is_empty() {
-            if is_seedbox_configured() {
+        let password = password.trim();
+        let resolved_password = if password.is_empty() {
+            if config::has_config_section(&rclone_config_path(), SEEDBOX_REMOTE) {
                 self.log_info("Using existing Seedbox rclone config.");
                 return Ok(());
             }
-            return Err("Enter your FTPS password.".to_string());
-        }
+            let saved_password = load_seedbox_password()?.unwrap_or_default();
+            if saved_password.is_empty() {
+                return Err(
+                    "Seedbox config is missing. Enter your FTPS password and click Test Connection."
+                        .to_string(),
+                );
+            }
+            saved_password
+        } else {
+            password.to_string()
+        };
 
         let rclone_path = self.resolve_rclone_path(app)?;
-        let obscured_password = obscure_password(&rclone_path, password)?;
+        let obscured_password = obscure_password(&rclone_path, &resolved_password)?;
 
         let lines = vec![
             "type = ftp".to_string(),
@@ -413,9 +405,20 @@ impl RcloneManager {
         for target in &targets {
             self.cleanup_mount_folder(target);
         }
-        let _ = app.emit("mount-state-changed", MountState { mounted: false });
+        let _ = app.emit("mount-state-changed", self.mount_state());
     }
 
+    pub fn restart_mount_cleanup(&self, app: &AppHandle) {
+        self.log_info(
+            "Mount restart requested; unmounting active drives and cleaning stale rclone processes.",
+        );
+        self.unmount_all(app);
+        self.cleanup_stale_processes(app);
+        self.refresh_configured_mount_targets();
+        self.log_info("Mount restart cleanup completed.");
+    }
+
+    #[cfg(not(windows))]
     pub fn cleanup_stale_processes(&self, app: &AppHandle) {
         let Ok(rclone_path) = self.resolve_rclone_path(app) else {
             return;
@@ -445,6 +448,18 @@ impl RcloneManager {
         }
     }
 
+    #[cfg(windows)]
+    pub fn cleanup_stale_processes(&self, app: &AppHandle) {
+        let rclone_path = self.resolve_rclone_path(app).ok();
+
+        for target in configured_mount_targets() {
+            platform::unmount_target_with_rclone(&target, rclone_path.as_deref());
+            platform::notify_mount_change(&target, false);
+        }
+
+        cleanup_windows_rclone_processes(rclone_path.as_deref());
+    }
+
     pub fn refresh_configured_mount_targets(&self) {
         let mut targets = configured_mount_targets();
         let mut seen = HashSet::new();
@@ -463,7 +478,7 @@ impl RcloneManager {
     ) -> Result<(), String> {
         platform::prepare_mount_target(&spec.target)?;
         if platform::is_mount_ready(&spec.target) {
-            platform::unmount_target(&spec.target);
+            platform::unmount_target_with_rclone(&spec.target, Some(rclone_path));
             thread::sleep(Duration::from_millis(500));
         }
         if platform::is_mount_ready(&spec.target) {
@@ -500,7 +515,7 @@ impl RcloneManager {
         if !platform::wait_for_mount_ready(&target, MOUNT_STARTUP_TIMEOUT_SECS) {
             let _ = child.kill();
             let _ = child.wait();
-            platform::unmount_target(&target);
+            platform::unmount_target_with_rclone(&target, Some(rclone_path));
             return Err(format!(
                 "{label} did not finish mounting in time. The partial mount was cleaned up."
             ));
@@ -509,10 +524,14 @@ impl RcloneManager {
         platform::notify_mount_change(&target, true);
         self.log_info(&format!("Mount startup completed for {label}"));
 
-        self.mounts
-            .lock()
-            .unwrap()
-            .insert(target.clone(), RunningMount { child });
+        self.mounts.lock().unwrap().insert(
+            target.clone(),
+            RunningMount {
+                child,
+                label: label.clone(),
+                provider: spec.provider,
+            },
+        );
 
         let mounts = self.mounts.clone();
         let intentional = self.intentional_stops.clone();
@@ -538,7 +557,7 @@ impl RcloneManager {
                             "Mount process exited unexpectedly for {label_watch}"
                         ));
                     }
-                    let _ = app_handle.emit("mount-state-changed", MountState { mounted: false });
+                    let _ = app_handle.emit("mount-state-changed", current_mount_state(&mounts));
                 }
                 break;
             }
@@ -555,22 +574,21 @@ impl RcloneManager {
         self.log_info(&format!("Unmounting {target}"));
 
         if let Some(mut running) = self.mounts.lock().unwrap().remove(target) {
-            platform::unmount_target(target);
+            self.unmount_platform_target(app, target);
             let _ = running.child.kill();
             let _ = running.child.wait();
         } else {
-            platform::unmount_target(target);
+            self.unmount_platform_target(app, target);
         }
 
         platform::notify_mount_change(target, false);
         self.cleanup_mount_folder(target);
-        let still_mounted = self.is_mounted();
-        let _ = app.emit(
-            "mount-state-changed",
-            MountState {
-                mounted: still_mounted,
-            },
-        );
+        let _ = app.emit("mount-state-changed", self.mount_state());
+    }
+
+    fn unmount_platform_target(&self, app: &AppHandle, target: &str) -> bool {
+        let rclone_path = self.resolve_rclone_path(app).ok();
+        platform::unmount_target_with_rclone(target, rclone_path.as_deref())
     }
 
     fn cleanup_mount_folder(&self, target: &str) {
@@ -597,6 +615,7 @@ impl RcloneManager {
 #[derive(Clone, Debug)]
 struct MountSpec {
     label: String,
+    provider: CloudProvider,
     remote_path: String,
     target: String,
     volume_name: String,
@@ -631,6 +650,7 @@ fn build_mount_command_args(spec: &MountSpec, cache_dir: &Path) -> Vec<String> {
     args
 }
 
+#[cfg(test)]
 fn has_actionable_b2_buckets(buckets: &[BucketMount]) -> bool {
     buckets
         .iter()
@@ -710,6 +730,7 @@ fn build_google_drive_spec(google_drive: &GoogleDriveSettings) -> Result<MountSp
 
     Ok(MountSpec {
         label: "Google Drive".to_string(),
+        provider: CloudProvider::GoogleDrive,
         remote_path: build_google_drive_remote_path(google_drive),
         target,
         volume_name: build_google_drive_volume_name(google_drive),
@@ -737,6 +758,7 @@ fn build_seedbox_spec(seedbox: &SeedboxSettings) -> Result<MountSpec, String> {
 
     Ok(MountSpec {
         label: "Seedbox".to_string(),
+        provider: CloudProvider::Seedbox,
         remote_path: build_seedbox_remote_path(seedbox),
         target,
         volume_name: SEEDBOX_MOUNT_NAME.to_string(),
@@ -779,6 +801,9 @@ fn is_valid_seedbox(seedbox: &SeedboxSettings) -> bool {
     if seedbox.host.is_empty() || seedbox.username.is_empty() {
         return false;
     }
+    if seedbox.host.contains('/') || seedbox.host.contains('\\') {
+        return false;
+    }
     if seedbox.port == 0 {
         return false;
     }
@@ -790,6 +815,7 @@ pub fn is_seedbox_configured() -> bool {
     #[cfg(not(test))]
     {
         has_saved_seedbox_password().unwrap_or(false)
+            || config::has_config_section(&rclone_config_path(), SEEDBOX_REMOTE)
     }
 
     #[cfg(test)]
@@ -876,6 +902,7 @@ fn build_mount_specs(buckets: &[BucketMount]) -> Result<Vec<MountSpec>, String> 
 
         specs.push(MountSpec {
             label: format!("B2 {bucket_name}"),
+            provider: CloudProvider::BackblazeB2,
             remote_path: format!("{B2_REMOTE}:{bucket_name}"),
             target,
             volume_name: bucket_name,
@@ -897,86 +924,83 @@ fn ensure_b2_config(credentials: &B2Credentials) -> Result<(), String> {
     config::upsert_config_section(&rclone_config_path(), B2_REMOTE, &lines)
 }
 
-fn find_bundled_rclone(app: &AppHandle) -> Option<PathBuf> {
-    for name in sidecar_filenames() {
-        if let Ok(resource_dir) = app.path().resource_dir() {
-            let candidate = resource_dir.join(name);
-            if candidate.exists() {
-                return Some(candidate);
-            }
-        }
+#[cfg(windows)]
+fn cleanup_windows_rclone_processes(rclone_path: Option<&Path>) {
+    let config = rclone_config_path().to_string_lossy().to_string();
+    let rclone = rclone_path
+        .map(|path| path.to_string_lossy().to_string())
+        .unwrap_or_default();
+    let script = format!(
+        r#"$config = {config};
+$rclone = {rclone};
+Get-CimInstance Win32_Process -Filter "name = 'rclone.exe'" |
+  Where-Object {{
+    $_.CommandLine -like '* mount *' -and
+    (($_.CommandLine -like "*$config*") -or ($rclone -ne '' -and $_.ExecutablePath -eq $rclone))
+  }} |
+  ForEach-Object {{
+    Stop-Process -Id $_.ProcessId -Force -ErrorAction SilentlyContinue
+  }}"#,
+        config = powershell_single_quoted(&config),
+        rclone = powershell_single_quoted(&rclone)
+    );
 
-        if let Ok(exe) = std::env::current_exe() {
-            if let Some(dir) = exe.parent() {
-                let candidate = dir.join(name);
-                if candidate.exists() {
-                    return Some(candidate);
-                }
-            }
-        }
-    }
-
-    None
+    let _ = Command::new("powershell.exe")
+        .args([
+            "-NoProfile",
+            "-ExecutionPolicy",
+            "Bypass",
+            "-Command",
+            &script,
+        ])
+        .status();
 }
 
-fn sidecar_filenames() -> &'static [&'static str] {
-    #[cfg(all(target_os = "macos", target_arch = "aarch64"))]
-    {
-        &["rclone-aarch64-apple-darwin"]
-    }
-    #[cfg(all(target_os = "macos", target_arch = "x86_64"))]
-    {
-        &["rclone-x86_64-apple-darwin"]
-    }
-    #[cfg(windows)]
-    {
-        &["rclone-x86_64-pc-windows-msvc.exe"]
-    }
-    #[cfg(not(any(
-        all(target_os = "macos", target_arch = "aarch64"),
-        all(target_os = "macos", target_arch = "x86_64"),
-        windows
-    )))]
-    {
-        &[] as &[&str]
-    }
+#[cfg(windows)]
+fn powershell_single_quoted(value: &str) -> String {
+    format!("'{}'", value.replace('\'', "''"))
 }
 
-fn find_rclone_in_path() -> Option<PathBuf> {
-    #[cfg(windows)]
-    let name = "rclone.exe";
-    #[cfg(not(windows))]
-    let name = "rclone";
+fn resolve_b2_credentials(request: &MountRequest) -> Result<B2Credentials, String> {
+    let requested_key_id = request.application_key_id.trim();
+    let requested_key = request.application_key.trim();
 
-    if let Ok(path_var) = std::env::var("PATH") {
-        #[cfg(windows)]
-        let sep = ';';
-        #[cfg(not(windows))]
-        let sep = ':';
-
-        for dir in path_var.split(sep) {
-            let candidate = PathBuf::from(dir.trim()).join(name);
-            if candidate.exists() {
-                return Some(candidate);
-            }
+    if !requested_key_id.is_empty() || !requested_key.is_empty() {
+        if requested_key_id.is_empty() || requested_key.is_empty() {
+            return Err(
+                "Enter both your Backblaze B2 Application Key ID and Application Key.".to_string(),
+            );
         }
+        return Ok(B2Credentials {
+            application_key_id: requested_key_id.to_string(),
+            application_key: requested_key.to_string(),
+        });
     }
 
-    #[cfg(target_os = "macos")]
-    {
-        for candidate in [
-            "/opt/homebrew/bin/rclone",
-            "/usr/local/bin/rclone",
-            "/usr/bin/rclone",
-        ] {
-            let path = PathBuf::from(candidate);
-            if path.exists() {
-                return Some(path);
-            }
-        }
-    }
+    load_b2_credentials()?.ok_or_else(|| {
+        "Enter your Backblaze B2 Application Key ID and Application Key.".to_string()
+    })
+}
 
-    None
+fn current_mount_state(mounts: &Arc<Mutex<HashMap<String, RunningMount>>>) -> MountState {
+    let mut mounts = mounts.lock().unwrap();
+    mounts.retain(|_, mount| !matches!(mount.child.try_wait(), Ok(Some(_))));
+    let entries = mounts
+        .iter()
+        .map(|(target, mount)| MountEntry {
+            label: mount.label.clone(),
+            target: target.clone(),
+            provider: mount.provider,
+            status: "mounted".to_string(),
+            pid: Some(mount.child.id()),
+        })
+        .collect::<Vec<_>>();
+
+    MountState {
+        mounted: !entries.is_empty(),
+        mounts: entries,
+        errors: Vec::new(),
+    }
 }
 
 fn stream_output(
@@ -1121,9 +1145,9 @@ mod tests {
     fn mountable_bucket(name: &str, target: &str) -> BucketMount {
         #[cfg(target_os = "macos")]
         {
+            let _ = target;
             BucketMount {
                 bucket_name: name.to_string(),
-                mount_path: target.to_string(),
                 drive_letter: String::new(),
             }
         }
@@ -1131,7 +1155,6 @@ mod tests {
         {
             BucketMount {
                 bucket_name: name.to_string(),
-                mount_path: String::new(),
                 drive_letter: target.to_string(),
             }
         }
@@ -1146,10 +1169,8 @@ mod tests {
     fn valid_google_drive_settings(target: &str) -> GoogleDriveSettings {
         #[cfg(target_os = "macos")]
         {
-            GoogleDriveSettings {
-                mount_path: target.to_string(),
-                ..GoogleDriveSettings::default()
-            }
+            let _ = target;
+            GoogleDriveSettings::default()
         }
         #[cfg(windows)]
         {
@@ -1162,10 +1183,10 @@ mod tests {
     fn valid_seedbox_settings(target: &str) -> SeedboxSettings {
         #[cfg(target_os = "macos")]
         {
+            let _ = target;
             SeedboxSettings {
                 host: "seedbox.example.com".to_string(),
                 username: "user".to_string(),
-                mount_path: target.to_string(),
                 ..SeedboxSettings::default()
             }
         }
@@ -1185,12 +1206,10 @@ mod tests {
         assert!(!has_actionable_b2_buckets(&[]));
         assert!(!has_actionable_b2_buckets(&[BucketMount {
             bucket_name: "   ".to_string(),
-            mount_path: "/tmp/blank".to_string(),
             drive_letter: "P".to_string(),
         }]));
         assert!(has_actionable_b2_buckets(&[BucketMount {
             bucket_name: "photos".to_string(),
-            mount_path: String::new(),
             drive_letter: String::new(),
         }]));
     }
@@ -1256,6 +1275,7 @@ mod tests {
 
         let spec = MountSpec {
             label: "B2 nocdn-main".to_string(),
+            provider: CloudProvider::BackblazeB2,
             remote_path: "b2remote:nocdn-main".to_string(),
             target: crate::paths::default_bucket_mount_path("nocdn-main"),
             volume_name: "nocdn-main".to_string(),
@@ -1336,15 +1356,44 @@ mod tests {
     }
 
     #[test]
+    fn resolve_b2_credentials_rejects_partial_frontend_credentials() {
+        let mut request = empty_request();
+        request.application_key_id = "id".to_string();
+
+        assert_eq!(
+            resolve_b2_credentials(&request).unwrap_err(),
+            "Enter both your Backblaze B2 Application Key ID and Application Key."
+        );
+
+        request.application_key_id.clear();
+        request.application_key = "key".to_string();
+
+        assert_eq!(
+            resolve_b2_credentials(&request).unwrap_err(),
+            "Enter both your Backblaze B2 Application Key ID and Application Key."
+        );
+    }
+
+    #[cfg(any(target_os = "macos", windows))]
+    #[test]
+    fn seedbox_validation_rejects_host_paths() {
+        let seedbox = SeedboxSettings {
+            host: "seedbox.example.com/downloads".to_string(),
+            username: "user".to_string(),
+            ..valid_seedbox_settings("")
+        };
+
+        assert!(!is_valid_seedbox(&seedbox));
+    }
+
+    #[test]
     fn complete_b2_config_requires_real_credentials_and_mount_target() {
         let bucket_with_mount = BucketMount {
             bucket_name: "photos".to_string(),
-            mount_path: "/Volumes/photos".to_string(),
             drive_letter: String::new(),
         };
         let bucket_with_drive = BucketMount {
             bucket_name: "docs".to_string(),
-            mount_path: String::new(),
             drive_letter: "P".to_string(),
         };
         let creds = Some(B2Credentials {
@@ -1352,20 +1401,22 @@ mod tests {
             application_key: "key".to_string(),
         });
 
-        assert!(!has_complete_b2_config(&None, &[bucket_with_mount.clone()]));
+        assert!(!has_complete_b2_config(
+            &None,
+            std::slice::from_ref(&bucket_with_mount)
+        ));
         assert!(!has_complete_b2_config(
             &Some(B2Credentials {
                 application_key_id: "   ".to_string(),
                 application_key: "key".to_string(),
             }),
-            &[bucket_with_mount.clone()]
+            std::slice::from_ref(&bucket_with_mount)
         ));
         #[cfg(windows)]
         assert!(!has_complete_b2_config(
             &creds,
             &[BucketMount {
                 bucket_name: "photos".to_string(),
-                mount_path: "  ".to_string(),
                 drive_letter: "  ".to_string(),
             }]
         ));
@@ -1374,7 +1425,6 @@ mod tests {
             &creds,
             &[BucketMount {
                 bucket_name: "photos".to_string(),
-                mount_path: "  ".to_string(),
                 drive_letter: "  ".to_string(),
             }]
         ));

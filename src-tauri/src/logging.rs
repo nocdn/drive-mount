@@ -107,7 +107,19 @@ fn rotate_if_needed() -> Result<(), String> {
 
 pub fn redact_sensitive_line(line: &str) -> String {
     let mut result = line.to_string();
-    for marker in ["key=", "pass=", "token=", "secret="] {
+    for marker in [
+        "key=",
+        "pass=",
+        "password=",
+        "token=",
+        "access_token=",
+        "refresh_token=",
+        "secret=",
+        "client_secret=",
+        "application_key=",
+        "applicationkey=",
+        "authorization=",
+    ] {
         let mut search_from = 0;
         loop {
             let lower = result.to_lowercase();
@@ -125,7 +137,55 @@ pub fn redact_sensitive_line(line: &str) -> String {
             search_from = value_start + 3;
         }
     }
+
+    for marker in [
+        "\"key\"",
+        "\"pass\"",
+        "\"password\"",
+        "\"token\"",
+        "\"access_token\"",
+        "\"refresh_token\"",
+        "\"secret\"",
+        "\"client_secret\"",
+        "\"applicationKey\"",
+        "\"authorization\"",
+    ] {
+        redact_jsonish_value(&mut result, marker);
+    }
+
     result
+}
+
+fn redact_jsonish_value(result: &mut String, marker: &str) {
+    let mut search_from = 0;
+    loop {
+        let lower = result.to_lowercase();
+        let Some(relative_idx) = lower[search_from..].find(&marker.to_lowercase()) else {
+            break;
+        };
+        let marker_start = search_from + relative_idx;
+        let after_marker = marker_start + marker.len();
+        let Some(colon_relative) = result[after_marker..].find(':') else {
+            break;
+        };
+        let mut value_start = after_marker + colon_relative + 1;
+        while result[value_start..].starts_with([' ', '\t']) {
+            value_start += 1;
+        }
+        if !result[value_start..].starts_with('"') {
+            search_from = value_start;
+            continue;
+        }
+        value_start += 1;
+        let Some(value_end_relative) = result[value_start..].find('"') else {
+            break;
+        };
+        let value_end = value_start + value_end_relative;
+        if value_end > value_start {
+            result.replace_range(value_start..value_end, "***");
+        }
+        search_from = value_start + 3;
+    }
 }
 
 #[cfg(test)]
@@ -143,10 +203,22 @@ mod tests {
             "pass=*** token=*** secret=***"
         );
         assert_eq!(
+            redact_sensitive_line("client_secret=abc access_token=tok refresh_token=ref"),
+            "client_secret=*** access_token=*** refresh_token=***"
+        );
+        assert_eq!(
+            redact_sensitive_line("applicationKey=b2-secret Authorization=BearerToken"),
+            "applicationKey=*** Authorization=***"
+        );
+        assert_eq!(
             redact_sensitive_line("TOKEN=abc&key=def"),
             "TOKEN=***&key=***"
         );
         assert_eq!(redact_sensitive_line("key=end-of-line"), "key=***");
+        assert_eq!(
+            redact_sensitive_line(r#"token blob {"access_token":"abc","refresh_token": "def"}"#),
+            r#"token blob {"access_token":"***","refresh_token": "***"}"#
+        );
     }
 
     #[test]

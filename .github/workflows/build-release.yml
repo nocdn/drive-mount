@@ -91,6 +91,17 @@ jobs:
           TAURI_ENV_TARGET_TRIPLE: ${{ matrix.rust_target }}
         run: bun run prepare:sidecars
 
+      - name: Build frontend
+        run: bun run build:frontend
+
+      - name: Check Rust formatting
+        working-directory: src-tauri
+        run: cargo fmt --check
+
+      - name: Run Rust clippy
+        working-directory: src-tauri
+        run: cargo clippy --locked --all-targets -- -D warnings
+
       - name: Run Tauri tests
         working-directory: src-tauri
         shell: bash

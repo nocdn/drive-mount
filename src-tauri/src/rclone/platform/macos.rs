@@ -89,17 +89,20 @@ pub fn unmount_target(target: &str) -> bool {
     ];
 
     for (executable, args) in attempts {
-        if Path::new(executable).exists() {
-            if run_command_with_timeout(executable, args, UNMOUNT_TIMEOUT)
-                && !is_mount_point(target)
-            {
-                return true;
-            }
+        if Path::new(executable).exists()
+            && run_command_with_timeout(executable, args, UNMOUNT_TIMEOUT)
+            && !is_mount_point(target)
+        {
+            return true;
         }
     }
 
     wait_for_mount_release(target, UNMOUNT_TIMEOUT);
     !is_mount_point(target)
+}
+
+pub fn unmount_target_with_rclone(target: &str, _rclone_path: Option<&Path>) -> bool {
+    unmount_target(target)
 }
 
 pub fn cleanup_mount_target(target: &str) -> Result<bool, String> {
@@ -215,7 +218,6 @@ mod tests {
     fn normalize_mount_target_uses_default_bucket_path_when_blank() {
         let bucket = BucketMount {
             bucket_name: " photos ".to_string(),
-            mount_path: "   ".to_string(),
             drive_letter: String::new(),
         };
 
@@ -226,10 +228,9 @@ mod tests {
     }
 
     #[test]
-    fn normalize_mount_target_ignores_custom_path() {
+    fn normalize_mount_target_uses_bucket_name_only() {
         let bucket = BucketMount {
             bucket_name: "docs".to_string(),
-            mount_path: "~/Mounts/docs".to_string(),
             drive_letter: String::new(),
         };
 
@@ -243,7 +244,6 @@ mod tests {
         for bucket_name in ["../outside", "nested/bucket", "."] {
             let bucket = BucketMount {
                 bucket_name: bucket_name.to_string(),
-                mount_path: String::new(),
                 drive_letter: String::new(),
             };
 
@@ -297,24 +297,16 @@ mod tests {
     }
 
     #[test]
-    fn google_drive_and_seedbox_targets_ignore_custom_mount_paths() {
+    fn google_drive_and_seedbox_targets_use_fixed_service_paths() {
         assert!(google_drive_mount_target(&GoogleDriveSettings::default())
             .ends_with("/Drives/google-drive"));
         assert!(seedbox_mount_target(&SeedboxSettings::default()).ends_with("/Drives/seedbox"));
 
-        let google = GoogleDriveSettings {
-            mount_path: "~/Google".to_string(),
-            ..GoogleDriveSettings::default()
-        };
-        let seedbox = SeedboxSettings {
-            mount_path: "/Volumes/Seedbox".to_string(),
-            ..SeedboxSettings::default()
-        };
-
-        assert!(google_drive_mount_target(&google).ends_with("/Drives/google-drive"));
-        assert!(seedbox_mount_target(&seedbox).ends_with("/Drives/seedbox"));
-        assert!(validate_mount_target(&google_drive_mount_target(&google)).is_ok());
-        assert!(validate_mount_target(&seedbox_mount_target(&seedbox)).is_ok());
+        assert!(
+            validate_mount_target(&google_drive_mount_target(&GoogleDriveSettings::default()))
+                .is_ok()
+        );
+        assert!(validate_mount_target(&seedbox_mount_target(&SeedboxSettings::default())).is_ok());
     }
 
     #[test]

@@ -1,10 +1,11 @@
-use std::path::Path;
+use std::path::{Path, PathBuf};
 use std::process::Command;
 use std::time::{Duration, Instant};
 
 use crate::models::BucketMount;
 use crate::models::GoogleDriveSettings;
 use crate::models::SeedboxSettings;
+use crate::models::{GOOGLE_DRIVE_WINDOWS_DRIVE, SEEDBOX_WINDOWS_DRIVE};
 
 const RC_BASE_PORT: u16 = 5572;
 
@@ -96,6 +97,10 @@ pub fn wait_for_mount_ready(target: &str, timeout_secs: u64) -> bool {
 }
 
 pub fn unmount_target(target: &str) -> bool {
+    unmount_target_with_rclone(target, None)
+}
+
+pub fn unmount_target_with_rclone(target: &str, rclone_path: Option<&Path>) -> bool {
     if !drive_exists(target) {
         return true;
     }
@@ -103,8 +108,11 @@ pub fn unmount_target(target: &str) -> bool {
     let letter = target.trim_end_matches(':');
     let port = rc_port_for_drive(target);
     let rc_url = format!("http://127.0.0.1:{port}");
+    let rclone = rclone_path
+        .map(Path::to_path_buf)
+        .unwrap_or_else(|| PathBuf::from("rclone"));
 
-    let _ = Command::new("rclone")
+    let _ = Command::new(&rclone)
         .args([
             "rc",
             "mount/unmount",
@@ -115,7 +123,7 @@ pub fn unmount_target(target: &str) -> bool {
         ])
         .output();
 
-    let _ = Command::new("rclone")
+    let _ = Command::new(&rclone)
         .args([
             "rc",
             "core/quit",
@@ -157,11 +165,11 @@ pub fn notify_mount_change(target: &str, added: bool) {
 }
 
 pub fn google_drive_mount_target(_settings: &GoogleDriveSettings) -> String {
-    "G:".to_string()
+    format!("{GOOGLE_DRIVE_WINDOWS_DRIVE}:")
 }
 
 pub fn seedbox_mount_target(_settings: &SeedboxSettings) -> String {
-    "S:".to_string()
+    format!("{SEEDBOX_WINDOWS_DRIVE}:")
 }
 
 fn normalize_drive_letter(input: &str) -> Result<String, String> {
@@ -173,11 +181,15 @@ fn normalize_drive_letter(input: &str) -> Result<String, String> {
     if !('A'..='Z').contains(&ch) {
         return Err("Drive letter must be A-Z.".to_string());
     }
-    if ch == 'G' {
-        return Err("Drive letter G: is reserved for Google Drive.".to_string());
+    if ch.to_string() == GOOGLE_DRIVE_WINDOWS_DRIVE {
+        return Err(format!(
+            "Drive letter {GOOGLE_DRIVE_WINDOWS_DRIVE}: is reserved for Google Drive."
+        ));
     }
-    if ch == 'S' {
-        return Err("Drive letter S: is reserved for Seedbox.".to_string());
+    if ch.to_string() == SEEDBOX_WINDOWS_DRIVE {
+        return Err(format!(
+            "Drive letter {SEEDBOX_WINDOWS_DRIVE}: is reserved for Seedbox."
+        ));
     }
     Ok(ch.to_string())
 }

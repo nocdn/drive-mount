@@ -29,6 +29,11 @@ pub fn unmount_target(_target: &str) -> bool {
 }
 
 #[cfg(not(any(target_os = "macos", windows)))]
+pub fn unmount_target_with_rclone(_target: &str, _rclone_path: Option<&std::path::Path>) -> bool {
+    false
+}
+
+#[cfg(not(any(target_os = "macos", windows)))]
 pub fn cleanup_mount_target(_target: &str) -> Result<bool, String> {
     Ok(false)
 }

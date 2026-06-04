@@ -14,15 +14,6 @@
     "core:window:allow-inner-size",
     "core:window:allow-outer-size",
     "core:tray:default",
-    "opener:default",
-    "shell:default",
-    "dialog:default",
-    {
-      "identifier": "shell:allow-execute",
-      "allow": [
-        { "name": "binaries/rclone", "sidecar": true, "args": true },
-        { "name": "rclone", "cmd": "rclone", "args": true }
-      ]
-    }
+    "opener:default"
   ]
 }

@@ -49,6 +49,17 @@ input:focus-visible {
   line-height: 1.4;
 }
 
+.field-error {
+  margin: 0;
+  color: #b00020;
+  font-size: 12px;
+  line-height: 1.35;
+}
+
+input.invalid {
+  border-color: #b00020;
+}
+
 .stub-panel {
   align-items: center;
   justify-content: center;
@@ -77,6 +88,42 @@ input:focus-visible {
   align-items: center;
   gap: 6px;
   margin-top: 4px;
+}
+
+.mount-status {
+  display: flex;
+  flex-direction: column;
+  gap: 5px;
+}
+
+.mounts-heading {
+  font-size: 13px;
+}
+
+.mounts-list {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  min-height: 18px;
+  font-size: 12.5px;
+}
+
+.mount-row {
+  display: grid;
+  grid-template-columns: 104px 1fr auto;
+  gap: 6px;
+  align-items: center;
+}
+
+.mount-row-empty {
+  color: #666;
+}
+
+.mount-target {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
 }
 
 .logs-heading {

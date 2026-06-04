@@ -70,7 +70,6 @@ mod tests {
             selected_provider: CloudProvider::Seedbox,
             buckets: vec![BucketMount {
                 bucket_name: "photos".to_string(),
-                mount_path: "/Volumes/photos".to_string(),
                 drive_letter: "P".to_string(),
             }],
             start_at_login: false,
@@ -130,13 +129,9 @@ mod tests {
 
         assert_eq!(settings.selected_provider, CloudProvider::GoogleDrive);
         assert_eq!(settings.buckets[0].bucket_name, "docs");
-        assert_eq!(settings.buckets[0].mount_path, "");
-        assert_eq!(
-            settings.google_drive.remote_name,
-            crate::models::GDRIVE_REMOTE
-        );
+        assert_eq!(settings.buckets[0].drive_letter, "");
         assert_eq!(settings.seedbox.remote_path, "downloads");
-        assert!(settings.start_at_login);
+        assert!(!settings.start_at_login);
         assert!(settings.start_minimized);
 
         crate::test_support::clear_test_dirs();
