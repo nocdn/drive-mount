@@ -34,8 +34,7 @@ export interface B2Credentials {
   applicationKey: string;
 }
 
-export interface LoadedSettings {
-  settings: AppSettings;
+export interface LoadedCredentials {
   hasSavedCredentials: boolean;
   b2Credentials?: B2Credentials | null;
   isGoogleDriveConfigured: boolean;

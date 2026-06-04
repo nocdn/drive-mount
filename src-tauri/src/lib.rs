@@ -43,12 +43,12 @@ use tauri::{
 use tauri_plugin_autostart::MacosLauncher;
 
 use commands::{
-    attempt_auto_mount, clear_logs, configure_google_drive_cmd, disconnect_google_drive_cmd,
+    attempt_auto_mount_cmd, clear_logs, configure_google_drive_cmd, disconnect_google_drive_cmd,
     emit_mount_state, forget_seedbox_cmd, get_platform, is_fuse_installed_cmd,
-    is_google_drive_configured_cmd, is_mounted, is_seedbox_configured_cmd, load_settings_cmd,
-    mount_all, open_log_folder, open_mount_target, restart_mounts, save_b2_credentials_cmd,
-    save_settings_cmd, setup_window_events, show_settings_window, test_google_drive_connection_cmd,
-    test_seedbox_connection_cmd, unmount_all, AppState,
+    is_google_drive_configured_cmd, is_mounted, is_seedbox_configured_cmd, load_credentials_cmd,
+    load_settings_cmd, mount_all, open_log_folder, open_mount_target, restart_mounts,
+    save_b2_credentials_cmd, save_settings_cmd, setup_window_events, show_settings_window,
+    test_google_drive_connection_cmd, test_seedbox_connection_cmd, unmount_all, AppState,
 };
 use logging::LogEmitter;
 use rclone::RcloneManager;
@@ -69,6 +69,7 @@ pub fn run() {
     let state = AppState {
         rclone: rclone.clone(),
         logger: logger.clone(),
+        auto_mount_attempted: Arc::new(Mutex::new(false)),
     };
 
     let launch_args: Vec<String> = std::env::args().skip(1).collect();
@@ -154,10 +155,10 @@ pub fn run() {
                         state.rclone.cleanup_stale_processes(&app_handle);
                         state.rclone.refresh_configured_mount_targets();
 
-                        if is_fuse_installed_cmd() {
-                            attempt_auto_mount(&app_handle, state.inner());
-                        } else if let Ok(log) = state.logger.lock() {
-                            log.info("FUSE provider not detected on launch.");
+                        if !is_fuse_installed_cmd() {
+                            if let Ok(log) = state.logger.lock() {
+                                log.info("FUSE provider not detected on launch.");
+                            }
                         }
 
                         emit_mount_state(&app_handle, state.inner());
@@ -170,6 +171,8 @@ pub fn run() {
         .invoke_handler(tauri::generate_handler![
             get_platform,
             load_settings_cmd,
+            load_credentials_cmd,
+            attempt_auto_mount_cmd,
             save_settings_cmd,
             save_b2_credentials_cmd,
             mount_all,

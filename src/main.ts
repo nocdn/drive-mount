@@ -7,7 +7,7 @@ import type {
   BucketMount,
   CloudProvider,
   GoogleDriveSettings,
-  LoadedSettings,
+  LoadedCredentials,
   LogLine,
   MountOperation,
   MountState,
@@ -344,9 +344,7 @@ async function savePreferences() {
   await applyAutostart(settings.startAtLogin);
 }
 
-async function loadUi() {
-  platform = await invoke<string>("get_platform");
-
+function configurePlatformUi() {
   if (platform === "windows") {
     bucketsHelp.textContent = "Each bucket is mounted directly to its own drive letter.";
     startMinimizedLabel.textContent = "Start minimized to tray";
@@ -357,11 +355,37 @@ async function loadUi() {
     gdriveHelp.textContent =
       "Click Connect Google Drive and sign in through the browser. After it connects, use Save and Mount All. Google Drive mounts as a folder at ~/Drives/google-drive.";
   }
+}
 
-  const loaded = await invoke<LoadedSettings>("load_settings_cmd");
+function renderSettings(settings: AppSettings) {
+  providerSelect.value = settings.selectedProvider;
+  keyIdInput.placeholder = "";
+  keyInput.placeholder = "";
+  keyIdInput.value = "";
+  keyInput.value = "";
+  b2CredentialsStatus.textContent = "Unlocking saved credentials...";
+  gdriveRemotePathInput.value = settings.googleDrive?.remotePath ?? "";
+  gdriveRootFolderIdInput.value = settings.googleDrive?.rootFolderId ?? "";
+
+  const seedbox = settings.seedbox;
+  seedboxHostInput.value = seedbox?.host ?? "";
+  seedboxUsernameInput.value = seedbox?.username ?? "";
+  seedboxPortInput.value = String(seedbox?.port ?? 21);
+  seedboxRemotePathInput.value = seedbox?.remotePath ?? "downloads";
+  seedboxReadOnlyCheckbox.checked = seedbox?.readOnly ?? true;
+  seedboxAllowUnverifiedCheckbox.checked = seedbox?.allowUnverifiedCertificate ?? true;
+  startAtLoginCheckbox.checked = settings.startAtLogin;
+  startMinimizedCheckbox.checked = settings.startMinimized;
+  renderBuckets(settings.buckets);
+  configureSeedboxPlatformUi();
+  refreshGoogleDriveConnectionUi();
+  refreshSeedboxConnectionUi();
+  updateProviderPanels();
+}
+
+function renderCredentialState(loaded: LoadedCredentials) {
   hasSavedB2Credentials = loaded.hasSavedCredentials;
   hasSavedSeedboxPassword = loaded.hasSavedSeedboxPassword;
-  providerSelect.value = loaded.settings.selectedProvider;
   keyIdInput.value = loaded.b2Credentials?.applicationKeyId ?? "";
   keyInput.value = loaded.b2Credentials?.applicationKey ?? "";
   keyIdInput.placeholder = "";
@@ -369,26 +393,41 @@ async function loadUi() {
   b2CredentialsStatus.textContent = loaded.hasSavedCredentials
     ? "B2 credentials are saved securely and loaded into the fields."
     : "B2 credentials are stored securely after a successful save or mount.";
-  gdriveRemotePathInput.value = loaded.settings.googleDrive?.remotePath ?? "";
-  gdriveRootFolderIdInput.value = loaded.settings.googleDrive?.rootFolderId ?? "";
-
-  const seedbox = loaded.settings.seedbox;
-  seedboxHostInput.value = seedbox?.host ?? "";
-  seedboxUsernameInput.value = seedbox?.username ?? "";
-  seedboxPortInput.value = String(seedbox?.port ?? 21);
-  seedboxRemotePathInput.value = seedbox?.remotePath ?? "downloads";
-  seedboxReadOnlyCheckbox.checked = seedbox?.readOnly ?? true;
-  seedboxAllowUnverifiedCheckbox.checked = seedbox?.allowUnverifiedCertificate ?? true;
-  startAtLoginCheckbox.checked = loaded.settings.startAtLogin;
-  startMinimizedCheckbox.checked = loaded.settings.startMinimized;
-  renderBuckets(loaded.settings.buckets);
   googleDriveConnected = loaded.isGoogleDriveConfigured;
   seedboxConfigured = loaded.isSeedboxConfigured;
-  configureSeedboxPlatformUi();
   refreshGoogleDriveConnectionUi();
   refreshSeedboxConnectionUi();
-  updateProviderPanels();
-  await applyAutostart(loaded.settings.startAtLogin);
+  scheduleFitWindow();
+}
+
+async function unlockCredentialsAndAutoMount() {
+  setLogOperation("startup", true);
+
+  try {
+    const loaded = await invoke<LoadedCredentials>("load_credentials_cmd");
+    renderCredentialState(loaded);
+    await invoke("attempt_auto_mount_cmd");
+    mounted = await invoke<boolean>("is_mounted");
+    renderMountState({ mounted });
+  } catch (err) {
+    b2CredentialsStatus.textContent =
+      "Saved credentials could not be unlocked. Enter credentials manually to mount.";
+    appendLog({
+      level: "ERROR",
+      message: String(err),
+      timestamp: new Date().toLocaleTimeString(),
+    });
+  } finally {
+    setLogOperation("startup", false);
+  }
+}
+
+async function loadUi() {
+  platform = await invoke<string>("get_platform");
+  configurePlatformUi();
+
+  const settings = await invoke<AppSettings>("load_settings_cmd");
+  renderSettings(settings);
 
   mounted = await invoke<boolean>("is_mounted");
   renderMountState({ mounted });
@@ -412,6 +451,9 @@ async function loadUi() {
   });
 
   startWindowFitWatcher();
+  await waitForUiFeedback();
+  void applyAutostart(settings.startAtLogin);
+  void unlockCredentialsAndAutoMount();
 }
 
 providerSelect.addEventListener("change", () => {

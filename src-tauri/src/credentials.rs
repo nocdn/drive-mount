@@ -1,4 +1,5 @@
 use serde::{Deserialize, Serialize};
+use std::sync::{Mutex, OnceLock};
 
 use crate::models::B2Credentials;
 
@@ -26,6 +27,12 @@ impl SecureCredentials {
                 .as_ref()
                 .is_none_or(|lines| lines.is_empty())
     }
+}
+
+static CREDENTIALS_CACHE: OnceLock<Mutex<Option<SecureCredentials>>> = OnceLock::new();
+
+fn credentials_cache() -> &'static Mutex<Option<SecureCredentials>> {
+    CREDENTIALS_CACHE.get_or_init(|| Mutex::new(None))
 }
 
 pub fn load_b2_credentials() -> Result<Option<B2Credentials>, String> {
@@ -93,6 +100,17 @@ pub fn has_saved_google_drive_config() -> Result<bool, String> {
 }
 
 fn load_credentials_bundle() -> Result<SecureCredentials, String> {
+    let mut cached = credentials_cache().lock().map_err(|e| e.to_string())?;
+    if let Some(bundle) = cached.clone() {
+        return Ok(bundle);
+    }
+
+    let bundle = read_credentials_bundle()?;
+    *cached = Some(bundle.clone());
+    Ok(bundle)
+}
+
+fn read_credentials_bundle() -> Result<SecureCredentials, String> {
     match keyring::Entry::new(CREDENTIALS_SERVICE, CREDENTIALS_ACCOUNT) {
         Ok(entry) => match entry.get_password() {
             Ok(json) if json.trim().is_empty() => Ok(SecureCredentials::default()),
@@ -110,14 +128,20 @@ fn save_credentials_bundle(bundle: &SecureCredentials) -> Result<(), String> {
         keyring::Entry::new(CREDENTIALS_SERVICE, CREDENTIALS_ACCOUNT).map_err(|e| e.to_string())?;
 
     if bundle.is_empty() {
-        return match entry.delete_credential() {
+        match entry.delete_credential() {
             Ok(()) | Err(keyring::Error::NoEntry) => Ok(()),
             Err(e) => Err(e.to_string()),
-        };
+        }?;
+        *credentials_cache().lock().map_err(|e| e.to_string())? =
+            Some(SecureCredentials::default());
+        return Ok(());
     }
 
     let json = serde_json::to_string(bundle).map_err(|e| e.to_string())?;
-    entry.set_password(&json).map_err(|e| e.to_string())
+    entry.set_password(&json).map_err(|e| e.to_string())?;
+
+    *credentials_cache().lock().map_err(|e| e.to_string())? = Some(bundle.clone());
+    Ok(())
 }
 
 fn update_credentials_bundle<F>(update: F) -> Result<(), String>

@@ -9,7 +9,8 @@ use crate::credentials::{
 };
 use crate::logging::LogEmitter;
 use crate::models::{
-    AppSettings, B2Credentials, GoogleDriveSettings, LoadedSettings, MountRequest, SeedboxSettings,
+    AppSettings, B2Credentials, GoogleDriveSettings, LoadedCredentials, MountRequest,
+    SeedboxSettings,
 };
 use crate::paths::{log_dir, platform_name};
 use crate::rclone::{
@@ -21,6 +22,7 @@ use crate::settings::{load_settings, save_settings};
 pub struct AppState {
     pub rclone: Arc<RcloneManager>,
     pub logger: Arc<Mutex<LogEmitter>>,
+    pub auto_mount_attempted: Arc<Mutex<bool>>,
 }
 
 async fn run_blocking<F, T>(f: F) -> Result<T, String>
@@ -39,25 +41,59 @@ pub fn get_platform() -> String {
 }
 
 #[tauri::command]
-pub fn load_settings_cmd(state: State<'_, AppState>) -> Result<LoadedSettings, String> {
+pub fn load_settings_cmd(state: State<'_, AppState>) -> Result<AppSettings, String> {
     let settings = load_settings();
-    let b2_credentials = load_b2_credentials()?;
-    let has_saved_credentials = b2_credentials.is_some();
 
     if let Ok(logger) = state.logger.lock() {
         logger.info("Settings loaded.");
     }
 
-    Ok(LoadedSettings {
-        settings,
-        has_saved_credentials,
-        b2_credentials,
-        is_google_drive_configured: is_google_drive_configured(),
-        is_seedbox_configured: is_seedbox_configured(),
-        has_saved_seedbox_password: has_saved_seedbox_password().unwrap_or(false),
-    })
+    Ok(settings)
 }
 
+#[tauri::command]
+pub async fn load_credentials_cmd(state: State<'_, AppState>) -> Result<LoadedCredentials, String> {
+    let logger = state.logger.clone();
+
+    run_blocking(move || {
+        let b2_credentials = load_b2_credentials()?;
+        let has_saved_credentials = b2_credentials.is_some();
+        let is_google_drive_configured = is_google_drive_configured();
+        let is_seedbox_configured = is_seedbox_configured();
+        let has_saved_seedbox_password = has_saved_seedbox_password().unwrap_or(false);
+
+        if let Ok(logger) = logger.lock() {
+            logger.info("Credential state loaded.");
+        }
+
+        Ok(LoadedCredentials {
+            has_saved_credentials,
+            b2_credentials,
+            is_google_drive_configured,
+            is_seedbox_configured,
+            has_saved_seedbox_password,
+        })
+    })
+    .await
+}
+
+#[tauri::command]
+pub async fn attempt_auto_mount_cmd(
+    app: AppHandle,
+    state: State<'_, AppState>,
+) -> Result<(), String> {
+    let state = AppState {
+        rclone: state.rclone.clone(),
+        logger: state.logger.clone(),
+        auto_mount_attempted: state.auto_mount_attempted.clone(),
+    };
+
+    run_blocking(move || {
+        attempt_auto_mount_once(&app, &state);
+        Ok(())
+    })
+    .await
+}
 #[tauri::command]
 pub fn save_settings_cmd(mut settings: AppSettings) -> Result<AppSettings, String> {
     settings = settings.normalized();
@@ -324,6 +360,21 @@ pub fn attempt_auto_mount(app: &AppHandle, state: &AppState) {
             }
         }
     }
+}
+
+pub fn attempt_auto_mount_once(app: &AppHandle, state: &AppState) {
+    let Ok(mut attempted) = state.auto_mount_attempted.lock() else {
+        return;
+    };
+
+    if *attempted {
+        return;
+    }
+
+    *attempted = true;
+    drop(attempted);
+
+    attempt_auto_mount(app, state);
 }
 
 fn saved_mount_request() -> Option<MountRequest> {

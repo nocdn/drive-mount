@@ -159,8 +159,7 @@ pub struct B2Credentials {
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
-pub struct LoadedSettings {
-    pub settings: AppSettings,
+pub struct LoadedCredentials {
     pub has_saved_credentials: bool,
     pub b2_credentials: Option<B2Credentials>,
     pub is_google_drive_configured: bool,
@@ -299,9 +298,8 @@ mod tests {
     }
 
     #[test]
-    fn loaded_settings_serializes_with_camel_case_fields() {
-        let loaded = LoadedSettings {
-            settings: AppSettings::default(),
+    fn loaded_credentials_serializes_with_camel_case_fields() {
+        let loaded = LoadedCredentials {
             has_saved_credentials: true,
             b2_credentials: Some(B2Credentials {
                 application_key_id: "id".to_string(),
