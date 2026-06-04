@@ -29,9 +29,15 @@ export interface AppSettings {
   startMinimized: boolean;
 }
 
+export interface B2Credentials {
+  applicationKeyId: string;
+  applicationKey: string;
+}
+
 export interface LoadedSettings {
   settings: AppSettings;
   hasSavedCredentials: boolean;
+  b2Credentials?: B2Credentials | null;
   isGoogleDriveConfigured: boolean;
   isSeedboxConfigured: boolean;
   hasSavedSeedboxPassword: boolean;

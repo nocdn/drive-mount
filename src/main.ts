@@ -362,12 +362,12 @@ async function loadUi() {
   hasSavedB2Credentials = loaded.hasSavedCredentials;
   hasSavedSeedboxPassword = loaded.hasSavedSeedboxPassword;
   providerSelect.value = loaded.settings.selectedProvider;
-  keyIdInput.value = "";
-  keyInput.value = "";
-  keyIdInput.placeholder = loaded.hasSavedCredentials ? "Saved. Leave blank to keep existing." : "";
-  keyInput.placeholder = loaded.hasSavedCredentials ? "Saved. Leave blank to keep existing." : "";
+  keyIdInput.value = loaded.b2Credentials?.applicationKeyId ?? "";
+  keyInput.value = loaded.b2Credentials?.applicationKey ?? "";
+  keyIdInput.placeholder = "";
+  keyInput.placeholder = "";
   b2CredentialsStatus.textContent = loaded.hasSavedCredentials
-    ? "B2 credentials are saved. Leave both fields blank to keep using them."
+    ? "B2 credentials are saved securely and loaded into the fields."
     : "B2 credentials are stored securely after a successful save or mount.";
   gdriveRemotePathInput.value = loaded.settings.googleDrive?.remotePath ?? "";
   gdriveRootFolderIdInput.value = loaded.settings.googleDrive?.rootFolderId ?? "";
@@ -460,12 +460,10 @@ btnMount.addEventListener("click", async () => {
         },
       });
       hasSavedB2Credentials = true;
-      keyIdInput.value = "";
-      keyInput.value = "";
-      keyIdInput.placeholder = "Saved. Leave blank to keep existing.";
-      keyInput.placeholder = "Saved. Leave blank to keep existing.";
+      keyIdInput.placeholder = "";
+      keyInput.placeholder = "";
       b2CredentialsStatus.textContent =
-        "B2 credentials are saved. Leave both fields blank to keep using them.";
+        "B2 credentials are saved securely and loaded into the fields.";
     }
 
     await invoke("mount_all", {

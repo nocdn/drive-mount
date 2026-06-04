@@ -41,7 +41,8 @@ pub fn get_platform() -> String {
 #[tauri::command]
 pub fn load_settings_cmd(state: State<'_, AppState>) -> Result<LoadedSettings, String> {
     let settings = load_settings();
-    let has_saved_credentials = load_b2_credentials()?.is_some();
+    let b2_credentials = load_b2_credentials()?;
+    let has_saved_credentials = b2_credentials.is_some();
 
     if let Ok(logger) = state.logger.lock() {
         logger.info("Settings loaded.");
@@ -50,6 +51,7 @@ pub fn load_settings_cmd(state: State<'_, AppState>) -> Result<LoadedSettings, S
     Ok(LoadedSettings {
         settings,
         has_saved_credentials,
+        b2_credentials,
         is_google_drive_configured: is_google_drive_configured(),
         is_seedbox_configured: is_seedbox_configured(),
         has_saved_seedbox_password: has_saved_seedbox_password().unwrap_or(false),

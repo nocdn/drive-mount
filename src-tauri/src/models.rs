@@ -162,6 +162,7 @@ pub struct B2Credentials {
 pub struct LoadedSettings {
     pub settings: AppSettings,
     pub has_saved_credentials: bool,
+    pub b2_credentials: Option<B2Credentials>,
     pub is_google_drive_configured: bool,
     pub is_seedbox_configured: bool,
     pub has_saved_seedbox_password: bool,
@@ -302,6 +303,10 @@ mod tests {
         let loaded = LoadedSettings {
             settings: AppSettings::default(),
             has_saved_credentials: true,
+            b2_credentials: Some(B2Credentials {
+                application_key_id: "id".to_string(),
+                application_key: "key".to_string(),
+            }),
             is_google_drive_configured: true,
             is_seedbox_configured: false,
             has_saved_seedbox_password: true,
@@ -309,6 +314,8 @@ mod tests {
 
         let value = serde_json::to_value(loaded).unwrap();
         assert_eq!(value["hasSavedCredentials"], true);
+        assert_eq!(value["b2Credentials"]["applicationKeyId"], "id");
+        assert_eq!(value["b2Credentials"]["applicationKey"], "key");
         assert!(value.get("applicationKeyId").is_none());
         assert!(value.get("applicationKey").is_none());
         assert_eq!(value["isGoogleDriveConfigured"], true);

@@ -12,9 +12,7 @@ pub(crate) fn load(app: &tauri::App) -> Image<'_> {
         return icon;
     }
 
-    eprintln!(
-        "Warning: Could not load SF Symbol '{SYMBOL_NAME}' for menu bar; using app icon"
-    );
+    eprintln!("Warning: Could not load SF Symbol '{SYMBOL_NAME}' for menu bar; using app icon");
     app.default_window_icon()
         .expect("default window icon should exist")
         .clone()
@@ -23,10 +21,8 @@ pub(crate) fn load(app: &tauri::App) -> Image<'_> {
 fn try_load() -> Option<Image<'static>> {
     let name = NSString::from_str(SYMBOL_NAME);
     let description = NSString::from_str(ACCESSIBILITY_DESCRIPTION);
-    let ns_image = NSImage::imageWithSystemSymbolName_accessibilityDescription(
-        &name,
-        Some(&description),
-    )?;
+    let ns_image =
+        NSImage::imageWithSystemSymbolName_accessibilityDescription(&name, Some(&description))?;
 
     ns_image.setTemplate(true);
 
