@@ -66,7 +66,6 @@ const btnCopyLogs = document.getElementById("btn-copy-logs") as HTMLButtonElemen
 const btnRestart = document.getElementById("btn-restart") as HTMLButtonElement;
 const logsOperationLoader = document.getElementById("logs-operation-loader") as HTMLSpanElement;
 const logsEl = document.getElementById("logs") as HTMLPreElement;
-const mountsList = document.getElementById("mounts-list") as HTMLDivElement;
 const { appendLog, clearRenderedLogs, flushPendingLogLines } = createLogController(logsEl);
 const { parseSeedboxPort, validateB2ForMount, validateSeedboxForConnection } =
   createValidationController(
@@ -166,45 +165,6 @@ function updateMountButtons() {
 
 function renderMountState(state: MountState) {
   mounted = state.mounted;
-  mountsList.innerHTML = "";
-  const mounts = state.mounts ?? [];
-
-  if (mounts.length === 0) {
-    const empty = document.createElement("div");
-    empty.className = "mount-row-empty";
-    empty.textContent = "No active mounts.";
-    mountsList.appendChild(empty);
-  } else {
-    for (const mount of mounts) {
-      const row = document.createElement("div");
-      row.className = "mount-row";
-
-      const label = document.createElement("div");
-      label.textContent = mount.label;
-
-      const target = document.createElement("div");
-      target.className = "mount-target";
-      target.title = mount.target;
-      target.textContent = mount.target;
-
-      const openButton = document.createElement("button");
-      openButton.type = "button";
-      openButton.textContent = "Open";
-      openButton.addEventListener("click", () => {
-        void invoke("open_mount_target", { target: mount.target }).catch((err) => {
-          appendLog({
-            level: "ERROR",
-            message: String(err),
-            timestamp: new Date().toLocaleTimeString(),
-          });
-        });
-      });
-
-      row.append(label, target, openButton);
-      mountsList.appendChild(row);
-    }
-  }
-
   updateMountButtons();
   scheduleFitWindow();
 }
