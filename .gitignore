@@ -18,6 +18,7 @@ src-tauri/binaries/rclone-*
 tauri/
 
 # Windows/.NET build output
+win/
 win/**/bin/
 win/**/obj/
 

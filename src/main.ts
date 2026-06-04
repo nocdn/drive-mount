@@ -48,7 +48,6 @@ const gdriveRootFolderIdInput = document.getElementById("gdrive-root-folder-id")
 const gdriveHelp = document.getElementById("gdrive-help") as HTMLParagraphElement;
 const btnConnectGdrive = document.getElementById("btn-connect-gdrive") as HTMLButtonElement;
 const btnTestGdrive = document.getElementById("btn-test-gdrive") as HTMLButtonElement;
-const gdriveTestLoader = document.getElementById("gdrive-test-loader") as HTMLSpanElement;
 const keyIdInput = document.getElementById("key-id") as HTMLInputElement;
 const keyInput = document.getElementById("key") as HTMLInputElement;
 const b2CredentialsStatus = document.getElementById("b2-credentials-status") as HTMLParagraphElement;
@@ -229,7 +228,6 @@ function refreshGoogleDriveConnectionUi() {
     ? "Disconnect Google Drive"
     : "Connect Google Drive";
   btnTestGdrive.classList.toggle("hidden", !googleDriveConnected);
-  gdriveTestLoader.classList.add("hidden");
   gdriveHelp.classList.toggle("hidden", googleDriveConnected);
 }
 
@@ -557,7 +555,7 @@ btnTestGdrive.addEventListener("click", async () => {
 
   const settings = collectSettings();
   btnTestGdrive.disabled = true;
-  gdriveTestLoader.classList.remove("hidden");
+  setLogOperation("gdrive-test", true);
 
   try {
     await invoke("save_settings_cmd", { settings });
@@ -576,7 +574,7 @@ btnTestGdrive.addEventListener("click", async () => {
       timestamp: new Date().toLocaleTimeString(),
     });
   } finally {
-    gdriveTestLoader.classList.add("hidden");
+    setLogOperation("gdrive-test", false);
     btnTestGdrive.disabled = false;
   }
 });

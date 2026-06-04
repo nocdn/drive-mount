@@ -193,10 +193,7 @@ button:disabled {
   width: 12px;
   height: 12px;
   margin-left: 2px;
-  border: 1.5px solid currentColor;
-  border-top-color: transparent;
-  border-radius: 50%;
-  animation: gdrive-loader-spin 0.7s linear infinite;
+  line-height: 0;
 }
 
 .inline-loader:not(.hidden) {
@@ -205,22 +202,12 @@ button:disabled {
 
 .inline-loader.hidden {
   display: none;
-  animation: none;
 }
 
-#btn-test-gdrive:disabled,
-#btn-test-seedbox:disabled {
-  opacity: 0.45;
-  cursor: default;
-}
-
-@keyframes gdrive-loader-spin {
-  from {
-    transform: rotate(0deg);
-  }
-  to {
-    transform: rotate(360deg);
-  }
+.inline-loader svg {
+  display: block;
+  width: 100%;
+  height: 100%;
 }
 
 .logs {
