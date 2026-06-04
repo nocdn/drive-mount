@@ -6,6 +6,9 @@ mod paths;
 mod rclone;
 mod settings;
 
+#[cfg(target_os = "macos")]
+mod macos_menu_bar_icon;
+
 #[cfg(test)]
 pub(crate) mod test_support {
     use std::sync::{Mutex, MutexGuard, OnceLock};
@@ -100,11 +103,24 @@ pub fn run() {
             let quit_item = MenuItem::with_id(app, "quit", "Quit", true, None::<&str>)?;
             let menu = Menu::with_items(app, &[&settings_item, &quit_item])?;
 
-            let _tray = TrayIconBuilder::new()
-                .icon(app.default_window_icon().unwrap().clone())
+            let mut tray_builder = TrayIconBuilder::new()
                 .tooltip("Cloud Drive Mount")
                 .menu(&menu)
-                .show_menu_on_left_click(true)
+                .show_menu_on_left_click(true);
+
+            #[cfg(target_os = "macos")]
+            {
+                tray_builder = tray_builder
+                    .icon(macos_menu_bar_icon::load(app))
+                    .icon_as_template(true);
+            }
+
+            #[cfg(not(target_os = "macos"))]
+            {
+                tray_builder = tray_builder.icon(app.default_window_icon().unwrap().clone());
+            }
+
+            let _tray = tray_builder
                 .on_menu_event(|app, event| match event.id.as_ref() {
                     "settings" => show_settings_window(app),
                     "quit" => app.exit(0),
@@ -206,5 +222,14 @@ mod tests {
             &args(&["--show-settings", "--clean-restart"]),
             true,
         ));
+    }
+
+    #[test]
+    fn macos_menu_bar_symbol_matches_legacy_native_app() {
+        #[cfg(target_os = "macos")]
+        assert_eq!(
+            macos_menu_bar_icon::SYMBOL_NAME,
+            "externaldrive.badge.icloud"
+        );
     }
 }

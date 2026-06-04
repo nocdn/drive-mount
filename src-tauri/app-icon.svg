@@ -1,0 +1,8 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="1024" height="1024" viewBox="0 0 1024 1024">
+  <!-- macOS-style rounded square: ~22.4% corner radius on 1024px canvas -->
+  <rect width="1024" height="1024" rx="229" ry="229" fill="#FFFFFF"/>
+  <!-- Foreground icon: ~65% of canvas (Apple HIG safe zone), dark grey -->
+  <g transform="translate(179.2, 179.2) scale(27.733333)" fill="none" stroke="#4A4A4A" stroke-linecap="round" stroke-linejoin="round" stroke-width="2">
+    <path d="M5 15h14M5 15v4a2 2 0 0 0 2 2h10a2 2 0 0 0 2-2v-4M5 15V5a2 2 0 0 1 2-2h10a2 2 0 0 1 2 2v10m-6 3h3"/>
+  </g>
+</svg>

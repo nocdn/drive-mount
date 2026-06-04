@@ -12,7 +12,8 @@
     "build:installer:mac": "tauri build --bundles dmg",
     "build:installer:windows": "tauri build --bundles msi",
     "preview": "vite preview",
-    "tauri": "tauri"
+    "tauri": "tauri",
+    "icons:generate": "tauri icon src-tauri/app-icon.svg -o src-tauri/icons"
   },
   "dependencies": {
     "@tauri-apps/api": "^2",
