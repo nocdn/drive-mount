@@ -151,6 +151,44 @@ fn windows_platform_uses_current_windows_crate_api() {
 }
 
 #[test]
+fn windows_mount_processes_are_hidden_from_user() {
+    let process = read_repo_file("src-tauri/src/rclone/process.rs");
+    let rclone = read_repo_file("src-tauri/src/rclone/mod.rs");
+    let windows = read_repo_file("src-tauri/src/rclone/platform/windows.rs");
+
+    assert!(process.contains("pub const CREATE_NO_WINDOW: u32 = 0x08000000;"));
+    assert!(process.contains("command.creation_flags(CREATE_NO_WINDOW);"));
+    assert!(rclone.contains("pub(crate) mod process;"));
+    assert!(rclone.contains("use process::hidden_command;"));
+    assert!(
+        rclone.contains("let mut child = hidden_command(rclone_path)\n            .args(&args)")
+    );
+    assert!(rclone.contains("let _ = hidden_command(\"powershell.exe\")"));
+    assert!(rclone.contains(
+        "let mut child = hidden_command(rclone_path)\n        .args([\"obscure\", \"-\"])"
+    ));
+    assert!(rclone.contains("let mut child = hidden_command(rclone_path)\n        .args(args)"));
+    assert!(windows.contains("use crate::rclone::process::hidden_command;"));
+    assert_eq!(windows.matches("hidden_command(&rclone)").count(), 2);
+
+    assert!(!rclone.contains("Command::new(rclone_path)"));
+    assert!(!rclone.contains("Command::new(\"powershell.exe\")"));
+    assert!(!windows.contains("Command::new(&rclone)"));
+}
+
+#[test]
+fn quit_cleanup_does_not_repeat_windows_drive_unmount_sweep() {
+    let rclone = read_repo_file("src-tauri/src/rclone/mod.rs");
+
+    assert!(rclone.contains("self.cleanup_stale_mount_processes(app);"));
+    assert!(rclone.contains("fn cleanup_stale_mount_processes(&self, app: &AppHandle)"));
+    assert!(rclone.contains("cleanup_windows_rclone_processes(rclone_path.as_deref());"));
+    assert!(!rclone.contains(
+        "self.unmount_all(app);\n        self.cleanup_stale_processes(app);\n        self.refresh_configured_mount_targets();"
+    ));
+}
+
+#[test]
 fn restart_mounts_keeps_app_running_and_refreshes_platform_mount_state() {
     let lib = read_repo_file("src-tauri/src/lib.rs");
     let commands = read_repo_file("src-tauri/src/commands.rs");

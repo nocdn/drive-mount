@@ -1,10 +1,11 @@
 mod config;
 mod discovery;
 mod platform;
+pub(crate) mod process;
 
 use std::collections::{HashMap, HashSet};
 use std::path::{Path, PathBuf};
-use std::process::{Child, Command, Stdio};
+use std::process::{Child, Stdio};
 use std::sync::{Arc, Mutex};
 use std::thread;
 use std::time::Duration;
@@ -30,6 +31,7 @@ use crate::paths::{
 use crate::settings::{ensure_app_data_dir, load_settings};
 
 use discovery::{find_bundled_rclone, find_rclone_in_path};
+use process::hidden_command;
 
 pub use platform::is_fuse_installed;
 
@@ -401,7 +403,7 @@ impl RcloneManager {
         for target in &targets {
             self.unmount_one(app, target);
         }
-        self.cleanup_stale_processes(app);
+        self.cleanup_stale_mount_processes(app);
         for target in &targets {
             self.cleanup_mount_folder(target);
         }
@@ -413,7 +415,6 @@ impl RcloneManager {
             "Mount restart requested; unmounting active drives and cleaning stale rclone processes.",
         );
         self.unmount_all(app);
-        self.cleanup_stale_processes(app);
         self.refresh_configured_mount_targets();
         self.log_info("Mount restart cleanup completed.");
     }
@@ -427,7 +428,10 @@ impl RcloneManager {
         let config = rclone_config_path();
         let config_str = config.to_string_lossy().to_string();
 
-        if let Ok(output) = Command::new("ps").args(["-axo", "pid=,command="]).output() {
+        if let Ok(output) = hidden_command("ps")
+            .args(["-axo", "pid=,command="])
+            .output()
+        {
             let stdout = String::from_utf8_lossy(&output.stdout);
             for line in stdout.lines() {
                 let line = line.trim();
@@ -441,7 +445,7 @@ impl RcloneManager {
                 }
                 if let Some(pid_str) = line.split_whitespace().next() {
                     if let Ok(pid) = pid_str.parse::<i32>() {
-                        let _ = Command::new("kill").arg(pid.to_string()).status();
+                        let _ = hidden_command("kill").arg(pid.to_string()).status();
                     }
                 }
             }
@@ -457,6 +461,17 @@ impl RcloneManager {
             platform::notify_mount_change(&target, false);
         }
 
+        cleanup_windows_rclone_processes(rclone_path.as_deref());
+    }
+
+    #[cfg(not(windows))]
+    fn cleanup_stale_mount_processes(&self, app: &AppHandle) {
+        self.cleanup_stale_processes(app);
+    }
+
+    #[cfg(windows)]
+    fn cleanup_stale_mount_processes(&self, app: &AppHandle) {
+        let rclone_path = self.resolve_rclone_path(app).ok();
         cleanup_windows_rclone_processes(rclone_path.as_deref());
     }
 
@@ -496,7 +511,7 @@ impl RcloneManager {
 
         self.log_info(&format!("Mounting {} at {}", spec.label, spec.target));
 
-        let mut child = Command::new(rclone_path)
+        let mut child = hidden_command(rclone_path)
             .args(&args)
             .stdout(Stdio::piped())
             .stderr(Stdio::piped())
@@ -945,7 +960,7 @@ Get-CimInstance Win32_Process -Filter "name = 'rclone.exe'" |
         rclone = powershell_single_quoted(&rclone)
     );
 
-    let _ = Command::new("powershell.exe")
+    let _ = hidden_command("powershell.exe")
         .args([
             "-NoProfile",
             "-ExecutionPolicy",
@@ -1063,7 +1078,7 @@ pub fn has_complete_seedbox_config() -> bool {
 fn obscure_password(rclone_path: &Path, password: &str) -> Result<String, String> {
     use std::io::Write;
 
-    let mut child = Command::new(rclone_path)
+    let mut child = hidden_command(rclone_path)
         .args(["obscure", "-"])
         .stdin(Stdio::piped())
         .stdout(Stdio::piped())
@@ -1099,7 +1114,7 @@ fn run_rclone_blocking(
     logger: Arc<Mutex<LogEmitter>>,
     label: &str,
 ) -> Result<bool, String> {
-    let mut child = Command::new(rclone_path)
+    let mut child = hidden_command(rclone_path)
         .args(args)
         .stdin(Stdio::inherit())
         .stdout(Stdio::piped())

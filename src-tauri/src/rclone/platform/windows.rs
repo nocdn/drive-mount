@@ -1,11 +1,11 @@
 use std::path::{Path, PathBuf};
-use std::process::Command;
 use std::time::{Duration, Instant};
 
 use crate::models::BucketMount;
 use crate::models::GoogleDriveSettings;
 use crate::models::SeedboxSettings;
 use crate::models::{GOOGLE_DRIVE_WINDOWS_DRIVE, SEEDBOX_WINDOWS_DRIVE};
+use crate::rclone::process::hidden_command;
 
 const RC_BASE_PORT: u16 = 5572;
 
@@ -108,7 +108,7 @@ pub fn unmount_target_with_rclone(target: &str, rclone_path: Option<&Path>) -> b
         .map(Path::to_path_buf)
         .unwrap_or_else(|| PathBuf::from("rclone"));
 
-    let _ = Command::new(&rclone)
+    let _ = hidden_command(&rclone)
         .args([
             "rc",
             "mount/unmount",
@@ -119,7 +119,7 @@ pub fn unmount_target_with_rclone(target: &str, rclone_path: Option<&Path>) -> b
         ])
         .output();
 
-    let _ = Command::new(&rclone)
+    let _ = hidden_command(&rclone)
         .args([
             "rc",
             "core/quit",

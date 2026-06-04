@@ -13,8 +13,13 @@ pnpm-debug.log*
 lerna-debug.log*
 
 # Tauri / Rust
-src-tauri/target/
+**/target/
 src-tauri/binaries/rclone-*
+tauri/
+
+# Windows/.NET build output
+win/**/bin/
+win/**/obj/
 
 # Editor / IDE
 .vscode/*
