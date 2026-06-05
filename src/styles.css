@@ -118,11 +118,17 @@ input.invalid {
 .bucket-row .bucket-name-input {
   width: 96px;
   flex: 0 0 auto;
+  padding-block: 3.75px;
+  padding-inline: 4px;
+  font-size: 12.75px;
 }
 
 .bucket-row .bucket-drive-input {
   width: 48px;
   flex: 0 0 auto;
+  padding-block: 3.75px;
+  padding-inline: 4px;
+  font-size: 12.75px;
 }
 
 .checkbox-group {
@@ -236,8 +242,15 @@ button:disabled {
   font-weight: 600;
 }
 
+@media (prefers-color-scheme: dark) {
+  .logs {
+    border-color: rgba(204, 204, 204, 0.25);
+  }
+}
+
 html,
 body {
+  color-scheme: light dark;
   overflow: hidden;
 }
 
