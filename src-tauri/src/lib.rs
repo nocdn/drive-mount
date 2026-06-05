@@ -2,6 +2,7 @@ mod commands;
 mod credentials;
 mod logging;
 mod models;
+mod notifications;
 mod paths;
 mod rclone;
 mod settings;
@@ -38,10 +39,9 @@ use std::sync::{Arc, Mutex};
 use tauri::{
     menu::{Menu, MenuItem},
     tray::{MouseButton, TrayIconBuilder, TrayIconEvent},
-    AppHandle, Manager, RunEvent,
+    Manager, RunEvent,
 };
 use tauri_plugin_autostart::MacosLauncher;
-use tauri_plugin_notification::{NotificationExt, PermissionState};
 
 use commands::{
     attempt_auto_mount_cmd, clear_logs, configure_google_drive_cmd, disconnect_google_drive_cmd,
@@ -52,6 +52,7 @@ use commands::{
     test_google_drive_connection_cmd, test_seedbox_connection_cmd, unmount_all, AppState,
 };
 use logging::LogEmitter;
+use notifications::show_app_notification;
 use rclone::RcloneManager;
 use settings::load_settings;
 
@@ -61,32 +62,6 @@ const ARG_SHOW_SETTINGS: &str = "--show-settings";
 
 fn should_show_on_launch(launch_args: &[String], start_minimized: bool) -> bool {
     launch_args.iter().any(|arg| arg == ARG_SHOW_SETTINGS) || !start_minimized
-}
-
-fn ensure_notification_permission(app: &AppHandle) -> bool {
-    match app.notification().permission_state() {
-        Ok(PermissionState::Granted) => true,
-        Ok(PermissionState::Prompt | PermissionState::PromptWithRationale) => {
-            matches!(
-                app.notification().request_permission(),
-                Ok(PermissionState::Granted)
-            )
-        }
-        Ok(PermissionState::Denied) | Err(_) => false,
-    }
-}
-
-fn show_shutdown_notification(app: &AppHandle, body: &str) {
-    if !ensure_notification_permission(app) {
-        return;
-    }
-
-    let _ = app
-        .notification()
-        .builder()
-        .title("Cloud Drive Mount")
-        .body(body)
-        .show();
 }
 
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
@@ -149,10 +124,15 @@ pub fn run() {
                 tray_builder = tray_builder.icon(app.default_window_icon().unwrap().clone());
             }
 
+            let quit_item_for_menu = quit_item.clone();
             let _tray = tray_builder
-                .on_menu_event(|app, event| match event.id.as_ref() {
+                .on_menu_event(move |app, event| match event.id.as_ref() {
                     "settings" => show_settings_window(app),
-                    "quit" => app.exit(0),
+                    "quit" => {
+                        let _ = quit_item_for_menu.set_text("Quitting...");
+                        let _ = quit_item_for_menu.set_enabled(false);
+                        app.exit(0);
+                    }
                     _ => {}
                 })
                 .on_tray_icon_event(|tray, event| {
@@ -227,9 +207,12 @@ pub fn run() {
             }
             RunEvent::ExitRequested { .. } => {
                 if let Some(state) = app.try_state::<AppState>() {
-                    show_shutdown_notification(app, "Unmounting active drives before quitting.");
+                    show_app_notification(
+                        app,
+                        "Unmounting active drives before quitting. Please wait.",
+                    );
                     state.rclone.unmount_all(app);
-                    show_shutdown_notification(
+                    show_app_notification(
                         app,
                         "Unmount complete. Cloud Drive Mount has finished shutting down.",
                     );

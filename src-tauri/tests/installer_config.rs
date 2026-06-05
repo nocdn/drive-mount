@@ -138,8 +138,9 @@ fn sidecar_downloader_supports_ci_targets_without_powershell_args() {
 fn installer_open_helper_builds_and_opens_latest_platform_installer() {
     let script = read_repo_file("scripts/build-open-installer.mjs");
 
-    assert!(script.contains("build:installer:mac"));
-    assert!(script.contains("build:installer:windows"));
+    assert!(script
+        .contains(r#"`build:installer:${process.platform === "darwin" ? "mac" : "windows"}`"#));
+    assert!(script.contains(r#"? "mac" : "windows""#));
     assert!(script.contains("src-tauri\", \"target\", \"release\", \"bundle"));
     assert!(script.contains("Start-Process -FilePath ${powerShellSingleQuoted(installerPath)}"));
     assert!(script.contains("function powerShellSingleQuoted"));
@@ -214,6 +215,49 @@ fn quit_cleanup_does_not_repeat_windows_drive_unmount_sweep() {
     assert!(!rclone.contains(
         "self.unmount_all(app);\n        self.cleanup_stale_processes(app);\n        self.refresh_configured_mount_targets();"
     ));
+}
+
+#[test]
+fn launch_auto_mount_uses_start_and_finish_notifications() {
+    let lib = read_repo_file("src-tauri/src/lib.rs");
+    let commands = read_repo_file("src-tauri/src/commands.rs");
+    let notifications = read_repo_file("src-tauri/src/notifications.rs");
+
+    assert!(lib.contains("mod notifications;"));
+    assert!(lib.contains("use notifications::show_app_notification;"));
+    assert!(lib.contains("show_app_notification("));
+    assert!(lib.contains("\"Unmounting active drives before quitting. Please wait.\""));
+    assert!(lib.contains("let quit_item_for_menu = quit_item.clone();"));
+    assert!(lib.contains("let _ = quit_item_for_menu.set_text(\"Quitting...\");"));
+    assert!(lib.contains("let _ = quit_item_for_menu.set_enabled(false);"));
+    assert!(
+        lib.find("let _ = quit_item_for_menu.set_text(\"Quitting...\");")
+            .unwrap()
+            < lib.find("app.exit(0);").unwrap()
+    );
+    assert!(notifications.contains("pub fn show_app_notification(app: &AppHandle, body: &str)"));
+    assert!(notifications.contains(".title(\"Cloud Drive Mount\")"));
+
+    assert!(commands.contains("use crate::notifications::show_app_notification;"));
+    assert!(commands.contains(
+        "const AUTO_MOUNT_START_NOTIFICATION: &str = \"Mounting saved drives on launch. Please wait.\";"
+    ));
+    assert!(commands.contains(
+        "const AUTO_MOUNT_COMPLETE_NOTIFICATION: &str = \"Auto-mount complete. Cloud Drive Mount is ready.\";"
+    ));
+    assert!(commands.contains(
+        "const AUTO_MOUNT_FAILED_NOTIFICATION: &str = \"Auto-mount failed. Open Settings for details.\";"
+    ));
+    assert!(
+        commands
+            .find("show_app_notification(app, AUTO_MOUNT_START_NOTIFICATION);")
+            .unwrap()
+            < commands
+                .find("match state.rclone.mount_all(app, &request)")
+                .unwrap()
+    );
+    assert!(commands.contains("show_app_notification(app, AUTO_MOUNT_COMPLETE_NOTIFICATION);"));
+    assert!(commands.contains("show_app_notification(app, AUTO_MOUNT_FAILED_NOTIFICATION);"));
 }
 
 #[test]

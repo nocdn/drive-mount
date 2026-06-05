@@ -12,12 +12,17 @@ use crate::models::{
     AppSettings, B2Credentials, GoogleDriveSettings, LoadedCredentials, MountRequest,
     SeedboxSettings,
 };
+use crate::notifications::show_app_notification;
 use crate::paths::{log_dir, platform_name};
 use crate::rclone::{
     has_complete_b2_config, has_complete_google_drive_config, has_complete_seedbox_config,
     is_fuse_installed, is_google_drive_configured, is_seedbox_configured, RcloneManager,
 };
 use crate::settings::{load_settings, save_settings};
+
+const AUTO_MOUNT_START_NOTIFICATION: &str = "Mounting saved drives on launch. Please wait.";
+const AUTO_MOUNT_COMPLETE_NOTIFICATION: &str = "Auto-mount complete. Cloud Drive Mount is ready.";
+const AUTO_MOUNT_FAILED_NOTIFICATION: &str = "Auto-mount failed. Open Settings for details.";
 
 pub struct AppState {
     pub rclone: Arc<RcloneManager>,
@@ -344,6 +349,8 @@ pub fn attempt_auto_mount(app: &AppHandle, state: &AppState) {
         return;
     };
 
+    show_app_notification(app, AUTO_MOUNT_START_NOTIFICATION);
+
     if let Ok(logger) = state.logger.lock() {
         logger.info("Attempting auto-mount from saved settings.");
     }
@@ -353,11 +360,13 @@ pub fn attempt_auto_mount(app: &AppHandle, state: &AppState) {
             if let Ok(logger) = state.logger.lock() {
                 logger.info("Auto-mount completed.");
             }
+            show_app_notification(app, AUTO_MOUNT_COMPLETE_NOTIFICATION);
         }
         Err(err) => {
             if let Ok(logger) = state.logger.lock() {
                 logger.error(format!("Auto-mount failed: {err}"));
             }
+            show_app_notification(app, AUTO_MOUNT_FAILED_NOTIFICATION);
         }
     }
 }
