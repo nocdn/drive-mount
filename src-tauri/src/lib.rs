@@ -38,9 +38,10 @@ use std::sync::{Arc, Mutex};
 use tauri::{
     menu::{Menu, MenuItem},
     tray::{MouseButton, TrayIconBuilder, TrayIconEvent},
-    Manager, RunEvent,
+    AppHandle, Manager, RunEvent,
 };
 use tauri_plugin_autostart::MacosLauncher;
+use tauri_plugin_notification::{NotificationExt, PermissionState};
 
 use commands::{
     attempt_auto_mount_cmd, clear_logs, configure_google_drive_cmd, disconnect_google_drive_cmd,
@@ -62,6 +63,32 @@ fn should_show_on_launch(launch_args: &[String], start_minimized: bool) -> bool 
     launch_args.iter().any(|arg| arg == ARG_SHOW_SETTINGS) || !start_minimized
 }
 
+fn ensure_notification_permission(app: &AppHandle) -> bool {
+    match app.notification().permission_state() {
+        Ok(PermissionState::Granted) => true,
+        Ok(PermissionState::Prompt | PermissionState::PromptWithRationale) => {
+            matches!(
+                app.notification().request_permission(),
+                Ok(PermissionState::Granted)
+            )
+        }
+        Ok(PermissionState::Denied) | Err(_) => false,
+    }
+}
+
+fn show_shutdown_notification(app: &AppHandle, body: &str) {
+    if !ensure_notification_permission(app) {
+        return;
+    }
+
+    let _ = app
+        .notification()
+        .builder()
+        .title("Cloud Drive Mount")
+        .body(body)
+        .show();
+}
+
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
 pub fn run() {
     let logger = Arc::new(Mutex::new(LogEmitter::new(None)));
@@ -78,6 +105,7 @@ pub fn run() {
 
     tauri::Builder::default()
         .manage(state)
+        .plugin(tauri_plugin_notification::init())
         .plugin(tauri_plugin_single_instance::init(|app, _args, _cwd| {
             show_settings_window(app);
         }))
@@ -199,7 +227,12 @@ pub fn run() {
             }
             RunEvent::ExitRequested { .. } => {
                 if let Some(state) = app.try_state::<AppState>() {
+                    show_shutdown_notification(app, "Unmounting active drives before quitting.");
                     state.rclone.unmount_all(app);
+                    show_shutdown_notification(
+                        app,
+                        "Unmount complete. Cloud Drive Mount has finished shutting down.",
+                    );
                 }
             }
             _ => {}
