@@ -80,6 +80,10 @@ fn package_scripts_build_installers_through_tauri() {
         scripts["build:installer:windows"],
         "tauri build --bundles msi"
     );
+    assert_eq!(
+        scripts["build:installer:open"],
+        "bun scripts/build-open-installer.mjs"
+    );
 }
 
 #[test]
@@ -128,6 +132,30 @@ fn sidecar_downloader_supports_ci_targets_without_powershell_args() {
     assert!(script.contains("Expand-Archive"));
     assert!(!script.contains("$args[0]"));
     assert!(!script.contains("$args[1]"));
+}
+
+#[test]
+fn installer_open_helper_builds_and_opens_latest_platform_installer() {
+    let script = read_repo_file("scripts/build-open-installer.mjs");
+
+    assert!(script.contains("build:installer:mac"));
+    assert!(script.contains("build:installer:windows"));
+    assert!(script.contains("src-tauri\", \"target\", \"release\", \"bundle"));
+    assert!(script.contains("Start-Process -FilePath ${powerShellSingleQuoted(installerPath)}"));
+    assert!(script.contains("function powerShellSingleQuoted"));
+    assert!(script.contains("return run(\"open\", [installerPath], { cwd: repoRoot });"));
+    assert!(script.contains("Unsupported platform"));
+    assert!(script.contains("installedMacosVersion"));
+    assert!(script.contains("CFBundleShortVersionString"));
+    assert!(script.contains("installedWindowsVersion"));
+    assert!(script.contains("DisplayVersion"));
+    assert!(script.contains("newestVersionFromLines"));
+    assert!(script.contains("bumpVersionPastInstalled"));
+    assert!(script.contains("syncProjectVersion"));
+    assert!(script.contains("packageJsonPath"));
+    assert!(script.contains("cargoTomlPath"));
+    assert!(script.contains("findLatestInstaller"));
+    assert!(script.contains("removeExistingInstallers(current.extension)"));
 }
 
 #[test]

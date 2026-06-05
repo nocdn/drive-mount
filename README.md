@@ -19,5 +19,6 @@ Build commands:
 - `bun run build:installer` builds the installer for the current platform using Tauri's platform config merge.
 - `bun run build:installer:mac` builds a macOS DMG on macOS.
 - `bun run build:installer:windows` builds a Windows MSI on Windows.
+- `bun run build:installer:open` checks the installed app version, bumps the project patch version when needed, builds the current platform installer, finds the newest `.dmg` or `.msi` under `src-tauri/target/release/bundle/`, and opens it with `open` on macOS or `Start-Process` on Windows.
 
 Installer outputs are written under `src-tauri/target/release/bundle/`. The Tauri build runs `bun run prepare:sidecars` first so the platform-specific `rclone` sidecar is bundled with the app.

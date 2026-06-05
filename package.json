@@ -11,6 +11,7 @@
     "build:installer": "tauri build",
     "build:installer:mac": "tauri build --bundles dmg",
     "build:installer:windows": "tauri build --bundles msi",
+    "build:installer:open": "bun scripts/build-open-installer.mjs",
     "preview": "vite preview",
     "tauri": "tauri",
     "icons:generate": "tauri icon src-tauri/app-icon.svg -o src-tauri/icons"
