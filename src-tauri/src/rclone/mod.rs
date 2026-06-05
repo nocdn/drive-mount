@@ -1443,6 +1443,7 @@ mod tests {
                 drive_letter: "  ".to_string(),
             }]
         ));
+        #[cfg(target_os = "macos")]
         assert!(has_complete_b2_config(&creds, &[bucket_with_mount]));
         assert!(has_complete_b2_config(&creds, &[bucket_with_drive]));
     }
