@@ -2,6 +2,13 @@ import type { LogLine } from "./types";
 
 const MAX_RENDERED_LOG_LINES = 1000;
 
+export function formatLogTimestamp(date = new Date()): string {
+  const hours = String(date.getHours()).padStart(2, "0");
+  const minutes = String(date.getMinutes()).padStart(2, "0");
+  const seconds = String(date.getSeconds()).padStart(2, "0");
+  return `${hours}:${minutes}:${seconds}`;
+}
+
 export interface LogController {
   appendLog(line: LogLine): void;
   clearRenderedLogs(): void;
@@ -9,9 +16,25 @@ export interface LogController {
 }
 
 export function createLogController(logsEl: HTMLPreElement): LogController {
-  const pendingLogLines: string[] = [];
-  const renderedLogNodes: Text[] = [];
+  const pendingLogLines: LogLine[] = [];
+  const renderedLogNodes: HTMLSpanElement[] = [];
   let logFlushScheduled = false;
+
+  function createLogLineNode(line: LogLine): HTMLSpanElement {
+    const node = document.createElement("span");
+    node.classList.add("log-line", `log-line--${line.level.toLowerCase()}`);
+
+    const timestamp = document.createElement("span");
+    timestamp.className = "log-timestamp";
+    timestamp.textContent = `[${line.timestamp}] `;
+
+    const level = document.createElement("span");
+    level.className = "log-level";
+    level.textContent = `[${line.level}]`;
+
+    node.append(timestamp, level, document.createTextNode(` ${line.message}\n`));
+    return node;
+  }
 
   function flushPendingLogLines() {
     logFlushScheduled = false;
@@ -24,7 +47,7 @@ export function createLogController(logsEl: HTMLPreElement): LogController {
     const fragment = document.createDocumentFragment();
 
     for (const line of lines) {
-      const node = document.createTextNode(line);
+      const node = createLogLineNode(line);
       renderedLogNodes.push(node);
       fragment.appendChild(node);
     }
@@ -41,7 +64,7 @@ export function createLogController(logsEl: HTMLPreElement): LogController {
   }
 
   function appendLog(line: LogLine) {
-    pendingLogLines.push(`[${line.timestamp}] [${line.level}] ${line.message}\n`);
+    pendingLogLines.push(line);
     if (!logFlushScheduled) {
       logFlushScheduled = true;
       requestAnimationFrame(flushPendingLogLines);

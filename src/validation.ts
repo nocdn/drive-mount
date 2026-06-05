@@ -1,4 +1,5 @@
 import type { AppSettings, LogLine } from "./types";
+import { formatLogTimestamp } from "./logs";
 
 interface ValidationElements {
   bucketsList: HTMLDivElement;
@@ -55,7 +56,7 @@ export function createValidationController(
     state.appendLog({
       level: "ERROR",
       message,
-      timestamp: new Date().toLocaleTimeString(),
+      timestamp: formatLogTimestamp(),
     });
   }
 

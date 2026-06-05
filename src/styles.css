@@ -223,6 +223,19 @@ button:disabled {
   word-break: break-word;
 }
 
+.log-line--info {
+  color: #008000;
+}
+
+.log-line--error {
+  color: #c00000;
+}
+
+.log-timestamp,
+.log-level {
+  font-weight: 600;
+}
+
 html,
 body {
   overflow: hidden;

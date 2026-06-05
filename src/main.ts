@@ -1,7 +1,7 @@
 import { invoke } from "@tauri-apps/api/core";
 import { listen } from "@tauri-apps/api/event";
 import { isEnabled, enable, disable } from "@tauri-apps/plugin-autostart";
-import { createLogController } from "./logs";
+import { createLogController, formatLogTimestamp } from "./logs";
 import type {
   AppSettings,
   BucketMount,
@@ -333,7 +333,7 @@ async function applyAutostart(enabled: boolean) {
     appendLog({
       level: "ERROR",
       message: `Start at login update failed: ${String(err)}`,
-      timestamp: new Date().toLocaleTimeString(),
+      timestamp: formatLogTimestamp(),
     });
   }
 }
@@ -415,7 +415,7 @@ async function unlockCredentialsAndAutoMount() {
     appendLog({
       level: "ERROR",
       message: String(err),
-      timestamp: new Date().toLocaleTimeString(),
+      timestamp: formatLogTimestamp(),
     });
   } finally {
     setLogOperation("startup", false);
@@ -440,14 +440,14 @@ async function loadUi() {
         platform === "macos"
           ? "macFUSE is not installed or has not been enabled."
           : "WinFsp is not installed.",
-      timestamp: new Date().toLocaleTimeString(),
+      timestamp: formatLogTimestamp(),
     });
   }
 
   appendLog({
     level: "INFO",
     message: "Cloud Drive Mount started. Use the tray icon to reopen Settings after closing this window.",
-    timestamp: new Date().toLocaleTimeString(),
+    timestamp: formatLogTimestamp(),
   });
 
   startWindowFitWatcher();
@@ -524,7 +524,7 @@ btnMount.addEventListener("click", async () => {
     appendLog({
       level: "ERROR",
       message: String(err),
-      timestamp: new Date().toLocaleTimeString(),
+      timestamp: formatLogTimestamp(),
     });
   } finally {
     setMountOperation(null);
@@ -556,13 +556,13 @@ btnConnectGdrive.addEventListener("click", async () => {
       appendLog({
         level: "INFO",
         message: "Google Drive is disconnected.",
-        timestamp: new Date().toLocaleTimeString(),
+        timestamp: formatLogTimestamp(),
       });
     } else {
       appendLog({
         level: "INFO",
         message: "Starting Google Drive authorization. Complete the sign-in in your browser.",
-        timestamp: new Date().toLocaleTimeString(),
+        timestamp: formatLogTimestamp(),
       });
       await invoke("configure_google_drive_cmd", {
         googleDrive: settings.googleDrive,
@@ -571,14 +571,14 @@ btnConnectGdrive.addEventListener("click", async () => {
       appendLog({
         level: "INFO",
         message: "Google Drive is connected. You can now click Save and Mount All.",
-        timestamp: new Date().toLocaleTimeString(),
+        timestamp: formatLogTimestamp(),
       });
     }
   } catch (err) {
     appendLog({
       level: "ERROR",
       message: String(err),
-      timestamp: new Date().toLocaleTimeString(),
+      timestamp: formatLogTimestamp(),
     });
   } finally {
     setLogOperation("gdrive-connect", false);
@@ -605,13 +605,13 @@ btnTestGdrive.addEventListener("click", async () => {
     appendLog({
       level: "INFO",
       message: "Google Drive connection test succeeded.",
-      timestamp: new Date().toLocaleTimeString(),
+      timestamp: formatLogTimestamp(),
     });
   } catch (err) {
     appendLog({
       level: "ERROR",
       message: String(err),
-      timestamp: new Date().toLocaleTimeString(),
+      timestamp: formatLogTimestamp(),
     });
   } finally {
     setLogOperation("gdrive-test", false);
@@ -655,13 +655,13 @@ btnTestSeedbox.addEventListener("click", async () => {
     appendLog({
       level: "INFO",
       message: "Seedbox connection test succeeded.",
-      timestamp: new Date().toLocaleTimeString(),
+      timestamp: formatLogTimestamp(),
     });
   } catch (err) {
     appendLog({
       level: "ERROR",
       message: String(err),
-      timestamp: new Date().toLocaleTimeString(),
+      timestamp: formatLogTimestamp(),
     });
   } finally {
     setLogOperation("seedbox-test", false);
@@ -690,13 +690,13 @@ btnForgetSeedbox.addEventListener("click", async () => {
     appendLog({
       level: "INFO",
       message: "Seedbox is disconnected.",
-      timestamp: new Date().toLocaleTimeString(),
+      timestamp: formatLogTimestamp(),
     });
   } catch (err) {
     appendLog({
       level: "ERROR",
       message: String(err),
-      timestamp: new Date().toLocaleTimeString(),
+      timestamp: formatLogTimestamp(),
     });
   } finally {
     setLogOperation("seedbox-forget", false);
@@ -737,7 +737,7 @@ btnUnmount.addEventListener("click", async () => {
     appendLog({
       level: "ERROR",
       message: String(err),
-      timestamp: new Date().toLocaleTimeString(),
+      timestamp: formatLogTimestamp(),
     });
   } finally {
     setMountOperation(null);
@@ -749,7 +749,7 @@ btnOpenLogs.addEventListener("click", () => {
     appendLog({
       level: "ERROR",
       message: String(err),
-      timestamp: new Date().toLocaleTimeString(),
+      timestamp: formatLogTimestamp(),
     });
   });
 });
@@ -771,7 +771,7 @@ btnCopyLogs.addEventListener("click", async () => {
     appendLog({
       level: "ERROR",
       message: `Copy failed: ${String(err)}`,
-      timestamp: new Date().toLocaleTimeString(),
+      timestamp: formatLogTimestamp(),
     });
   }
 });
@@ -791,7 +791,7 @@ btnRestart.addEventListener("click", async () => {
     appendLog({
       level: "ERROR",
       message: String(err),
-      timestamp: new Date().toLocaleTimeString(),
+      timestamp: formatLogTimestamp(),
     });
   } finally {
     setMountOperation(null);
