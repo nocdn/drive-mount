@@ -6,6 +6,7 @@
   "scripts": {
     "prepare:sidecars": "bun scripts/download-rclone.mjs",
     "build:frontend": "tsc && vite build",
+    "test:frontend": "bun test tests",
     "dev": "vite",
     "build": "bun run prepare:sidecars && bun run build:frontend",
     "build:installer": "tauri build",

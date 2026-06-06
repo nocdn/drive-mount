@@ -22,7 +22,7 @@ export function createLogController(logsEl: HTMLPreElement): LogController {
 
   function createLogLineNode(line: LogLine): HTMLSpanElement {
     const node = document.createElement("span");
-    node.classList.add("log-line", `log-line--${line.level.toLowerCase()}`);
+    node.className = "log-line";
 
     const timestamp = document.createElement("span");
     timestamp.className = "log-timestamp";

@@ -2,6 +2,10 @@ import { invoke } from "@tauri-apps/api/core";
 import { listen } from "@tauri-apps/api/event";
 import { isEnabled, enable, disable } from "@tauri-apps/plugin-autostart";
 import { createLogController, formatLogTimestamp } from "./logs";
+import {
+  hasMountRelevantSettingsChanges,
+  mountRelevantSettingsSnapshot,
+} from "./mountSettings";
 import type {
   AppSettings,
   BucketMount,
@@ -27,6 +31,7 @@ let seedboxConfigured = false;
 let hasSavedB2Credentials = false;
 let hasSavedSeedboxPassword = false;
 let mountOperation: MountOperation = null;
+let activeMountSettingsSnapshot: string | null = null;
 const logOperations = new Set<string>();
 
 const providerSelect = document.getElementById("provider") as HTMLSelectElement;
@@ -158,12 +163,22 @@ function updateMountButtons() {
     return;
   }
 
-  btnMount.disabled = mounted;
+  const hasChangedMountedSettings = hasMountRelevantSettingsChanges(
+    collectSettings(),
+    activeMountSettingsSnapshot,
+    platform,
+  );
+  btnMount.disabled = mounted && !hasChangedMountedSettings;
   btnUnmount.disabled = !mounted;
 }
 
 function renderMountState(state: MountState) {
   mounted = state.mounted;
+  if (mounted) {
+    activeMountSettingsSnapshot ??= mountRelevantSettingsSnapshot(collectSettings(), platform);
+  } else {
+    activeMountSettingsSnapshot = null;
+  }
   updateMountButtons();
   scheduleFitWindow();
 }
@@ -240,7 +255,12 @@ function createBucketRow(bucket: BucketMount = { bucketName: "", driveLetter: "Z
   const nameInput = document.createElement("input");
   nameInput.type = "text";
   nameInput.className = "bucket-name-input";
+  nameInput.autocomplete = "off";
+  nameInput.spellcheck = false;
+  nameInput.setAttribute("autocorrect", "off");
+  nameInput.setAttribute("autocapitalize", "none");
   nameInput.value = bucket.bucketName;
+  nameInput.addEventListener("input", updateMountButtons);
 
   const bucketGroup = document.createElement("div");
   bucketGroup.className = "bucket-inline-group";
@@ -257,6 +277,7 @@ function createBucketRow(bucket: BucketMount = { bucketName: "", driveLetter: "Z
     driveInput.className = "bucket-drive-input";
     driveInput.maxLength = 3;
     driveInput.value = bucket.driveLetter || "Z";
+    driveInput.addEventListener("input", updateMountButtons);
 
     const driveGroup = document.createElement("div");
     driveGroup.className = "bucket-inline-group";
@@ -271,9 +292,11 @@ function createBucketRow(bucket: BucketMount = { bucketName: "", driveLetter: "Z
     if (bucketsList.children.length <= 1) {
       nameInput.value = "";
       if (driveInput) driveInput.value = "Z";
+      updateMountButtons();
       return;
     }
     row.remove();
+    updateMountButtons();
     scheduleFitWindow();
   });
   row.appendChild(removeBtn);
@@ -428,6 +451,7 @@ async function loadUi() {
 
   const settings = await invoke<AppSettings>("load_settings_cmd");
   renderSettings(settings);
+  activeMountSettingsSnapshot = mountRelevantSettingsSnapshot(settings, platform);
 
   mounted = await invoke<boolean>("is_mounted");
   renderMountState({ mounted });
@@ -462,6 +486,7 @@ providerSelect.addEventListener("change", () => {
 
 addBucketBtn.addEventListener("click", () => {
   createBucketRow();
+  updateMountButtons();
 });
 
 startAtLoginCheckbox.addEventListener("change", () => {
@@ -473,7 +498,11 @@ startMinimizedCheckbox.addEventListener("change", () => {
 });
 
 btnMount.addEventListener("click", async () => {
-  if (mountOperation || mounted) {
+  if (
+    mountOperation ||
+    (mounted &&
+      !hasMountRelevantSettingsChanges(collectSettings(), activeMountSettingsSnapshot, platform))
+  ) {
     return;
   }
 
@@ -520,6 +549,7 @@ btnMount.addEventListener("click", async () => {
       },
     });
     mounted = true;
+    activeMountSettingsSnapshot = mountRelevantSettingsSnapshot(settings, platform);
   } catch (err) {
     appendLog({
       level: "ERROR",
@@ -620,10 +650,12 @@ btnTestGdrive.addEventListener("click", async () => {
 });
 
 gdriveRemotePathInput.addEventListener("change", () => {
+  updateMountButtons();
   void savePreferences();
 });
 
 gdriveRootFolderIdInput.addEventListener("change", () => {
+  updateMountButtons();
   void savePreferences();
 });
 
@@ -718,6 +750,7 @@ for (const el of [
     if (el === seedboxHostInput) {
       normalizeSeedboxHostInUi();
     }
+    updateMountButtons();
     void savePreferences();
   });
 }
