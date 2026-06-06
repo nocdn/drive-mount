@@ -1,6 +1,6 @@
 [package]
 name = "cloud-drive-mount"
-version = "0.1.0"
+version = "0.1.2"
 description = "Cloud Drive Mount"
 authors = ["bartek"]
 edition = "2021"
@@ -13,7 +13,7 @@ crate-type = ["staticlib", "cdylib", "rlib"]
 tauri-build = { version = "2", features = [] }
 
 [dependencies]
-tauri = { version = "2", features = ["tray-icon"] }
+tauri = { version = "2", features = ["tray-icon", "image-png"] }
 tauri-plugin-opener = "2"
 serde = { version = "1", features = ["derive"] }
 serde_json = "1"
@@ -30,11 +30,6 @@ tauri-plugin-single-instance = "2"
 
 [target.'cfg(windows)'.dependencies]
 windows = { version = "0.62", features = ["Win32_Storage_FileSystem", "Win32_System_Registry", "Win32_UI_Shell"] }
-
-[target.'cfg(target_os = "macos")'.dependencies]
-objc2-app-kit = { version = "0.3.2", default-features = false, features = ["NSImage", "std"] }
-objc2-foundation = { version = "0.3.2", default-features = false, features = ["NSString", "NSData", "std"] }
-image = { version = "0.25", default-features = false, features = ["tiff"] }
 
 [dev-dependencies]
 tempfile = "3"

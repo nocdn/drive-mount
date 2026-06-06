@@ -115,7 +115,7 @@ pub fn run() {
             #[cfg(target_os = "macos")]
             {
                 tray_builder = tray_builder
-                    .icon(macos_menu_bar_icon::load(app))
+                    .icon(macos_menu_bar_icon::load())
                     .icon_as_template(true);
             }
 
@@ -244,11 +244,14 @@ mod tests {
     }
 
     #[test]
-    fn macos_menu_bar_symbol_matches_legacy_native_app() {
+    fn macos_menu_bar_icon_uses_retina_template_asset() {
         #[cfg(target_os = "macos")]
-        assert_eq!(
-            macos_menu_bar_icon::SYMBOL_NAME,
-            "externaldrive.badge.icloud"
-        );
+        {
+            assert_eq!(macos_menu_bar_icon::MENU_BAR_ICON_PIXEL_SIZE, 36);
+            assert_eq!(
+                macos_menu_bar_icon::MENU_BAR_ICON_ASSET,
+                "src-tauri/icons/menu-bar-template.png"
+            );
+        }
     }
 }

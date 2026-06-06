@@ -1,45 +1,35 @@
-//! macOS menu bar tray icon — uses the same SF Symbol as the legacy native app.
+//! macOS menu bar tray icon loaded from a dedicated Retina template asset.
 
-use objc2_app_kit::NSImage;
-use objc2_foundation::NSString;
 use tauri::image::Image;
 
-pub(crate) const SYMBOL_NAME: &str = "externaldrive.badge.icloud";
-const ACCESSIBILITY_DESCRIPTION: &str = "Cloud Drive Mount";
+const MENU_BAR_ICON_PNG: &[u8] = include_bytes!("../icons/menu-bar-template.png");
 
-pub(crate) fn load(app: &tauri::App) -> Image<'_> {
-    if let Some(icon) = try_load() {
-        return icon;
-    }
+#[cfg(test)]
+pub(crate) const MENU_BAR_ICON_PIXEL_SIZE: u32 = 36;
+#[cfg(test)]
+pub(crate) const MENU_BAR_ICON_SOURCE: &str = "src-tauri/icons/menu-bar-template.svg";
+#[cfg(test)]
+pub(crate) const MENU_BAR_ICON_ASSET: &str = "src-tauri/icons/menu-bar-template.png";
 
-    eprintln!("Warning: Could not load SF Symbol '{SYMBOL_NAME}' for menu bar; using app icon");
-    app.default_window_icon()
-        .expect("default window icon should exist")
-        .clone()
-}
-
-fn try_load() -> Option<Image<'static>> {
-    let name = NSString::from_str(SYMBOL_NAME);
-    let description = NSString::from_str(ACCESSIBILITY_DESCRIPTION);
-    let ns_image =
-        NSImage::imageWithSystemSymbolName_accessibilityDescription(&name, Some(&description))?;
-
-    ns_image.setTemplate(true);
-
-    let tiff = ns_image.TIFFRepresentation()?;
-    let decoded = image::load_from_memory(&tiff.to_vec()).ok()?;
-    let rgba = decoded.to_rgba8();
-    let (width, height) = rgba.dimensions();
-
-    Some(Image::new_owned(rgba.into_raw(), width, height))
+pub(crate) fn load() -> Image<'static> {
+    Image::from_bytes(MENU_BAR_ICON_PNG)
+        .expect("embedded macOS menu bar template icon should be a valid PNG")
 }
 
 #[cfg(test)]
 mod tests {
-    use super::SYMBOL_NAME;
+    use super::{load, MENU_BAR_ICON_ASSET, MENU_BAR_ICON_PIXEL_SIZE, MENU_BAR_ICON_SOURCE};
 
     #[test]
-    fn uses_legacy_mac_app_menu_bar_symbol() {
-        assert_eq!(SYMBOL_NAME, "externaldrive.badge.icloud");
+    fn uses_retina_template_asset() {
+        let image = load();
+
+        assert_eq!(image.width(), MENU_BAR_ICON_PIXEL_SIZE);
+        assert_eq!(image.height(), MENU_BAR_ICON_PIXEL_SIZE);
+        assert_eq!(
+            MENU_BAR_ICON_SOURCE,
+            "src-tauri/icons/menu-bar-template.svg"
+        );
+        assert_eq!(MENU_BAR_ICON_ASSET, "src-tauri/icons/menu-bar-template.png");
     }
 }
