@@ -35,7 +35,7 @@ fn sidecar_filenames() -> &'static [&'static str] {
     }
     #[cfg(windows)]
     {
-        &["rclone-x86_64-pc-windows-msvc.exe"]
+        &["rclone.exe", "rclone-x86_64-pc-windows-msvc.exe"]
     }
     #[cfg(not(any(
         all(target_os = "macos", target_arch = "aarch64"),
@@ -82,4 +82,30 @@ pub fn find_rclone_in_path() -> Option<PathBuf> {
     }
 
     None
+}
+
+#[cfg(test)]
+mod tests {
+    use super::sidecar_filenames;
+
+    #[test]
+    #[cfg(windows)]
+    fn windows_sidecar_filenames_include_tauri_installed_name() {
+        assert_eq!(
+            sidecar_filenames(),
+            &["rclone.exe", "rclone-x86_64-pc-windows-msvc.exe"]
+        );
+    }
+
+    #[test]
+    #[cfg(all(target_os = "macos", target_arch = "aarch64"))]
+    fn apple_silicon_sidecar_filename_uses_target_triple() {
+        assert_eq!(sidecar_filenames(), &["rclone-aarch64-apple-darwin"]);
+    }
+
+    #[test]
+    #[cfg(all(target_os = "macos", target_arch = "x86_64"))]
+    fn intel_macos_sidecar_filename_uses_target_triple() {
+        assert_eq!(sidecar_filenames(), &["rclone-x86_64-apple-darwin"]);
+    }
 }
