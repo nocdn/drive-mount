@@ -1,6 +1,7 @@
 import { invoke } from "@tauri-apps/api/core";
 import { listen } from "@tauri-apps/api/event";
 import { isEnabled, enable, disable } from "@tauri-apps/plugin-autostart";
+import { createCopiedButtonFeedback } from "./copyButtonFeedback";
 import { createLogController, formatLogTimestamp } from "./logs";
 import {
   hasMountRelevantSettingsChanges,
@@ -71,6 +72,7 @@ const btnRestart = document.getElementById("btn-restart") as HTMLButtonElement;
 const logsOperationLoader = document.getElementById("logs-operation-loader") as HTMLSpanElement;
 const logsEl = document.getElementById("logs") as HTMLPreElement;
 const { appendLog, clearRenderedLogs, flushPendingLogLines } = createLogController(logsEl);
+const showCopyLogsFeedback = createCopiedButtonFeedback(btnCopyLogs);
 const { parseSeedboxPort, validateB2ForMount, validateSeedboxForConnection } =
   createValidationController(
     {
@@ -800,6 +802,7 @@ btnCopyLogs.addEventListener("click", async () => {
   }
   try {
     await navigator.clipboard.writeText(text);
+    showCopyLogsFeedback();
   } catch (err) {
     appendLog({
       level: "ERROR",
