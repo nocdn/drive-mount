@@ -2,6 +2,11 @@ import { invoke } from "@tauri-apps/api/core";
 import { listen } from "@tauri-apps/api/event";
 import { isEnabled, enable, disable } from "@tauri-apps/plugin-autostart";
 import { createCopiedButtonFeedback } from "./copyButtonFeedback";
+import {
+  nextAvailableWindowsDriveLetter,
+  normalizeDriveLetter,
+  RESERVED_WINDOWS_DRIVE_LETTERS,
+} from "./driveLetters";
 import { createLogController, formatLogTimestamp } from "./logs";
 import {
   hasMountRelevantSettingsChanges,
@@ -33,7 +38,7 @@ let hasSavedB2Credentials = false;
 let hasSavedSeedboxPassword = false;
 let mountOperation: MountOperation = null;
 let activeMountSettingsSnapshot: string | null = null;
-const logOperations = new Set<string>();
+let unavailableWindowsDriveLetters = new Set<string>();
 
 const providerSelect = document.getElementById("provider") as HTMLSelectElement;
 const b2Panel = document.getElementById("b2-panel") as HTMLDivElement;
@@ -69,7 +74,6 @@ const btnOpenLogs = document.getElementById("btn-open-logs") as HTMLButtonElemen
 const btnClearLogs = document.getElementById("btn-clear-logs") as HTMLButtonElement;
 const btnCopyLogs = document.getElementById("btn-copy-logs") as HTMLButtonElement;
 const btnRestart = document.getElementById("btn-restart") as HTMLButtonElement;
-const logsOperationLoader = document.getElementById("logs-operation-loader") as HTMLSpanElement;
 const logsEl = document.getElementById("logs") as HTMLPreElement;
 const { appendLog, clearRenderedLogs, flushPendingLogLines } = createLogController(logsEl);
 const showCopyLogsFeedback = createCopiedButtonFeedback(btnCopyLogs);
@@ -139,21 +143,11 @@ function waitForUiFeedback() {
 
 function setMountOperation(operation: MountOperation) {
   mountOperation = operation;
-  setLogOperation("mount", operation !== null);
   updateMountButtons();
 }
 
-function setLogOperation(name: string, active: boolean) {
-  if (active) {
-    logOperations.add(name);
-  } else {
-    logOperations.delete(name);
-  }
-  logsOperationLoader.classList.toggle("hidden", logOperations.size === 0);
-}
-
 function updateMountButtons() {
-  btnMount.textContent = mountOperation === "mounting" ? "Mounting..." : mountButtonLabel;
+  btnMount.textContent = mountOperation === "mounting" ? "Mounting" : mountButtonLabel;
   btnUnmount.textContent =
     mountOperation === "unmounting" || mountOperation === "restarting" ? "Unmounting..." : unmountButtonLabel;
   btnRestart.textContent = mountOperation === "restarting" ? "Restarting Mounts..." : restartButtonLabel;
@@ -248,7 +242,30 @@ function refreshGoogleDriveConnectionUi() {
   gdriveHelp.classList.toggle("hidden", googleDriveConnected);
 }
 
-function createBucketRow(bucket: BucketMount = { bucketName: "", driveLetter: "Z" }) {
+function collectVisibleBucketDriveLetters(excludedInput?: HTMLInputElement): string[] {
+  return [...bucketsList.querySelectorAll<HTMLInputElement>(".bucket-drive-input")]
+    .filter((input) => input !== excludedInput)
+    .map((input) => input.value);
+}
+
+function defaultBucketDriveLetter(
+  extraUsedLetters: Iterable<string> = [],
+  excludedInput?: HTMLInputElement,
+): string {
+  if (platform === "macos") {
+    return "";
+  }
+
+  return nextAvailableWindowsDriveLetter([
+    ...RESERVED_WINDOWS_DRIVE_LETTERS,
+    ...unavailableWindowsDriveLetters,
+    ...collectVisibleBucketDriveLetters(excludedInput),
+    ...extraUsedLetters,
+  ]);
+}
+
+function createBucketRow(bucket?: BucketMount) {
+  const rowBucket = bucket ?? { bucketName: "", driveLetter: defaultBucketDriveLetter() };
   const row = document.createElement("div");
   row.className = "bucket-row";
 
@@ -261,7 +278,7 @@ function createBucketRow(bucket: BucketMount = { bucketName: "", driveLetter: "Z
   nameInput.spellcheck = false;
   nameInput.setAttribute("autocorrect", "off");
   nameInput.setAttribute("autocapitalize", "none");
-  nameInput.value = bucket.bucketName;
+  nameInput.value = rowBucket.bucketName;
   nameInput.addEventListener("input", updateMountButtons);
 
   const bucketGroup = document.createElement("div");
@@ -278,7 +295,7 @@ function createBucketRow(bucket: BucketMount = { bucketName: "", driveLetter: "Z
     driveInput.type = "text";
     driveInput.className = "bucket-drive-input";
     driveInput.maxLength = 3;
-    driveInput.value = bucket.driveLetter || "Z";
+    driveInput.value = rowBucket.driveLetter || defaultBucketDriveLetter();
     driveInput.addEventListener("input", updateMountButtons);
 
     const driveGroup = document.createElement("div");
@@ -293,7 +310,7 @@ function createBucketRow(bucket: BucketMount = { bucketName: "", driveLetter: "Z
   removeBtn.addEventListener("click", () => {
     if (bucketsList.children.length <= 1) {
       nameInput.value = "";
-      if (driveInput) driveInput.value = "Z";
+      if (driveInput) driveInput.value = defaultBucketDriveLetter([], driveInput);
       updateMountButtons();
       return;
     }
@@ -330,9 +347,28 @@ function collectBuckets(): BucketMount[] {
 
 function renderBuckets(buckets: BucketMount[]) {
   bucketsList.innerHTML = "";
-  const rows = buckets.length > 0 ? buckets : [{ bucketName: "", driveLetter: "Z" }];
+  const rows = buckets.length > 0 ? buckets : [{ bucketName: "", driveLetter: defaultBucketDriveLetter() }];
   rows.forEach((bucket) => createBucketRow(bucket));
   scheduleFitWindow();
+}
+
+async function refreshUnavailableWindowsDriveLetters() {
+  if (platform !== "windows") {
+    unavailableWindowsDriveLetters = new Set();
+    return;
+  }
+
+  try {
+    const letters = await invoke<string[]>("used_windows_drive_letters_cmd");
+    unavailableWindowsDriveLetters = new Set(letters.map(normalizeDriveLetter));
+  } catch (err) {
+    unavailableWindowsDriveLetters = new Set();
+    appendLog({
+      level: "ERROR",
+      message: `Could not check Windows drive letters: ${String(err)}`,
+      timestamp: formatLogTimestamp(),
+    });
+  }
 }
 
 function collectSettings(): AppSettings {
@@ -426,11 +462,11 @@ function renderCredentialState(loaded: LoadedCredentials) {
 }
 
 async function unlockCredentialsAndAutoMount() {
-  setLogOperation("startup", true);
-
   try {
     const loaded = await invoke<LoadedCredentials>("load_credentials_cmd");
     renderCredentialState(loaded);
+    setMountOperation("mounting");
+    await waitForUiFeedback();
     await invoke("attempt_auto_mount_cmd");
     mounted = await invoke<boolean>("is_mounted");
     renderMountState({ mounted });
@@ -443,13 +479,14 @@ async function unlockCredentialsAndAutoMount() {
       timestamp: formatLogTimestamp(),
     });
   } finally {
-    setLogOperation("startup", false);
+    setMountOperation(null);
   }
 }
 
 async function loadUi() {
   platform = await invoke<string>("get_platform");
   configurePlatformUi();
+  await refreshUnavailableWindowsDriveLetters();
 
   const settings = await invoke<AppSettings>("load_settings_cmd");
   renderSettings(settings);
@@ -575,7 +612,6 @@ btnConnectGdrive.addEventListener("click", async () => {
   btnConnectGdrive.disabled = true;
   btnTestGdrive.disabled = true;
   btnConnectGdrive.textContent = googleDriveConnected ? "Disconnecting..." : "Connecting...";
-  setLogOperation("gdrive-connect", true);
 
   try {
     await invoke("save_settings_cmd", { settings });
@@ -613,7 +649,6 @@ btnConnectGdrive.addEventListener("click", async () => {
       timestamp: formatLogTimestamp(),
     });
   } finally {
-    setLogOperation("gdrive-connect", false);
     refreshGoogleDriveConnectionUi();
     btnConnectGdrive.disabled = false;
     btnTestGdrive.disabled = false;
@@ -627,7 +662,6 @@ btnTestGdrive.addEventListener("click", async () => {
 
   const settings = collectSettings();
   btnTestGdrive.disabled = true;
-  setLogOperation("gdrive-test", true);
 
   try {
     await invoke("save_settings_cmd", { settings });
@@ -646,7 +680,6 @@ btnTestGdrive.addEventListener("click", async () => {
       timestamp: formatLogTimestamp(),
     });
   } finally {
-    setLogOperation("gdrive-test", false);
     btnTestGdrive.disabled = false;
   }
 });
@@ -673,7 +706,6 @@ btnTestSeedbox.addEventListener("click", async () => {
   const settings = collectSettings();
   btnTestSeedbox.disabled = true;
   btnForgetSeedbox.disabled = true;
-  setLogOperation("seedbox-test", true);
 
   try {
     await invoke("save_settings_cmd", { settings });
@@ -698,7 +730,6 @@ btnTestSeedbox.addEventListener("click", async () => {
       timestamp: formatLogTimestamp(),
     });
   } finally {
-    setLogOperation("seedbox-test", false);
     btnTestSeedbox.disabled = false;
     btnForgetSeedbox.disabled = false;
     refreshSeedboxConnectionUi();
@@ -713,7 +744,6 @@ btnForgetSeedbox.addEventListener("click", async () => {
   const settings = collectSettings();
   btnForgetSeedbox.disabled = true;
   btnTestSeedbox.disabled = true;
-  setLogOperation("seedbox-forget", true);
 
   try {
     await invoke("save_settings_cmd", { settings });
@@ -733,7 +763,6 @@ btnForgetSeedbox.addEventListener("click", async () => {
       timestamp: formatLogTimestamp(),
     });
   } finally {
-    setLogOperation("seedbox-forget", false);
     refreshSeedboxConnectionUi();
     btnForgetSeedbox.disabled = false;
     btnTestSeedbox.disabled = false;

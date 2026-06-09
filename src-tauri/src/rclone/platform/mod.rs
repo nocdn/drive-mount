@@ -76,3 +76,8 @@ pub fn google_drive_mount_target(_settings: &crate::models::GoogleDriveSettings)
 pub fn seedbox_mount_target(_settings: &crate::models::SeedboxSettings) -> String {
     String::new()
 }
+
+#[cfg(not(windows))]
+pub fn used_windows_drive_letters() -> Vec<String> {
+    Vec::new()
+}

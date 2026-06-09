@@ -33,7 +33,7 @@ use crate::settings::{ensure_app_data_dir, load_settings};
 use discovery::{find_bundled_rclone, find_rclone_in_path};
 use process::hidden_command;
 
-pub use platform::is_fuse_installed;
+pub use platform::{is_fuse_installed, used_windows_drive_letters};
 
 const B2_REMOTE: &str = "b2remote";
 const MOUNT_STARTUP_TIMEOUT_SECS: u64 = 90;
@@ -586,9 +586,18 @@ impl RcloneManager {
             .lock()
             .unwrap()
             .insert(target.to_string());
+
+        let running = self.mounts.lock().unwrap().remove(target);
+        let should_unmount = running.is_some() || platform::is_mount_ready(target);
+        if !should_unmount {
+            self.cleanup_mount_folder(target);
+            let _ = app.emit("mount-state-changed", self.mount_state());
+            return;
+        }
+
         self.log_info(&format!("Unmounting {target}"));
 
-        if let Some(mut running) = self.mounts.lock().unwrap().remove(target) {
+        if let Some(mut running) = running {
             self.unmount_platform_target(app, target);
             let _ = running.child.kill();
             let _ = running.child.wait();
@@ -1032,6 +1041,9 @@ fn stream_output(
             let reader = BufReader::new(out);
             for line in reader.lines().map_while(Result::ok) {
                 let line = redact_sensitive_line(&line);
+                if is_expected_rclone_cleanup_noise(&line) {
+                    continue;
+                }
                 if let Ok(logger) = logger.lock() {
                     logger.info(format!("[{label}] {line}"));
                 }
@@ -1044,12 +1056,19 @@ fn stream_output(
             let reader = BufReader::new(err);
             for line in reader.lines().map_while(Result::ok) {
                 let line = redact_sensitive_line(&line);
+                if is_expected_rclone_cleanup_noise(&line) {
+                    continue;
+                }
                 if let Ok(logger) = logger.lock() {
                     logger.info(format!("[{label}] {line}"));
                 }
             }
         });
     }
+}
+
+fn is_expected_rclone_cleanup_noise(line: &str) -> bool {
+    line.contains(r#"rc: "mount/unmount": error: mount not found"#)
 }
 
 pub fn has_complete_b2_config(creds: &Option<B2Credentials>, buckets: &[BucketMount]) -> bool {
@@ -1227,6 +1246,16 @@ mod tests {
             bucket_name: "photos".to_string(),
             drive_letter: String::new(),
         }]));
+    }
+
+    #[test]
+    fn rclone_cleanup_noise_filter_matches_mount_not_found_only() {
+        assert!(is_expected_rclone_cleanup_noise(
+            r#"2026/06/09 20:46:34 ERROR : rc: "mount/unmount": error: mount not found"#
+        ));
+        assert!(!is_expected_rclone_cleanup_noise(
+            "2026/06/09 20:46:45 NOTICE: Serving remote control on http://127.0.0.1:5578/"
+        ));
     }
 
     #[test]

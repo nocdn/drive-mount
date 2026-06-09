@@ -168,6 +168,16 @@ pub fn seedbox_mount_target(_settings: &SeedboxSettings) -> String {
     format!("{SEEDBOX_WINDOWS_DRIVE}:")
 }
 
+pub fn used_windows_drive_letters() -> Vec<String> {
+    use windows::Win32::Storage::FileSystem::GetLogicalDrives;
+
+    let mask = unsafe { GetLogicalDrives() };
+    (0..26)
+        .filter(|index| mask & (1 << index) != 0)
+        .map(|index| ((b'A' + index as u8) as char).to_string())
+        .collect()
+}
+
 fn normalize_drive_letter(input: &str) -> Result<String, String> {
     let trimmed = input.trim().trim_end_matches(':');
     if trimmed.len() != 1 {

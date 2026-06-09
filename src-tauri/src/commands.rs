@@ -16,7 +16,8 @@ use crate::notifications::show_app_notification;
 use crate::paths::{log_dir, platform_name};
 use crate::rclone::{
     has_complete_b2_config, has_complete_google_drive_config, has_complete_seedbox_config,
-    is_fuse_installed, is_google_drive_configured, is_seedbox_configured, RcloneManager,
+    is_fuse_installed, is_google_drive_configured, is_seedbox_configured,
+    used_windows_drive_letters, RcloneManager,
 };
 use crate::settings::{load_settings, save_settings};
 
@@ -261,6 +262,11 @@ pub fn is_mounted(state: State<'_, AppState>) -> Result<bool, String> {
 #[tauri::command]
 pub fn is_fuse_installed_cmd() -> bool {
     is_fuse_installed()
+}
+
+#[tauri::command]
+pub fn used_windows_drive_letters_cmd() -> Vec<String> {
+    used_windows_drive_letters()
 }
 
 #[tauri::command]

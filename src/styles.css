@@ -193,29 +193,6 @@ button:disabled {
   flex-shrink: 0;
 }
 
-.inline-loader {
-  box-sizing: border-box;
-  flex-shrink: 0;
-  width: 12px;
-  height: 12px;
-  margin-left: 2px;
-  line-height: 0;
-}
-
-.inline-loader:not(.hidden) {
-  display: block;
-}
-
-.inline-loader.hidden {
-  display: none;
-}
-
-.inline-loader svg {
-  display: block;
-  width: 100%;
-  height: 100%;
-}
-
 .logs {
   box-sizing: border-box;
   height: 190px;
