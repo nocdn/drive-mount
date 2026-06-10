@@ -8,13 +8,18 @@ pub enum CloudProvider {
     BackblazeB2,
     #[serde(rename = "GoogleDrive")]
     GoogleDrive,
+    #[serde(rename = "OneDrive")]
+    OneDrive,
     Seedbox,
 }
 
 pub const GDRIVE_REMOTE: &str = "gdrive";
+pub const ONEDRIVE_REMOTE: &str = "onedrive";
 pub const SEEDBOX_REMOTE: &str = "seedbox";
 #[cfg(windows)]
 pub const GOOGLE_DRIVE_WINDOWS_DRIVE: &str = "G";
+#[cfg(windows)]
+pub const ONEDRIVE_WINDOWS_DRIVE: &str = "O";
 #[cfg(windows)]
 pub const SEEDBOX_WINDOWS_DRIVE: &str = "S";
 
@@ -40,6 +45,21 @@ impl GoogleDriveSettings {
         let mut settings = self.clone();
         settings.remote_path = crate::paths::normalize_google_drive_path(&settings.remote_path);
         settings.root_folder_id = settings.root_folder_id.trim().to_string();
+        settings
+    }
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, Default)]
+#[serde(rename_all = "camelCase")]
+pub struct OneDriveSettings {
+    #[serde(default)]
+    pub remote_path: String,
+}
+
+impl OneDriveSettings {
+    pub fn normalized(&self) -> Self {
+        let mut settings = self.clone();
+        settings.remote_path = crate::paths::normalize_remote_path(&settings.remote_path);
         settings
     }
 }
@@ -105,6 +125,8 @@ pub struct AppSettings {
     #[serde(default)]
     pub google_drive: GoogleDriveSettings,
     #[serde(default)]
+    pub one_drive: OneDriveSettings,
+    #[serde(default)]
     pub seedbox: SeedboxSettings,
     #[serde(default)]
     pub start_at_login: bool,
@@ -126,6 +148,7 @@ impl Default for AppSettings {
             selected_provider: CloudProvider::BackblazeB2,
             buckets: default_buckets(),
             google_drive: GoogleDriveSettings::default(),
+            one_drive: OneDriveSettings::default(),
             seedbox: SeedboxSettings::default(),
             start_at_login: false,
             start_minimized: false,
@@ -137,6 +160,7 @@ impl AppSettings {
     pub fn normalized(&self) -> Self {
         let mut settings = self.clone();
         settings.google_drive = settings.google_drive.normalized();
+        settings.one_drive = settings.one_drive.normalized();
         settings.seedbox = settings.seedbox.normalized();
         settings.buckets = settings
             .buckets
@@ -163,6 +187,7 @@ pub struct LoadedCredentials {
     pub has_saved_credentials: bool,
     pub b2_credentials: Option<B2Credentials>,
     pub is_google_drive_configured: bool,
+    pub is_one_drive_configured: bool,
     pub is_seedbox_configured: bool,
     pub has_saved_seedbox_password: bool,
 }
@@ -174,6 +199,7 @@ pub struct MountRequest {
     pub application_key: String,
     pub buckets: Vec<BucketMount>,
     pub google_drive: GoogleDriveSettings,
+    pub one_drive: OneDriveSettings,
     pub seedbox: SeedboxSettings,
     pub seedbox_password: String,
     pub selected_provider: CloudProvider,
@@ -222,6 +248,10 @@ mod tests {
             "\"GoogleDrive\""
         );
         assert_eq!(
+            serde_json::to_string(&CloudProvider::OneDrive).unwrap(),
+            "\"OneDrive\""
+        );
+        assert_eq!(
             serde_json::to_string(&CloudProvider::Seedbox).unwrap(),
             "\"Seedbox\""
         );
@@ -235,6 +265,10 @@ mod tests {
             CloudProvider::GoogleDrive
         );
         assert_eq!(
+            serde_json::from_str::<CloudProvider>("\"OneDrive\"").unwrap(),
+            CloudProvider::OneDrive
+        );
+        assert_eq!(
             serde_json::from_str::<CloudProvider>("\"Seedbox\"").unwrap(),
             CloudProvider::Seedbox
         );
@@ -246,12 +280,24 @@ mod tests {
 
         assert_eq!(settings.selected_provider, CloudProvider::BackblazeB2);
         assert_eq!(settings.buckets, vec![BucketMount::default()]);
+        assert_eq!(settings.google_drive, GoogleDriveSettings::default());
+        assert_eq!(settings.one_drive, OneDriveSettings::default());
         assert_eq!(settings.seedbox.port, 21);
         assert_eq!(settings.seedbox.remote_path, "downloads");
         assert!(settings.seedbox.allow_unverified_certificate);
         assert!(settings.seedbox.read_only);
         assert!(!settings.start_at_login);
         assert!(!settings.start_minimized);
+    }
+
+    #[test]
+    fn one_drive_normalized_cleans_remote_path() {
+        let settings = OneDriveSettings {
+            remote_path: " :/Personal\\Docs ".to_string(),
+        }
+        .normalized();
+
+        assert_eq!(settings.remote_path, "Personal/Docs");
     }
 
     #[test]
@@ -306,6 +352,7 @@ mod tests {
                 application_key: "key".to_string(),
             }),
             is_google_drive_configured: true,
+            is_one_drive_configured: true,
             is_seedbox_configured: false,
             has_saved_seedbox_password: true,
         };
@@ -317,6 +364,7 @@ mod tests {
         assert!(value.get("applicationKeyId").is_none());
         assert!(value.get("applicationKey").is_none());
         assert_eq!(value["isGoogleDriveConfigured"], true);
+        assert_eq!(value["isOneDriveConfigured"], true);
         assert_eq!(value["isSeedboxConfigured"], false);
         assert_eq!(value["hasSavedSeedboxPassword"], true);
     }
@@ -351,9 +399,10 @@ mod tests {
             "applicationKey": "key",
             "buckets": [{ "bucketName": "bucket", "driveLetter": "P" }],
             "googleDrive": { "remotePath": "docs", "remoteName": "legacy" },
+            "oneDrive": { "remotePath": "personal" },
             "seedbox": { "host": "ftp://example.com", "username": "user", "driveLetter": "S" },
             "seedboxPassword": "secret",
-            "selectedProvider": "Seedbox"
+            "selectedProvider": "OneDrive"
         }"#;
 
         let request: MountRequest = serde_json::from_str(json).unwrap();
@@ -363,10 +412,11 @@ mod tests {
         assert_eq!(request.buckets[0].bucket_name, "bucket");
         assert_eq!(request.buckets[0].drive_letter, "P");
         assert_eq!(request.google_drive.remote_path, "docs");
+        assert_eq!(request.one_drive.remote_path, "personal");
         assert_eq!(request.seedbox.host, "ftp://example.com");
         assert_eq!(request.seedbox.username, "user");
         assert_eq!(request.seedbox.port, 21);
         assert_eq!(request.seedbox_password, "secret");
-        assert_eq!(request.selected_provider, CloudProvider::Seedbox);
+        assert_eq!(request.selected_provider, CloudProvider::OneDrive);
     }
 }

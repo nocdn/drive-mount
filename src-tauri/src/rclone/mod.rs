@@ -10,23 +10,26 @@ use std::sync::{Arc, Mutex};
 use std::thread;
 use std::time::Duration;
 
+use serde::Deserialize;
 use tauri::{AppHandle, Emitter};
 
 use crate::credentials::{
-    delete_google_drive_config, load_b2_credentials, load_seedbox_password,
-    save_google_drive_config, save_seedbox_password,
+    delete_google_drive_config, delete_one_drive_config, load_b2_credentials,
+    load_seedbox_password, save_google_drive_config, save_one_drive_config, save_seedbox_password,
 };
 #[cfg(not(test))]
 use crate::credentials::{
-    has_saved_google_drive_config, has_saved_seedbox_password, load_google_drive_config,
+    has_saved_google_drive_config, has_saved_one_drive_config, has_saved_seedbox_password,
+    load_google_drive_config, load_one_drive_config,
 };
 use crate::logging::{redact_sensitive_line, LogEmitter};
 use crate::models::{
     B2Credentials, BucketMount, CloudProvider, GoogleDriveSettings, MountEntry, MountRequest,
-    MountState, SeedboxSettings, GDRIVE_REMOTE, SEEDBOX_REMOTE,
+    MountState, OneDriveSettings, SeedboxSettings, GDRIVE_REMOTE, ONEDRIVE_REMOTE, SEEDBOX_REMOTE,
 };
 use crate::paths::{
-    rclone_cache_dir, rclone_config_path, GOOGLE_DRIVE_MOUNT_NAME, SEEDBOX_MOUNT_NAME,
+    rclone_cache_dir, rclone_config_path, GOOGLE_DRIVE_MOUNT_NAME, ONEDRIVE_MOUNT_NAME,
+    SEEDBOX_MOUNT_NAME,
 };
 use crate::settings::{ensure_app_data_dir, load_settings};
 
@@ -37,11 +40,19 @@ pub use platform::{is_fuse_installed, used_windows_drive_letters};
 
 const B2_REMOTE: &str = "b2remote";
 const MOUNT_STARTUP_TIMEOUT_SECS: u64 = 90;
+const MAX_ONEDRIVE_CONFIG_STEPS: usize = 8;
 
 struct RunningMount {
     child: Child,
     label: String,
     provider: CloudProvider,
+}
+
+#[derive(Clone)]
+struct RunningMountInfo {
+    target: String,
+    label: String,
+    pid: u32,
 }
 
 pub struct RcloneManager {
@@ -107,8 +118,10 @@ impl RcloneManager {
         }
 
         let google_drive = request.google_drive.normalized();
+        let one_drive = request.one_drive.normalized();
         let seedbox = request.seedbox.normalized();
         ensure_google_drive_config()?;
+        ensure_one_drive_config()?;
 
         if has_seedbox_settings(&seedbox) {
             if !is_valid_seedbox(&seedbox) {
@@ -121,7 +134,7 @@ impl RcloneManager {
             }
         }
 
-        let specs = build_all_mount_specs(request, &google_drive, &seedbox)?;
+        let specs = build_all_mount_specs(request, &google_drive, &one_drive, &seedbox)?;
         self.unmount_all(app);
 
         ensure_app_data_dir()?;
@@ -280,6 +293,194 @@ impl RcloneManager {
         }
     }
 
+    pub fn is_one_drive_configured(&self) -> bool {
+        is_one_drive_configured()
+    }
+
+    pub fn configure_one_drive(
+        &self,
+        app: &AppHandle,
+        one_drive: &OneDriveSettings,
+    ) -> Result<(), String> {
+        let _one_drive = one_drive.normalized();
+        let rclone_path = self.resolve_rclone_path(app)?;
+        ensure_app_data_dir()?;
+
+        let config_path = rclone_config_path();
+        config::remove_config_section(&config_path, ONEDRIVE_REMOTE)?;
+
+        let args = vec![
+            "config".to_string(),
+            "create".to_string(),
+            ONEDRIVE_REMOTE.to_string(),
+            "onedrive".to_string(),
+            "region".to_string(),
+            "global".to_string(),
+            "config_is_local".to_string(),
+            "true".to_string(),
+            "--non-interactive".to_string(),
+            "--config".to_string(),
+            config_path.to_string_lossy().into_owned(),
+        ];
+
+        self.log_info("Starting OneDrive authorization.");
+        self.log_info(
+            "A browser window should open. Sign in and allow access to complete the rclone setup.",
+        );
+
+        let response = run_rclone_config_json_blocking(
+            &rclone_path,
+            &args,
+            self.logger.clone(),
+            "OneDrive authorization",
+        )?;
+        self.complete_one_drive_config_flow(&rclone_path, &config_path, response)?;
+
+        let Some(lines) = config::read_config_section_lines(&config_path, ONEDRIVE_REMOTE)? else {
+            let _ = config::remove_config_section(&config_path, ONEDRIVE_REMOTE);
+            return Err("OneDrive authorization did not write a usable rclone config.".to_string());
+        };
+
+        if !has_config_value(&lines, "drive_id") || !has_config_value(&lines, "drive_type") {
+            let _ = config::remove_config_section(&config_path, ONEDRIVE_REMOTE);
+            self.log_error(
+                "OneDrive authorization finished without drive_id and drive_type in rclone config.",
+            );
+            return Err(
+                "OneDrive authorization did not discover a usable drive. Try reconnecting with a personal OneDrive account."
+                    .to_string(),
+            );
+        }
+
+        save_one_drive_config(&lines)?;
+
+        self.log_info(&format!(
+            "OneDrive is configured in {}.",
+            config_path.display()
+        ));
+        let _ = app;
+        Ok(())
+    }
+
+    fn complete_one_drive_config_flow(
+        &self,
+        rclone_path: &Path,
+        config_path: &Path,
+        mut response: RcloneConfigResponse,
+    ) -> Result<(), String> {
+        for _ in 0..MAX_ONEDRIVE_CONFIG_STEPS {
+            if !response.error.trim().is_empty() {
+                self.log_error(&format!(
+                    "OneDrive authorization step reported: {}",
+                    response.error.trim()
+                ));
+                if response.state.is_empty() {
+                    return Err(format!(
+                        "OneDrive authorization failed: {}",
+                        response.error.trim()
+                    ));
+                }
+            }
+
+            if response.state.is_empty() {
+                return Ok(());
+            }
+
+            let result = one_drive_config_result(&response)?;
+            let state = response.state.clone();
+
+            if response.option_name() == Some("config_driveid") {
+                if let Some(help) = selected_drive_help(&response, &result) {
+                    self.log_info(&format!("Selected OneDrive drive: {help}"));
+                }
+            }
+
+            let args = vec![
+                "config".to_string(),
+                "update".to_string(),
+                ONEDRIVE_REMOTE.to_string(),
+                "region".to_string(),
+                "global".to_string(),
+                "config_is_local".to_string(),
+                "true".to_string(),
+                "--continue".to_string(),
+                "--state".to_string(),
+                state,
+                "--result".to_string(),
+                result,
+                "--non-interactive".to_string(),
+                "--config".to_string(),
+                config_path.to_string_lossy().into_owned(),
+            ];
+
+            response = run_rclone_config_json_blocking(
+                rclone_path,
+                &args,
+                self.logger.clone(),
+                "OneDrive authorization",
+            )?;
+        }
+
+        Err(
+            "OneDrive authorization did not finish after the expected rclone config steps."
+                .to_string(),
+        )
+    }
+
+    pub fn disconnect_one_drive(
+        &self,
+        app: &AppHandle,
+        one_drive: &OneDriveSettings,
+    ) -> Result<(), String> {
+        let one_drive = one_drive.normalized();
+        let target = platform::one_drive_mount_target(&one_drive);
+        if !target.is_empty() {
+            self.unmount_one(app, &target);
+        }
+
+        config::remove_config_section(&rclone_config_path(), ONEDRIVE_REMOTE)?;
+        delete_one_drive_config()?;
+        self.log_info("OneDrive remote has been removed from the app rclone config.");
+        Ok(())
+    }
+
+    pub fn test_one_drive_connection(
+        &self,
+        app: &AppHandle,
+        one_drive: &OneDriveSettings,
+    ) -> Result<(), String> {
+        let one_drive = one_drive.normalized();
+        ensure_one_drive_config()?;
+        if !is_one_drive_configured() {
+            return Err("OneDrive is not connected. Click Connect OneDrive first.".to_string());
+        }
+
+        let rclone_path = self.resolve_rclone_path(app)?;
+        let remote_path = build_one_drive_remote_path(&one_drive);
+        self.log_info(&format!("Testing OneDrive connection using {remote_path}."));
+
+        let args = vec![
+            "lsd".to_string(),
+            remote_path,
+            "--config".to_string(),
+            rclone_config_path().to_string_lossy().into_owned(),
+        ];
+
+        let ok = run_rclone_blocking(
+            &rclone_path,
+            &args,
+            self.logger.clone(),
+            "OneDrive connection test",
+        )?;
+
+        if ok {
+            self.log_info("OneDrive connection test completed successfully.");
+            Ok(())
+        } else {
+            Err("OneDrive connection test failed.".to_string())
+        }
+    }
+
     pub fn is_seedbox_configured(&self) -> bool {
         is_seedbox_configured()
     }
@@ -408,6 +609,45 @@ impl RcloneManager {
             self.cleanup_mount_folder(target);
         }
         let _ = app.emit("mount-state-changed", self.mount_state());
+    }
+
+    pub fn refresh_mount_caches(&self, app: &AppHandle) -> Result<(), String> {
+        let mounts = self.running_mount_infos();
+
+        if mounts.is_empty() {
+            return Err("No mounted drives to refresh.".to_string());
+        }
+
+        let rclone_path = self.resolve_rclone_path(app)?;
+        self.log_info("Refreshing cached cloud folder listings.");
+
+        let mut failed = Vec::new();
+        for mount in mounts {
+            match platform::refresh_vfs_cache(&mount.target, mount.pid, &rclone_path) {
+                Ok(()) => self.log_info(&format!("Refreshed cached listings for {}.", mount.label)),
+                Err(err) => {
+                    self.log_error(&format!(
+                        "Could not refresh cached listings for {}: {err}",
+                        mount.label
+                    ));
+                    failed.push(mount.label);
+                }
+            }
+        }
+
+        let _ = app.emit("mount-state-changed", self.mount_state());
+
+        if failed.is_empty() {
+            self.log_info(
+                "Refresh completed. Reopen or refresh Finder/Explorer if a window was already showing stale contents.",
+            );
+            Ok(())
+        } else {
+            Err(format!(
+                "Could not refresh cached listings for {}.",
+                failed.join(", ")
+            ))
+        }
     }
 
     pub fn restart_mount_cleanup(&self, app: &AppHandle) {
@@ -615,6 +855,19 @@ impl RcloneManager {
         platform::unmount_target_with_rclone(target, rclone_path.as_deref())
     }
 
+    fn running_mount_infos(&self) -> Vec<RunningMountInfo> {
+        let mut mounts = self.mounts.lock().unwrap();
+        mounts.retain(|_, mount| !matches!(mount.child.try_wait(), Ok(Some(_))));
+        mounts
+            .iter()
+            .map(|(target, mount)| RunningMountInfo {
+                target: target.clone(),
+                label: mount.label.clone(),
+                pid: mount.child.id(),
+            })
+            .collect()
+    }
+
     fn cleanup_mount_folder(&self, target: &str) {
         match platform::cleanup_mount_target(target) {
             Ok(true) => self.log_info(&format!("Removed mount folder {target}")),
@@ -646,6 +899,42 @@ struct MountSpec {
     vfs_cache_mode: String,
     read_only: bool,
     extra_args: Vec<String>,
+}
+
+#[derive(Debug, Deserialize)]
+struct RcloneConfigResponse {
+    #[serde(default, rename = "State")]
+    state: String,
+    #[serde(default, rename = "Option")]
+    option: Option<RcloneConfigOption>,
+    #[serde(default, rename = "Error")]
+    error: String,
+}
+
+impl RcloneConfigResponse {
+    fn option_name(&self) -> Option<&str> {
+        self.option.as_ref().map(|option| option.name.as_str())
+    }
+}
+
+#[derive(Debug, Deserialize)]
+struct RcloneConfigOption {
+    #[serde(default, rename = "Name")]
+    name: String,
+    #[serde(default, rename = "Default")]
+    default: serde_json::Value,
+    #[serde(default, rename = "DefaultStr")]
+    default_str: String,
+    #[serde(default, rename = "Examples")]
+    examples: Vec<RcloneConfigExample>,
+}
+
+#[derive(Debug, Clone, Deserialize)]
+struct RcloneConfigExample {
+    #[serde(default, rename = "Value")]
+    value: String,
+    #[serde(default, rename = "Help")]
+    help: String,
 }
 
 fn build_mount_command_args(spec: &MountSpec, cache_dir: &Path) -> Vec<String> {
@@ -701,6 +990,12 @@ fn configured_mount_targets() -> Vec<String> {
         ));
     }
 
+    if is_one_drive_configured() {
+        targets.push(platform::one_drive_mount_target(
+            &settings.one_drive.normalized(),
+        ));
+    }
+
     if has_seedbox_settings(&settings.seedbox) {
         targets.push(platform::seedbox_mount_target(
             &settings.seedbox.normalized(),
@@ -723,10 +1018,31 @@ pub fn is_google_drive_configured() -> bool {
     }
 }
 
+pub fn is_one_drive_configured() -> bool {
+    #[cfg(not(test))]
+    {
+        has_saved_one_drive_config().unwrap_or(false)
+    }
+
+    #[cfg(test)]
+    {
+        config::has_config_section(&rclone_config_path(), ONEDRIVE_REMOTE)
+    }
+}
+
 fn ensure_google_drive_config() -> Result<(), String> {
     #[cfg(not(test))]
     if let Some(lines) = load_google_drive_config()? {
         config::upsert_config_section(&rclone_config_path(), GDRIVE_REMOTE, &lines)?;
+    }
+
+    Ok(())
+}
+
+fn ensure_one_drive_config() -> Result<(), String> {
+    #[cfg(not(test))]
+    if let Some(lines) = load_one_drive_config()? {
+        config::upsert_config_section(&rclone_config_path(), ONEDRIVE_REMOTE, &lines)?;
     }
 
     Ok(())
@@ -740,8 +1056,20 @@ fn build_google_drive_remote_path(google_drive: &GoogleDriveSettings) -> String 
     }
 }
 
+fn build_one_drive_remote_path(one_drive: &OneDriveSettings) -> String {
+    if one_drive.remote_path.is_empty() {
+        format!("{ONEDRIVE_REMOTE}:")
+    } else {
+        format!("{ONEDRIVE_REMOTE}:{}", one_drive.remote_path)
+    }
+}
+
 fn build_google_drive_volume_name(_google_drive: &GoogleDriveSettings) -> String {
     GOOGLE_DRIVE_MOUNT_NAME.to_string()
+}
+
+fn build_one_drive_volume_name(_one_drive: &OneDriveSettings) -> String {
+    ONEDRIVE_MOUNT_NAME.to_string()
 }
 
 fn build_google_drive_spec(google_drive: &GoogleDriveSettings) -> Result<MountSpec, String> {
@@ -758,6 +1086,26 @@ fn build_google_drive_spec(google_drive: &GoogleDriveSettings) -> Result<MountSp
         remote_path: build_google_drive_remote_path(google_drive),
         target,
         volume_name: build_google_drive_volume_name(google_drive),
+        vfs_cache_mode: "full".to_string(),
+        read_only: false,
+        extra_args: Vec::new(),
+    })
+}
+
+fn build_one_drive_spec(one_drive: &OneDriveSettings) -> Result<MountSpec, String> {
+    let target = platform::one_drive_mount_target(one_drive);
+    if target.is_empty() {
+        return Err("OneDrive mount path is missing.".to_string());
+    }
+
+    platform::validate_mount_target(&target)?;
+
+    Ok(MountSpec {
+        label: "OneDrive".to_string(),
+        provider: CloudProvider::OneDrive,
+        remote_path: build_one_drive_remote_path(one_drive),
+        target,
+        volume_name: build_one_drive_volume_name(one_drive),
         vfs_cache_mode: "full".to_string(),
         read_only: false,
         extra_args: Vec::new(),
@@ -859,6 +1207,7 @@ fn resolve_seedbox_password(request_password: &str) -> Result<String, String> {
 fn build_all_mount_specs(
     request: &MountRequest,
     google_drive: &GoogleDriveSettings,
+    one_drive: &OneDriveSettings,
     seedbox: &SeedboxSettings,
 ) -> Result<Vec<MountSpec>, String> {
     let mut specs = Vec::new();
@@ -878,6 +1227,10 @@ fn build_all_mount_specs(
         specs.push(build_google_drive_spec(google_drive)?);
     }
 
+    if is_one_drive_configured() {
+        specs.push(build_one_drive_spec(one_drive)?);
+    }
+
     if has_seedbox_settings(seedbox) {
         if !is_valid_seedbox(seedbox) {
             return Err("Enter Seedbox host, username, port, and mount target.".to_string());
@@ -892,7 +1245,7 @@ fn build_all_mount_specs(
 
     if specs.is_empty() {
         return Err(
-            "Nothing to mount. Configure Backblaze B2, connect Google Drive, or configure Seedbox."
+            "Nothing to mount. Configure Backblaze B2, connect Google Drive, connect OneDrive, or configure Seedbox."
                 .to_string(),
         );
     }
@@ -1088,10 +1441,86 @@ pub fn has_complete_google_drive_config() -> bool {
     is_google_drive_configured()
 }
 
+pub fn has_complete_one_drive_config() -> bool {
+    is_one_drive_configured()
+}
+
 pub fn has_complete_seedbox_config() -> bool {
     let settings = crate::settings::load_settings();
     let seedbox = settings.seedbox.normalized();
     is_seedbox_configured() && is_valid_seedbox(&seedbox)
+}
+
+fn has_config_value(lines: &[String], key: &str) -> bool {
+    lines.iter().any(|line| {
+        let Some((name, value)) = line.trim().split_once('=') else {
+            return false;
+        };
+        name.trim() == key && !value.trim().is_empty()
+    })
+}
+
+fn one_drive_config_result(response: &RcloneConfigResponse) -> Result<String, String> {
+    let Some(option) = response.option.as_ref() else {
+        return Err("OneDrive authorization needs a rclone config answer, but rclone did not return an option.".to_string());
+    };
+
+    match option.name.as_str() {
+        "config_type" => Ok("onedrive".to_string()),
+        "config_driveid" => select_one_drive_example(option).map(|example| example.value.clone()),
+        "config_drive_ok" => Ok("true".to_string()),
+        unknown => Err(format!(
+            "OneDrive authorization asked an unsupported rclone config question: {unknown}."
+        )),
+    }
+}
+
+fn select_one_drive_example(option: &RcloneConfigOption) -> Result<&RcloneConfigExample, String> {
+    if option.examples.is_empty() {
+        return Err("OneDrive authorization did not return any drives to select.".to_string());
+    }
+
+    option
+        .examples
+        .iter()
+        .min_by_key(|example| one_drive_example_rank(example, option.default_value()))
+        .ok_or_else(|| "OneDrive authorization did not return any drives to select.".to_string())
+}
+
+fn selected_drive_help(response: &RcloneConfigResponse, selected_value: &str) -> Option<String> {
+    let option = response.option.as_ref()?;
+    option
+        .examples
+        .iter()
+        .find(|example| example.value == selected_value)
+        .map(|example| example.help.clone())
+        .filter(|help| !help.trim().is_empty())
+}
+
+fn one_drive_example_rank(example: &RcloneConfigExample, default_value: &str) -> (u8, u8, u8, u8) {
+    let help = example.help.to_ascii_lowercase();
+    let value = example.value.trim();
+    let is_graph_drive = value.starts_with("b!");
+    let is_default = value == default_value;
+    let mentions_onedrive = help.contains("onedrive");
+    let is_personal = help.contains("(personal)");
+
+    (
+        if !is_graph_drive { 0 } else { 1 },
+        if mentions_onedrive { 0 } else { 1 },
+        if is_personal { 0 } else { 1 },
+        if !is_default { 0 } else { 1 },
+    )
+}
+
+impl RcloneConfigOption {
+    fn default_value(&self) -> &str {
+        if let Some(default) = self.default.as_str() {
+            default
+        } else {
+            self.default_str.as_str()
+        }
+    }
 }
 
 fn obscure_password(rclone_path: &Path, password: &str) -> Result<String, String> {
@@ -1158,6 +1587,56 @@ fn run_rclone_blocking(
     Ok(status.success())
 }
 
+fn run_rclone_config_json_blocking(
+    rclone_path: &Path,
+    args: &[String],
+    logger: Arc<Mutex<LogEmitter>>,
+    label: &str,
+) -> Result<RcloneConfigResponse, String> {
+    let mut child = hidden_command(rclone_path)
+        .args(args)
+        .stdin(Stdio::inherit())
+        .stdout(Stdio::piped())
+        .stderr(Stdio::piped())
+        .spawn()
+        .map_err(|e| format!("Failed to start rclone: {e}"))?;
+
+    let stderr = child.stderr.take();
+    let logger_err = logger.clone();
+    let label_err = label.to_string();
+    thread::spawn(move || stream_output(None, stderr, logger_err, label_err));
+
+    let output = child
+        .wait_with_output()
+        .map_err(|e| format!("Failed to wait for rclone: {e}"))?;
+
+    if !output.status.success() {
+        if let Ok(logger) = logger.lock() {
+            logger.error(format!("{label} failed."));
+        }
+        return Err(format!("{label} failed or was cancelled."));
+    }
+
+    parse_rclone_config_response(&String::from_utf8_lossy(&output.stdout), label)
+}
+
+fn parse_rclone_config_response(stdout: &str, label: &str) -> Result<RcloneConfigResponse, String> {
+    let trimmed = stdout.trim();
+    if trimmed.is_empty() {
+        return Err(format!("{label} did not return a rclone config response."));
+    }
+
+    let start = trimmed
+        .find('{')
+        .ok_or_else(|| format!("{label} returned an unexpected rclone config response."))?;
+    let end = trimmed
+        .rfind('}')
+        .ok_or_else(|| format!("{label} returned an unexpected rclone config response."))?;
+
+    serde_json::from_str(&trimmed[start..=end])
+        .map_err(|_| format!("{label} returned an unreadable rclone config response."))
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -1169,6 +1648,7 @@ mod tests {
             application_key: String::new(),
             buckets: Vec::new(),
             google_drive: GoogleDriveSettings::default(),
+            one_drive: OneDriveSettings::default(),
             seedbox: SeedboxSettings::default(),
             seedbox_password: String::new(),
             selected_provider: CloudProvider::BackblazeB2,
@@ -1259,6 +1739,102 @@ mod tests {
     }
 
     #[test]
+    fn config_value_guard_requires_non_empty_values() {
+        let lines = vec![
+            "type = onedrive".to_string(),
+            "drive_id = personal-id".to_string(),
+            "drive_type = personal".to_string(),
+            "token = {}".to_string(),
+        ];
+
+        assert!(has_config_value(&lines, "drive_id"));
+        assert!(has_config_value(&lines, "drive_type"));
+        assert!(!has_config_value(&lines, "root_folder_id"));
+        assert!(!has_config_value(
+            &["drive_id =   ".to_string()],
+            "drive_id"
+        ));
+    }
+
+    #[test]
+    fn parses_rclone_config_json_from_stdout_with_notices() {
+        let response = parse_rclone_config_response(
+            r#"NOTICE: ignored
+            {
+                "State": "choose_type_done",
+                "Option": {
+                    "Name": "config_type",
+                    "Default": "onedrive",
+                    "Examples": [{"Value": "onedrive", "Help": "OneDrive Personal or Business"}]
+                },
+                "Error": "",
+                "Result": ""
+            }"#,
+            "OneDrive authorization",
+        )
+        .unwrap();
+
+        assert_eq!(response.state, "choose_type_done");
+        assert_eq!(response.option_name(), Some("config_type"));
+        assert_eq!(one_drive_config_result(&response).unwrap(), "onedrive");
+    }
+
+    #[test]
+    fn one_drive_drive_selection_prefers_real_personal_onedrive_over_bang_drive_default() {
+        let response = parse_rclone_config_response(
+            r#"{
+                "State": "driveid_final",
+                "Option": {
+                    "Name": "config_driveid",
+                    "Default": "b!broken-default",
+                    "Examples": [
+                        {"Value": "b!broken-default", "Help": "2974e5ed-d5e3-4e02-ab10-ae3d0d18680d (personal)"},
+                        {"Value": "b!another-personal", "Help": "AEEE102E-CFF8-4E2A-89C6-03841FF83500 (personal)"},
+                        {"Value": "C703AE8F9CF49363", "Help": "OneDrive (personal)"}
+                    ]
+                },
+                "Error": "",
+                "Result": ""
+            }"#,
+            "OneDrive authorization",
+        )
+        .unwrap();
+
+        assert_eq!(
+            one_drive_config_result(&response).unwrap(),
+            "C703AE8F9CF49363"
+        );
+        assert_eq!(
+            selected_drive_help(&response, "C703AE8F9CF49363").unwrap(),
+            "OneDrive (personal)"
+        );
+    }
+
+    #[test]
+    fn one_drive_config_result_confirms_validated_drive() {
+        let response = parse_rclone_config_response(
+            r#"{
+                "State": "driveid_final_end",
+                "Option": {
+                    "Name": "config_drive_ok",
+                    "Default": true,
+                    "DefaultStr": "true",
+                    "Examples": [
+                        {"Value": "true", "Help": "Yes"},
+                        {"Value": "false", "Help": "No"}
+                    ]
+                },
+                "Error": "",
+                "Result": ""
+            }"#,
+            "OneDrive authorization",
+        )
+        .unwrap();
+
+        assert_eq!(one_drive_config_result(&response).unwrap(), "true");
+    }
+
+    #[test]
     fn google_drive_remote_path_and_volume_name_follow_remote_path() {
         let root = GoogleDriveSettings::default().normalized();
         assert_eq!(build_google_drive_remote_path(&root), "gdrive:");
@@ -1271,6 +1847,23 @@ mod tests {
         .normalized();
         assert_eq!(build_google_drive_remote_path(&nested), "gdrive:Team/Docs");
         assert_eq!(build_google_drive_volume_name(&nested), "google-drive");
+    }
+
+    #[test]
+    fn one_drive_remote_path_and_volume_name_follow_remote_path() {
+        let root = OneDriveSettings::default().normalized();
+        assert_eq!(build_one_drive_remote_path(&root), "onedrive:");
+        assert_eq!(build_one_drive_volume_name(&root), "onedrive");
+
+        let nested = OneDriveSettings {
+            remote_path: "Personal/Docs".to_string(),
+        }
+        .normalized();
+        assert_eq!(
+            build_one_drive_remote_path(&nested),
+            "onedrive:Personal/Docs"
+        );
+        assert_eq!(build_one_drive_volume_name(&nested), "onedrive");
     }
 
     #[test]
@@ -1304,8 +1897,13 @@ mod tests {
             ..valid_seedbox_settings("")
         }
         .normalized();
+        let one_drive = OneDriveSettings {
+            remote_path: "Personal/Docs".to_string(),
+        }
+        .normalized();
 
         assert_eq!(build_google_drive_volume_name(&google), "google-drive");
+        assert_eq!(build_one_drive_volume_name(&one_drive), "onedrive");
         assert_eq!(build_seedbox_spec(&seedbox).unwrap().volume_name, "seedbox");
     }
 
@@ -1358,27 +1956,41 @@ mod tests {
         .unwrap();
         config::upsert_config_section(
             &rclone_config_path(),
+            ONEDRIVE_REMOTE,
+            &[
+                "type = onedrive".to_string(),
+                "drive_id = personal-id".to_string(),
+                "drive_type = personal".to_string(),
+            ],
+        )
+        .unwrap();
+        config::upsert_config_section(
+            &rclone_config_path(),
             SEEDBOX_REMOTE,
             &["type = ftp".to_string()],
         )
         .unwrap();
 
         let google = GoogleDriveSettings::default().normalized();
+        let one_drive = OneDriveSettings::default().normalized();
         let seedbox = valid_seedbox_settings("").normalized();
         let request = MountRequest {
             buckets: vec![mountable_bucket("photos", "P")],
             google_drive: google.clone(),
+            one_drive: one_drive.clone(),
             seedbox: seedbox.clone(),
             ..empty_request()
         };
 
-        let specs = build_all_mount_specs(&request, &google, &seedbox).unwrap();
+        let specs = build_all_mount_specs(&request, &google, &one_drive, &seedbox).unwrap();
         assert_eq!(specs[0].target, "P:");
         assert_eq!(specs[0].volume_name, "photos");
         assert_eq!(specs[1].target, "G:");
         assert_eq!(specs[1].volume_name, "google-drive");
-        assert_eq!(specs[2].target, "S:");
-        assert_eq!(specs[2].volume_name, "seedbox");
+        assert_eq!(specs[2].target, "O:");
+        assert_eq!(specs[2].volume_name, "onedrive");
+        assert_eq!(specs[3].target, "S:");
+        assert_eq!(specs[3].volume_name, "seedbox");
 
         for spec in &specs {
             let args = build_mount_command_args(spec, &temp.path().join("cache"));
@@ -1543,13 +2155,14 @@ mod tests {
         let err = build_all_mount_specs(
             &empty_request(),
             &GoogleDriveSettings::default(),
+            &OneDriveSettings::default(),
             &SeedboxSettings::default(),
         )
         .unwrap_err();
 
         assert_eq!(
             err,
-            "Nothing to mount. Configure Backblaze B2, connect Google Drive, or configure Seedbox."
+            "Nothing to mount. Configure Backblaze B2, connect Google Drive, connect OneDrive, or configure Seedbox."
         );
 
         crate::test_support::clear_test_dirs();
@@ -1572,6 +2185,16 @@ mod tests {
         .unwrap();
         config::upsert_config_section(
             &rclone_config_path(),
+            ONEDRIVE_REMOTE,
+            &[
+                "type = onedrive".to_string(),
+                "drive_id = personal-id".to_string(),
+                "drive_type = personal".to_string(),
+            ],
+        )
+        .unwrap();
+        config::upsert_config_section(
+            &rclone_config_path(),
             SEEDBOX_REMOTE,
             &["type = ftp".to_string()],
         )
@@ -1582,6 +2205,10 @@ mod tests {
         let google = GoogleDriveSettings {
             remote_path: "Team Docs".to_string(),
             ..valid_google_drive_settings(&google_target)
+        }
+        .normalized();
+        let one_drive = OneDriveSettings {
+            remote_path: "Personal Docs".to_string(),
         }
         .normalized();
         let seedbox = SeedboxSettings {
@@ -1597,22 +2224,27 @@ mod tests {
         let request = MountRequest {
             buckets: vec![mountable_bucket("photos", b2_target)],
             google_drive: google.clone(),
+            one_drive: one_drive.clone(),
             seedbox: seedbox.clone(),
             ..empty_request()
         };
 
-        let specs = build_all_mount_specs(&request, &google, &seedbox).unwrap();
+        let specs = build_all_mount_specs(&request, &google, &one_drive, &seedbox).unwrap();
 
-        assert_eq!(specs.len(), 3);
+        assert_eq!(specs.len(), 4);
         assert_eq!(specs[0].label, "B2 photos");
         assert_eq!(specs[0].remote_path, "b2remote:photos");
         assert_eq!(specs[1].label, "Google Drive");
         assert_eq!(specs[1].remote_path, "gdrive:Team Docs");
         assert_eq!(specs[1].vfs_cache_mode, "full");
         assert!(!specs[1].read_only);
-        assert_eq!(specs[2].label, "Seedbox");
-        assert_eq!(specs[2].remote_path, "seedbox:downloads/movies");
-        assert!(specs[2].read_only);
+        assert_eq!(specs[2].label, "OneDrive");
+        assert_eq!(specs[2].remote_path, "onedrive:Personal Docs");
+        assert_eq!(specs[2].vfs_cache_mode, "full");
+        assert!(!specs[2].read_only);
+        assert_eq!(specs[3].label, "Seedbox");
+        assert_eq!(specs[3].remote_path, "seedbox:downloads/movies");
+        assert!(specs[3].read_only);
 
         crate::test_support::clear_test_dirs();
     }
@@ -1633,8 +2265,13 @@ mod tests {
             ..empty_request()
         };
 
-        let err =
-            build_all_mount_specs(&request, &GoogleDriveSettings::default(), &seedbox).unwrap_err();
+        let err = build_all_mount_specs(
+            &request,
+            &GoogleDriveSettings::default(),
+            &OneDriveSettings::default(),
+            &seedbox,
+        )
+        .unwrap_err();
 
         assert_eq!(
             err,

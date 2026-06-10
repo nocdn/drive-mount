@@ -38,7 +38,7 @@ pub fn ensure_dir(path: &Path) -> Result<(), String> {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::models::{BucketMount, CloudProvider};
+    use crate::models::{BucketMount, CloudProvider, OneDriveSettings};
 
     #[test]
     fn load_settings_returns_default_when_file_is_missing() {
@@ -52,6 +52,7 @@ mod tests {
 
         assert_eq!(settings.selected_provider, CloudProvider::BackblazeB2);
         assert_eq!(settings.buckets.len(), 1);
+        assert_eq!(settings.one_drive, OneDriveSettings::default());
         assert!(!crate::paths::settings_path().exists());
 
         crate::test_support::clear_test_dirs();
@@ -81,6 +82,7 @@ mod tests {
 
         let raw = fs::read_to_string(crate::paths::settings_path()).unwrap();
         assert!(raw.contains("\n  \"selectedProvider\": \"Seedbox\""));
+        assert!(raw.contains("\n  \"oneDrive\":"));
         assert!(raw.contains("\"bucketName\": \"photos\""));
         assert_eq!(load_settings().selected_provider, CloudProvider::Seedbox);
         assert_eq!(load_settings().buckets[0].bucket_name, "photos");
@@ -130,6 +132,7 @@ mod tests {
         assert_eq!(settings.selected_provider, CloudProvider::GoogleDrive);
         assert_eq!(settings.buckets[0].bucket_name, "docs");
         assert_eq!(settings.buckets[0].drive_letter, "");
+        assert_eq!(settings.one_drive, OneDriveSettings::default());
         assert_eq!(settings.seedbox.remote_path, "downloads");
         assert!(!settings.start_at_login);
         assert!(settings.start_minimized);

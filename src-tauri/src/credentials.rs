@@ -12,6 +12,7 @@ struct SecureCredentials {
     b2: Option<B2Credentials>,
     seedbox_password: Option<String>,
     google_drive_config: Option<Vec<String>>,
+    one_drive_config: Option<Vec<String>>,
 }
 
 impl SecureCredentials {
@@ -24,6 +25,10 @@ impl SecureCredentials {
                 .is_empty()
             && self
                 .google_drive_config
+                .as_ref()
+                .is_none_or(|lines| lines.is_empty())
+            && self
+                .one_drive_config
                 .as_ref()
                 .is_none_or(|lines| lines.is_empty())
     }
@@ -99,6 +104,34 @@ pub fn has_saved_google_drive_config() -> Result<bool, String> {
     Ok(load_google_drive_config()?.is_some())
 }
 
+#[cfg_attr(test, allow(dead_code))]
+pub fn load_one_drive_config() -> Result<Option<Vec<String>>, String> {
+    Ok(load_credentials_bundle()?
+        .one_drive_config
+        .filter(|lines| !lines.is_empty()))
+}
+
+pub fn save_one_drive_config(lines: &[String]) -> Result<(), String> {
+    update_credentials_bundle(|bundle| {
+        bundle.one_drive_config = if lines.is_empty() {
+            None
+        } else {
+            Some(lines.to_vec())
+        };
+    })
+}
+
+pub fn delete_one_drive_config() -> Result<(), String> {
+    update_credentials_bundle(|bundle| {
+        bundle.one_drive_config = None;
+    })
+}
+
+#[cfg_attr(test, allow(dead_code))]
+pub fn has_saved_one_drive_config() -> Result<bool, String> {
+    Ok(load_one_drive_config()?.is_some())
+}
+
 fn load_credentials_bundle() -> Result<SecureCredentials, String> {
     let mut cached = credentials_cache().lock().map_err(|e| e.to_string())?;
     if let Some(bundle) = cached.clone() {
@@ -163,6 +196,7 @@ mod tests {
         assert!(SecureCredentials {
             seedbox_password: Some(String::new()),
             google_drive_config: Some(Vec::new()),
+            one_drive_config: Some(Vec::new()),
             ..SecureCredentials::default()
         }
         .is_empty());
@@ -177,6 +211,11 @@ mod tests {
             ..SecureCredentials::default()
         }
         .is_empty());
+        assert!(!SecureCredentials {
+            one_drive_config: Some(vec!["type = onedrive".to_string()]),
+            ..SecureCredentials::default()
+        }
+        .is_empty());
     }
 
     #[test]
@@ -188,5 +227,6 @@ mod tests {
         assert_eq!(bundle.b2.unwrap().application_key_id, "id");
         assert_eq!(bundle.seedbox_password, None);
         assert_eq!(bundle.google_drive_config, None);
+        assert_eq!(bundle.one_drive_config, None);
     }
 }

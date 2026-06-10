@@ -5,10 +5,11 @@ use std::time::{Duration, Instant};
 
 use crate::models::BucketMount;
 use crate::models::GoogleDriveSettings;
+use crate::models::OneDriveSettings;
 use crate::models::SeedboxSettings;
 use crate::paths::{
-    default_bucket_mount_path, default_google_drive_mount_path, default_seedbox_mount_path,
-    drives_dir,
+    default_bucket_mount_path, default_google_drive_mount_path, default_one_drive_mount_path,
+    default_seedbox_mount_path, drives_dir,
 };
 
 pub fn is_fuse_installed() -> bool {
@@ -105,6 +106,28 @@ pub fn unmount_target_with_rclone(target: &str, _rclone_path: Option<&Path>) -> 
     unmount_target(target)
 }
 
+pub fn refresh_vfs_cache(_target: &str, pid: u32, _rclone_path: &Path) -> Result<(), String> {
+    if pid == 0 {
+        return Err("Mount process ID is missing.".to_string());
+    }
+
+    let output = Command::new("kill")
+        .args(["-HUP", &pid.to_string()])
+        .output()
+        .map_err(|e| format!("Could not signal rclone mount process {pid}: {e}"))?;
+
+    if output.status.success() {
+        Ok(())
+    } else {
+        let err = String::from_utf8_lossy(&output.stderr).trim().to_string();
+        if err.is_empty() {
+            Err(format!("Could not signal rclone mount process {pid}."))
+        } else {
+            Err(err)
+        }
+    }
+}
+
 pub fn cleanup_mount_target(target: &str) -> Result<bool, String> {
     let path = Path::new(target);
     if !path.exists() || is_mount_point(target) {
@@ -173,6 +196,10 @@ pub fn notify_mount_change(_target: &str, _added: bool) {}
 
 pub fn google_drive_mount_target(_settings: &GoogleDriveSettings) -> String {
     default_google_drive_mount_path()
+}
+
+pub fn one_drive_mount_target(_settings: &OneDriveSettings) -> String {
+    default_one_drive_mount_path()
 }
 
 pub fn seedbox_mount_target(_settings: &SeedboxSettings) -> String {
@@ -297,14 +324,18 @@ mod tests {
     }
 
     #[test]
-    fn google_drive_and_seedbox_targets_use_fixed_service_paths() {
+    fn service_targets_use_fixed_service_paths() {
         assert!(google_drive_mount_target(&GoogleDriveSettings::default())
             .ends_with("/Drives/google-drive"));
+        assert!(one_drive_mount_target(&OneDriveSettings::default()).ends_with("/Drives/onedrive"));
         assert!(seedbox_mount_target(&SeedboxSettings::default()).ends_with("/Drives/seedbox"));
 
         assert!(
             validate_mount_target(&google_drive_mount_target(&GoogleDriveSettings::default()))
                 .is_ok()
+        );
+        assert!(
+            validate_mount_target(&one_drive_mount_target(&OneDriveSettings::default())).is_ok()
         );
         assert!(validate_mount_target(&seedbox_mount_target(&SeedboxSettings::default())).is_ok());
     }

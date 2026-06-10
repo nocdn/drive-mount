@@ -1,4 +1,4 @@
-export const RESERVED_WINDOWS_DRIVE_LETTERS = ["G", "S"];
+export const RESERVED_WINDOWS_DRIVE_LETTERS = ["G", "O", "S"];
 
 export function normalizeDriveLetter(value: string): string {
   return value.trim().replace(/:$/, "").toUpperCase();

@@ -6,6 +6,9 @@ interface MountRelevantSettings {
     remotePath: string;
     rootFolderId: string;
   };
+  oneDrive: {
+    remotePath: string;
+  };
   seedbox: {
     host: string;
     username: string;
@@ -35,6 +38,9 @@ export function mountRelevantSettingsSnapshot(settings: AppSettings, platform: s
     googleDrive: {
       remotePath: settings.googleDrive.remotePath.trim(),
       rootFolderId: settings.googleDrive.rootFolderId.trim(),
+    },
+    oneDrive: {
+      remotePath: settings.oneDrive.remotePath.trim(),
     },
     seedbox: {
       host: settings.seedbox.host.trim(),

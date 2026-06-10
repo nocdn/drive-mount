@@ -1,6 +1,6 @@
 [package]
 name = "cloud-drive-mount"
-version = "0.1.2"
+version = "0.1.3"
 description = "Cloud Drive Mount"
 authors = ["bartek"]
 edition = "2021"

@@ -10,6 +10,7 @@ function settings(overrides: Partial<AppSettings> = {}): AppSettings {
     selectedProvider: "B2",
     buckets: [{ bucketName: "", driveLetter: "Z" }],
     googleDrive: { remotePath: "", rootFolderId: "" },
+    oneDrive: { remotePath: "" },
     seedbox: {
       host: "",
       username: "",
@@ -63,6 +64,19 @@ describe("mountRelevantSettingsSnapshot", () => {
     const snapshot = mountRelevantSettingsSnapshot(before, "macos");
 
     expect(hasMountRelevantSettingsChanges(after, snapshot, "macos")).toBe(false);
+  });
+
+  test("detects OneDrive remote path changes while mounted", () => {
+    const before = settings({
+      oneDrive: { remotePath: "" },
+    });
+    const after = settings({
+      oneDrive: { remotePath: " Personal Docs " },
+    });
+
+    const snapshot = mountRelevantSettingsSnapshot(before, "macos");
+
+    expect(hasMountRelevantSettingsChanges(after, snapshot, "macos")).toBe(true);
   });
 
   test("normalizes Windows drive letters for comparison", () => {

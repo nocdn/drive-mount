@@ -3,8 +3,9 @@ use std::time::{Duration, Instant};
 
 use crate::models::BucketMount;
 use crate::models::GoogleDriveSettings;
+use crate::models::OneDriveSettings;
 use crate::models::SeedboxSettings;
-use crate::models::{GOOGLE_DRIVE_WINDOWS_DRIVE, SEEDBOX_WINDOWS_DRIVE};
+use crate::models::{GOOGLE_DRIVE_WINDOWS_DRIVE, ONEDRIVE_WINDOWS_DRIVE, SEEDBOX_WINDOWS_DRIVE};
 use crate::rclone::process::hidden_command;
 
 const RC_BASE_PORT: u16 = 5572;
@@ -133,6 +134,32 @@ pub fn unmount_target_with_rclone(target: &str, rclone_path: Option<&Path>) -> b
     wait_for_drive_release(target, 8)
 }
 
+pub fn refresh_vfs_cache(target: &str, _pid: u32, rclone_path: &Path) -> Result<(), String> {
+    if !drive_exists(target) {
+        return Err(format!("Drive {target} is not mounted."));
+    }
+
+    let port = rc_port_for_drive(target);
+    let addr = format!("127.0.0.1:{port}");
+    let output = hidden_command(rclone_path)
+        .args(["rc", "vfs/forget", "--rc-addr", &addr, "--rc-no-auth"])
+        .output()
+        .map_err(|e| format!("Could not contact rclone remote control for {target}: {e}"))?;
+
+    if output.status.success() {
+        Ok(())
+    } else {
+        let err = String::from_utf8_lossy(&output.stderr).trim().to_string();
+        if err.is_empty() {
+            Err(format!(
+                "rclone remote control did not refresh cached listings for {target}."
+            ))
+        } else {
+            Err(err)
+        }
+    }
+}
+
 pub fn cleanup_mount_target(_target: &str) -> Result<bool, String> {
     Ok(false)
 }
@@ -164,6 +191,10 @@ pub fn google_drive_mount_target(_settings: &GoogleDriveSettings) -> String {
     format!("{GOOGLE_DRIVE_WINDOWS_DRIVE}:")
 }
 
+pub fn one_drive_mount_target(_settings: &OneDriveSettings) -> String {
+    format!("{ONEDRIVE_WINDOWS_DRIVE}:")
+}
+
 pub fn seedbox_mount_target(_settings: &SeedboxSettings) -> String {
     format!("{SEEDBOX_WINDOWS_DRIVE}:")
 }
@@ -190,6 +221,11 @@ fn normalize_drive_letter(input: &str) -> Result<String, String> {
     if ch.to_string() == GOOGLE_DRIVE_WINDOWS_DRIVE {
         return Err(format!(
             "Drive letter {GOOGLE_DRIVE_WINDOWS_DRIVE}: is reserved for Google Drive."
+        ));
+    }
+    if ch.to_string() == ONEDRIVE_WINDOWS_DRIVE {
+        return Err(format!(
+            "Drive letter {ONEDRIVE_WINDOWS_DRIVE}: is reserved for OneDrive."
         ));
     }
     if ch.to_string() == SEEDBOX_WINDOWS_DRIVE {

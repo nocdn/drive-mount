@@ -6,6 +6,10 @@ import {
 } from "../src/driveLetters";
 
 describe("nextAvailableWindowsDriveLetter", () => {
+  test("reserves fixed provider drive letters", () => {
+    expect(RESERVED_WINDOWS_DRIVE_LETTERS).toEqual(["G", "O", "S"]);
+  });
+
   test("prefers Z when it is available", () => {
     expect(nextAvailableWindowsDriveLetter(RESERVED_WINDOWS_DRIVE_LETTERS)).toBe("Z");
   });

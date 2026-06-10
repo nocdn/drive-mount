@@ -10,14 +10,14 @@ use crate::credentials::{
 use crate::logging::LogEmitter;
 use crate::models::{
     AppSettings, B2Credentials, GoogleDriveSettings, LoadedCredentials, MountRequest,
-    SeedboxSettings,
+    OneDriveSettings, SeedboxSettings,
 };
 use crate::notifications::show_app_notification;
 use crate::paths::{log_dir, platform_name};
 use crate::rclone::{
-    has_complete_b2_config, has_complete_google_drive_config, has_complete_seedbox_config,
-    is_fuse_installed, is_google_drive_configured, is_seedbox_configured,
-    used_windows_drive_letters, RcloneManager,
+    has_complete_b2_config, has_complete_google_drive_config, has_complete_one_drive_config,
+    has_complete_seedbox_config, is_fuse_installed, is_google_drive_configured,
+    is_one_drive_configured, is_seedbox_configured, used_windows_drive_letters, RcloneManager,
 };
 use crate::settings::{load_settings, save_settings};
 
@@ -65,6 +65,7 @@ pub async fn load_credentials_cmd(state: State<'_, AppState>) -> Result<LoadedCr
         let b2_credentials = load_b2_credentials()?;
         let has_saved_credentials = b2_credentials.is_some();
         let is_google_drive_configured = is_google_drive_configured();
+        let is_one_drive_configured = is_one_drive_configured();
         let is_seedbox_configured = is_seedbox_configured();
         let has_saved_seedbox_password = has_saved_seedbox_password().unwrap_or(false);
 
@@ -76,6 +77,7 @@ pub async fn load_credentials_cmd(state: State<'_, AppState>) -> Result<LoadedCr
             has_saved_credentials,
             b2_credentials,
             is_google_drive_configured,
+            is_one_drive_configured,
             is_seedbox_configured,
             has_saved_seedbox_password,
         })
@@ -133,6 +135,7 @@ pub async fn mount_all(
         let settings = AppSettings {
             buckets: request.buckets.clone(),
             google_drive: request.google_drive.normalized(),
+            one_drive: request.one_drive.normalized(),
             seedbox: request.seedbox.normalized(),
             selected_provider: request.selected_provider,
             ..load_settings()
@@ -194,6 +197,54 @@ pub async fn test_google_drive_connection_cmd(
 }
 
 #[tauri::command]
+pub fn is_one_drive_configured_cmd(state: State<'_, AppState>) -> Result<bool, String> {
+    Ok(state.rclone.is_one_drive_configured())
+}
+
+#[tauri::command]
+pub async fn configure_one_drive_cmd(
+    app: AppHandle,
+    state: State<'_, AppState>,
+    one_drive: OneDriveSettings,
+) -> Result<(), String> {
+    let rclone = state.rclone.clone();
+
+    run_blocking(move || {
+        let settings = AppSettings {
+            one_drive: one_drive.normalized(),
+            ..load_settings()
+        }
+        .normalized();
+        save_settings(&settings)?;
+
+        rclone.configure_one_drive(&app, &one_drive)
+    })
+    .await
+}
+
+#[tauri::command]
+pub async fn disconnect_one_drive_cmd(
+    app: AppHandle,
+    state: State<'_, AppState>,
+    one_drive: OneDriveSettings,
+) -> Result<(), String> {
+    let rclone = state.rclone.clone();
+
+    run_blocking(move || rclone.disconnect_one_drive(&app, &one_drive)).await
+}
+
+#[tauri::command]
+pub async fn test_one_drive_connection_cmd(
+    app: AppHandle,
+    state: State<'_, AppState>,
+    one_drive: OneDriveSettings,
+) -> Result<(), String> {
+    let rclone = state.rclone.clone();
+
+    run_blocking(move || rclone.test_one_drive_connection(&app, &one_drive)).await
+}
+
+#[tauri::command]
 pub fn is_seedbox_configured_cmd(state: State<'_, AppState>) -> Result<bool, String> {
     Ok(state.rclone.is_seedbox_configured())
 }
@@ -252,6 +303,16 @@ pub async fn unmount_all(app: AppHandle, state: State<'_, AppState>) -> Result<(
         Ok(())
     })
     .await
+}
+
+#[tauri::command]
+pub async fn refresh_mount_caches(
+    app: AppHandle,
+    state: State<'_, AppState>,
+) -> Result<(), String> {
+    let rclone = state.rclone.clone();
+
+    run_blocking(move || rclone.refresh_mount_caches(&app)).await
 }
 
 #[tauri::command]
@@ -397,9 +458,10 @@ fn saved_mount_request() -> Option<MountRequest> {
     let creds = load_b2_credentials().ok().flatten();
     let has_b2 = has_complete_b2_config(&creds, &settings.buckets);
     let has_gdrive = has_complete_google_drive_config();
+    let has_onedrive = has_complete_one_drive_config();
     let has_seedbox = has_complete_seedbox_config();
 
-    if !has_b2 && !has_gdrive && !has_seedbox {
+    if !has_b2 && !has_gdrive && !has_onedrive && !has_seedbox {
         return None;
     }
 
@@ -414,6 +476,7 @@ fn saved_mount_request() -> Option<MountRequest> {
             .unwrap_or_default(),
         buckets: if has_b2 { settings.buckets } else { Vec::new() },
         google_drive: settings.google_drive,
+        one_drive: settings.one_drive,
         seedbox: settings.seedbox,
         seedbox_password: load_seedbox_password().ok().flatten().unwrap_or_default(),
         selected_provider: settings.selected_provider,
@@ -473,6 +536,9 @@ mod tests {
                 remote_path: " :/Team\\Docs ".to_string(),
                 root_folder_id: " root ".to_string(),
             },
+            one_drive: OneDriveSettings {
+                remote_path: " :/Personal\\Docs ".to_string(),
+            },
             seedbox: SeedboxSettings {
                 host: "https://seedbox.example.com///".to_string(),
                 username: " user ".to_string(),
@@ -488,10 +554,43 @@ mod tests {
         assert_eq!(saved.selected_provider, CloudProvider::Seedbox);
         assert_eq!(saved.google_drive.remote_path, "Team/Docs");
         assert_eq!(saved.google_drive.root_folder_id, "root");
+        assert_eq!(saved.one_drive.remote_path, "Personal/Docs");
         assert_eq!(saved.seedbox.host, "seedbox.example.com");
         assert_eq!(saved.seedbox.username, "user");
         assert_eq!(saved.seedbox.port, 2121);
         assert_eq!(saved.seedbox.remote_path, "downloads/movies");
+
+        crate::test_support::clear_test_dirs();
+    }
+
+    #[test]
+    fn saved_mount_request_includes_one_drive_when_configured() {
+        let _guard = crate::test_support::env_lock();
+        crate::test_support::clear_test_dirs();
+
+        let temp = tempfile::tempdir().unwrap();
+        crate::test_support::set_test_dirs(&temp.path().join("app"), &temp.path().join("logs"));
+        std::fs::create_dir_all(crate::paths::app_data_dir()).unwrap();
+        std::fs::write(
+            crate::paths::rclone_config_path(),
+            "[onedrive]\ntype = onedrive\ndrive_id = personal-id\ndrive_type = personal\n",
+        )
+        .unwrap();
+
+        crate::settings::save_settings(&AppSettings {
+            selected_provider: CloudProvider::OneDrive,
+            one_drive: OneDriveSettings {
+                remote_path: " Personal Docs ".to_string(),
+            },
+            ..AppSettings::default()
+        })
+        .unwrap();
+
+        let request = saved_mount_request().unwrap();
+
+        assert_eq!(request.selected_provider, CloudProvider::OneDrive);
+        assert_eq!(request.buckets, Vec::new());
+        assert_eq!(request.one_drive.remote_path, "Personal Docs");
 
         crate::test_support::clear_test_dirs();
     }

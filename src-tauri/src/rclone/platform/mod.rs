@@ -34,6 +34,15 @@ pub fn unmount_target_with_rclone(_target: &str, _rclone_path: Option<&std::path
 }
 
 #[cfg(not(any(target_os = "macos", windows)))]
+pub fn refresh_vfs_cache(
+    _target: &str,
+    _pid: u32,
+    _rclone_path: &std::path::Path,
+) -> Result<(), String> {
+    Err("Unsupported platform".to_string())
+}
+
+#[cfg(not(any(target_os = "macos", windows)))]
 pub fn cleanup_mount_target(_target: &str) -> Result<bool, String> {
     Ok(false)
 }
@@ -69,6 +78,11 @@ pub fn notify_mount_change(_target: &str, _added: bool) {}
 
 #[cfg(not(any(target_os = "macos", windows)))]
 pub fn google_drive_mount_target(_settings: &crate::models::GoogleDriveSettings) -> String {
+    String::new()
+}
+
+#[cfg(not(any(target_os = "macos", windows)))]
+pub fn one_drive_mount_target(_settings: &crate::models::OneDriveSettings) -> String {
     String::new()
 }
 

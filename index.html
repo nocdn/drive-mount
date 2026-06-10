@@ -14,6 +14,7 @@
         <select id="provider">
           <option value="B2">B2</option>
           <option value="GoogleDrive">Google Drive</option>
+          <option value="OneDrive">OneDrive</option>
           <option value="Seedbox">Seedbox</option>
         </select>
       </div>
@@ -55,6 +56,23 @@
           <button type="button" id="btn-connect-gdrive">Connect Google Drive</button>
           <button type="button" id="btn-test-gdrive" class="hidden">Test Connection</button>
         </div>
+      </div>
+
+      <div id="onedrive-panel" class="panel hidden">
+        <div class="field-row">
+          <label for="onedrive-remote-path">OneDrive Folder Path (optional)</label>
+          <input id="onedrive-remote-path" type="text" autocomplete="off" />
+        </div>
+        <p class="help-text" id="onedrive-help">
+          Click Connect OneDrive and sign in through the browser. After it connects, use Save and Mount All.
+        </p>
+        <div class="button-row">
+          <button type="button" id="btn-connect-onedrive">Connect OneDrive</button>
+          <button type="button" id="btn-test-onedrive" class="hidden">Test Connection</button>
+        </div>
+        <p class="help-text" id="onedrive-cache-help">
+          Because rclone caches folder listings, changes made in OneDrive on the web or another device can take 1 to 5 minutes to appear here in Finder or Explorer.
+        </p>
       </div>
 
       <div id="seedbox-panel" class="panel hidden">
@@ -115,7 +133,7 @@
       <div class="button-row">
         <button type="button" id="btn-mount">Save and Mount All</button>
         <button type="button" id="btn-unmount">Unmount All</button>
-        <button type="button" id="btn-open-logs">Open Log Folder</button>
+        <button type="button" id="btn-refresh-caches">Refresh</button>
         <button type="button" id="btn-restart">Restart Mounts</button>
       </div>
 

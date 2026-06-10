@@ -21,6 +21,7 @@ import type {
   LogLine,
   MountOperation,
   MountState,
+  OneDriveSettings,
   SeedboxSettings,
 } from "./types";
 import { createValidationController } from "./validation";
@@ -33,6 +34,7 @@ import {
 let platform = "macos";
 let mounted = false;
 let googleDriveConnected = false;
+let oneDriveConnected = false;
 let seedboxConfigured = false;
 let hasSavedB2Credentials = false;
 let hasSavedSeedboxPassword = false;
@@ -43,6 +45,7 @@ let unavailableWindowsDriveLetters = new Set<string>();
 const providerSelect = document.getElementById("provider") as HTMLSelectElement;
 const b2Panel = document.getElementById("b2-panel") as HTMLDivElement;
 const gdrivePanel = document.getElementById("gdrive-panel") as HTMLDivElement;
+const onedrivePanel = document.getElementById("onedrive-panel") as HTMLDivElement;
 const seedboxPanel = document.getElementById("seedbox-panel") as HTMLDivElement;
 const seedboxHostInput = document.getElementById("seedbox-host") as HTMLInputElement;
 const seedboxPortInput = document.getElementById("seedbox-port") as HTMLInputElement;
@@ -59,6 +62,10 @@ const gdriveRootFolderIdInput = document.getElementById("gdrive-root-folder-id")
 const gdriveHelp = document.getElementById("gdrive-help") as HTMLParagraphElement;
 const btnConnectGdrive = document.getElementById("btn-connect-gdrive") as HTMLButtonElement;
 const btnTestGdrive = document.getElementById("btn-test-gdrive") as HTMLButtonElement;
+const onedriveRemotePathInput = document.getElementById("onedrive-remote-path") as HTMLInputElement;
+const onedriveHelp = document.getElementById("onedrive-help") as HTMLParagraphElement;
+const btnConnectOnedrive = document.getElementById("btn-connect-onedrive") as HTMLButtonElement;
+const btnTestOnedrive = document.getElementById("btn-test-onedrive") as HTMLButtonElement;
 const keyIdInput = document.getElementById("key-id") as HTMLInputElement;
 const keyInput = document.getElementById("key") as HTMLInputElement;
 const b2CredentialsStatus = document.getElementById("b2-credentials-status") as HTMLParagraphElement;
@@ -70,7 +77,7 @@ const startMinimizedCheckbox = document.getElementById("start-minimized") as HTM
 const startMinimizedLabel = document.getElementById("start-minimized-label") as HTMLSpanElement;
 const btnMount = document.getElementById("btn-mount") as HTMLButtonElement;
 const btnUnmount = document.getElementById("btn-unmount") as HTMLButtonElement;
-const btnOpenLogs = document.getElementById("btn-open-logs") as HTMLButtonElement;
+const btnRefreshCaches = document.getElementById("btn-refresh-caches") as HTMLButtonElement;
 const btnClearLogs = document.getElementById("btn-clear-logs") as HTMLButtonElement;
 const btnCopyLogs = document.getElementById("btn-copy-logs") as HTMLButtonElement;
 const btnRestart = document.getElementById("btn-restart") as HTMLButtonElement;
@@ -98,6 +105,7 @@ const { parseSeedboxPort, validateB2ForMount, validateSeedboxForConnection } =
   );
 const mountButtonLabel = btnMount.textContent ?? "Save and Mount All";
 const unmountButtonLabel = btnUnmount.textContent ?? "Unmount All";
+const refreshCachesButtonLabel = btnRefreshCaches.textContent ?? "Refresh";
 const restartButtonLabel = btnRestart.textContent ?? "Restart Mounts";
 
 function isSelectableTarget(target: EventTarget | null): boolean {
@@ -150,7 +158,9 @@ function updateMountButtons() {
   btnMount.textContent = mountOperation === "mounting" ? "Mounting" : mountButtonLabel;
   btnUnmount.textContent =
     mountOperation === "unmounting" || mountOperation === "restarting" ? "Unmounting..." : unmountButtonLabel;
+  btnRefreshCaches.textContent = mountOperation === "refreshing" ? "Refreshing..." : refreshCachesButtonLabel;
   btnRestart.textContent = mountOperation === "restarting" ? "Restarting Mounts..." : restartButtonLabel;
+  btnRefreshCaches.disabled = mountOperation !== null || !mounted;
   btnRestart.disabled = mountOperation !== null;
 
   if (mountOperation) {
@@ -166,6 +176,7 @@ function updateMountButtons() {
   );
   btnMount.disabled = mounted && !hasChangedMountedSettings;
   btnUnmount.disabled = !mounted;
+  btnRefreshCaches.disabled = !mounted;
 }
 
 function renderMountState(state: MountState) {
@@ -183,6 +194,7 @@ function updateProviderPanels() {
   const provider = providerSelect.value as CloudProvider;
   b2Panel.classList.toggle("hidden", provider !== "B2");
   gdrivePanel.classList.toggle("hidden", provider !== "GoogleDrive");
+  onedrivePanel.classList.toggle("hidden", provider !== "OneDrive");
   seedboxPanel.classList.toggle("hidden", provider !== "Seedbox");
   scheduleFitWindow();
 }
@@ -240,6 +252,20 @@ function refreshGoogleDriveConnectionUi() {
     : "Connect Google Drive";
   btnTestGdrive.classList.toggle("hidden", !googleDriveConnected);
   gdriveHelp.classList.toggle("hidden", googleDriveConnected);
+}
+
+function readOneDriveSettings(): OneDriveSettings {
+  return {
+    remotePath: onedriveRemotePathInput.value.trim(),
+  };
+}
+
+function refreshOneDriveConnectionUi() {
+  btnConnectOnedrive.textContent = oneDriveConnected
+    ? "Disconnect OneDrive"
+    : "Connect OneDrive";
+  btnTestOnedrive.classList.toggle("hidden", !oneDriveConnected);
+  onedriveHelp.classList.toggle("hidden", oneDriveConnected);
 }
 
 function collectVisibleBucketDriveLetters(excludedInput?: HTMLInputElement): string[] {
@@ -376,6 +402,7 @@ function collectSettings(): AppSettings {
     selectedProvider: providerSelect.value as CloudProvider,
     buckets: collectBuckets(),
     googleDrive: readGoogleDriveSettings(),
+    oneDrive: readOneDriveSettings(),
     seedbox: readSeedboxSettings(),
     startAtLogin: startAtLoginCheckbox.checked,
     startMinimized: startMinimizedCheckbox.checked,
@@ -411,10 +438,14 @@ function configurePlatformUi() {
     startMinimizedLabel.textContent = "Start minimized to tray";
     gdriveHelp.textContent =
       "Click Connect Google Drive and sign in through the browser. After it connects, use Save and Mount All. Google Drive mounts to G: named google-drive.";
+    onedriveHelp.textContent =
+      "Click Connect OneDrive and sign in through the browser. After it connects, use Save and Mount All. OneDrive mounts to O: named onedrive.";
   } else {
     bucketsHelp.textContent = "Each bucket mounts as a folder under ~/Drives.";
     gdriveHelp.textContent =
       "Click Connect Google Drive and sign in through the browser. After it connects, use Save and Mount All. Google Drive mounts as a folder at ~/Drives/google-drive.";
+    onedriveHelp.textContent =
+      "Click Connect OneDrive and sign in through the browser. After it connects, use Save and Mount All. OneDrive mounts as a folder at ~/Drives/onedrive.";
   }
 }
 
@@ -427,6 +458,7 @@ function renderSettings(settings: AppSettings) {
   b2CredentialsStatus.textContent = "Unlocking saved credentials...";
   gdriveRemotePathInput.value = settings.googleDrive?.remotePath ?? "";
   gdriveRootFolderIdInput.value = settings.googleDrive?.rootFolderId ?? "";
+  onedriveRemotePathInput.value = settings.oneDrive?.remotePath ?? "";
 
   const seedbox = settings.seedbox;
   seedboxHostInput.value = seedbox?.host ?? "";
@@ -440,6 +472,7 @@ function renderSettings(settings: AppSettings) {
   renderBuckets(settings.buckets);
   configureSeedboxPlatformUi();
   refreshGoogleDriveConnectionUi();
+  refreshOneDriveConnectionUi();
   refreshSeedboxConnectionUi();
   updateProviderPanels();
 }
@@ -455,8 +488,10 @@ function renderCredentialState(loaded: LoadedCredentials) {
     ? "B2 credentials are saved securely and loaded into the fields."
     : "B2 credentials are stored securely after a successful save or mount.";
   googleDriveConnected = loaded.isGoogleDriveConfigured;
+  oneDriveConnected = loaded.isOneDriveConfigured;
   seedboxConfigured = loaded.isSeedboxConfigured;
   refreshGoogleDriveConnectionUi();
+  refreshOneDriveConnectionUi();
   refreshSeedboxConnectionUi();
   scheduleFitWindow();
 }
@@ -582,6 +617,7 @@ btnMount.addEventListener("click", async () => {
         applicationKey: keyInput.value.trim(),
         buckets: settings.buckets,
         googleDrive: settings.googleDrive,
+        oneDrive: settings.oneDrive,
         seedbox: settings.seedbox,
         seedboxPassword: seedboxPasswordInput.value,
         selectedProvider: settings.selectedProvider,
@@ -684,12 +720,101 @@ btnTestGdrive.addEventListener("click", async () => {
   }
 });
 
+btnConnectOnedrive.addEventListener("click", async () => {
+  if (btnConnectOnedrive.disabled) {
+    return;
+  }
+
+  const settings = collectSettings();
+  settings.selectedProvider = "OneDrive";
+  providerSelect.value = "OneDrive";
+  updateProviderPanels();
+  btnConnectOnedrive.disabled = true;
+  btnTestOnedrive.disabled = true;
+  btnConnectOnedrive.textContent = oneDriveConnected ? "Disconnecting..." : "Connecting...";
+
+  try {
+    await invoke("save_settings_cmd", { settings });
+
+    if (oneDriveConnected) {
+      await invoke("disconnect_one_drive_cmd", {
+        oneDrive: settings.oneDrive,
+      });
+      oneDriveConnected = false;
+      appendLog({
+        level: "INFO",
+        message: "OneDrive is disconnected.",
+        timestamp: formatLogTimestamp(),
+      });
+    } else {
+      appendLog({
+        level: "INFO",
+        message: "Starting OneDrive authorization. Complete the sign-in in your browser.",
+        timestamp: formatLogTimestamp(),
+      });
+      await invoke("configure_one_drive_cmd", {
+        oneDrive: settings.oneDrive,
+      });
+      oneDriveConnected = true;
+      appendLog({
+        level: "INFO",
+        message: "OneDrive is connected. You can now click Save and Mount All.",
+        timestamp: formatLogTimestamp(),
+      });
+    }
+  } catch (err) {
+    appendLog({
+      level: "ERROR",
+      message: String(err),
+      timestamp: formatLogTimestamp(),
+    });
+  } finally {
+    refreshOneDriveConnectionUi();
+    btnConnectOnedrive.disabled = false;
+    btnTestOnedrive.disabled = false;
+  }
+});
+
+btnTestOnedrive.addEventListener("click", async () => {
+  if (btnTestOnedrive.disabled) {
+    return;
+  }
+
+  const settings = collectSettings();
+  btnTestOnedrive.disabled = true;
+
+  try {
+    await invoke("save_settings_cmd", { settings });
+    await invoke("test_one_drive_connection_cmd", {
+      oneDrive: settings.oneDrive,
+    });
+    appendLog({
+      level: "INFO",
+      message: "OneDrive connection test succeeded.",
+      timestamp: formatLogTimestamp(),
+    });
+  } catch (err) {
+    appendLog({
+      level: "ERROR",
+      message: String(err),
+      timestamp: formatLogTimestamp(),
+    });
+  } finally {
+    btnTestOnedrive.disabled = false;
+  }
+});
+
 gdriveRemotePathInput.addEventListener("change", () => {
   updateMountButtons();
   void savePreferences();
 });
 
 gdriveRootFolderIdInput.addEventListener("change", () => {
+  updateMountButtons();
+  void savePreferences();
+});
+
+onedriveRemotePathInput.addEventListener("change", () => {
   updateMountButtons();
   void savePreferences();
 });
@@ -808,14 +933,25 @@ btnUnmount.addEventListener("click", async () => {
   }
 });
 
-btnOpenLogs.addEventListener("click", () => {
-  void invoke("open_log_folder").catch((err) => {
+btnRefreshCaches.addEventListener("click", async () => {
+  if (mountOperation || !mounted) {
+    return;
+  }
+
+  setMountOperation("refreshing");
+  await waitForUiFeedback();
+
+  try {
+    await invoke("refresh_mount_caches");
+  } catch (err) {
     appendLog({
       level: "ERROR",
       message: String(err),
       timestamp: formatLogTimestamp(),
     });
-  });
+  } finally {
+    setMountOperation(null);
+  }
 });
 
 btnClearLogs.addEventListener("click", () => {

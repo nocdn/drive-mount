@@ -294,3 +294,35 @@ fn restart_mounts_keeps_app_running_and_refreshes_platform_mount_state() {
     assert!(!commands.contains("detach_restart_command"));
     assert!(!commands.contains("Spawned clean restart replacement process"));
 }
+
+#[test]
+fn refresh_button_flushes_active_mount_directory_caches() {
+    let lib = read_repo_file("src-tauri/src/lib.rs");
+    let commands = read_repo_file("src-tauri/src/commands.rs");
+    let rclone = read_repo_file("src-tauri/src/rclone/mod.rs");
+    let macos = read_repo_file("src-tauri/src/rclone/platform/macos.rs");
+    let windows = read_repo_file("src-tauri/src/rclone/platform/windows.rs");
+    let frontend = read_repo_file("src/main.ts");
+    let index = read_repo_file("index.html");
+
+    assert!(lib.contains("refresh_mount_caches,"));
+    assert!(commands.contains("pub async fn refresh_mount_caches("));
+    assert!(commands.contains("rclone.refresh_mount_caches(&app)"));
+    assert!(rclone.contains("pub fn refresh_mount_caches(&self, app: &AppHandle)"));
+    assert!(rclone.contains("platform::refresh_vfs_cache("));
+    assert!(rclone.contains("&mount.target"));
+    assert!(rclone.contains("mount.pid"));
+    assert!(rclone.contains("\"No mounted drives to refresh.\""));
+    assert!(macos.contains("\"-HUP\""));
+    assert!(windows.contains("\"vfs/forget\""));
+    assert!(windows.contains("\"--rc-addr\""));
+    assert!(windows.contains("\"--rc-no-auth\""));
+    assert!(frontend.contains("btnRefreshCaches"));
+    assert!(frontend.contains("setMountOperation(\"refreshing\")"));
+    assert!(frontend.contains("await invoke(\"refresh_mount_caches\");"));
+    assert!(index.contains("id=\"btn-refresh-caches\""));
+    assert!(index.contains(">Refresh</button>"));
+    assert!(index
+        .contains("changes made in OneDrive on the web or another device can take 1 to 5 minutes"));
+    assert!(!index.contains("Open Log Folder"));
+}

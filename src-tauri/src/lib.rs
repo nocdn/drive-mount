@@ -44,13 +44,14 @@ use tauri::{
 use tauri_plugin_autostart::MacosLauncher;
 
 use commands::{
-    attempt_auto_mount_cmd, clear_logs, configure_google_drive_cmd, disconnect_google_drive_cmd,
-    emit_mount_state, forget_seedbox_cmd, get_platform, is_fuse_installed_cmd,
-    is_google_drive_configured_cmd, is_mounted, is_seedbox_configured_cmd, load_credentials_cmd,
-    load_settings_cmd, mount_all, open_log_folder, open_mount_target, restart_mounts,
-    save_b2_credentials_cmd, save_settings_cmd, setup_window_events, show_settings_window,
-    test_google_drive_connection_cmd, test_seedbox_connection_cmd, unmount_all,
-    used_windows_drive_letters_cmd, AppState,
+    attempt_auto_mount_cmd, clear_logs, configure_google_drive_cmd, configure_one_drive_cmd,
+    disconnect_google_drive_cmd, disconnect_one_drive_cmd, emit_mount_state, forget_seedbox_cmd,
+    get_platform, is_fuse_installed_cmd, is_google_drive_configured_cmd, is_mounted,
+    is_one_drive_configured_cmd, is_seedbox_configured_cmd, load_credentials_cmd,
+    load_settings_cmd, mount_all, open_log_folder, open_mount_target, refresh_mount_caches,
+    restart_mounts, save_b2_credentials_cmd, save_settings_cmd, setup_window_events,
+    show_settings_window, test_google_drive_connection_cmd, test_one_drive_connection_cmd,
+    test_seedbox_connection_cmd, unmount_all, used_windows_drive_letters_cmd, AppState,
 };
 use logging::LogEmitter;
 use notifications::show_app_notification;
@@ -193,11 +194,16 @@ pub fn run() {
             configure_google_drive_cmd,
             disconnect_google_drive_cmd,
             test_google_drive_connection_cmd,
+            is_one_drive_configured_cmd,
+            configure_one_drive_cmd,
+            disconnect_one_drive_cmd,
+            test_one_drive_connection_cmd,
             is_seedbox_configured_cmd,
             test_seedbox_connection_cmd,
             forget_seedbox_cmd,
             open_log_folder,
             open_mount_target,
+            refresh_mount_caches,
             clear_logs,
             restart_mounts,
         ])

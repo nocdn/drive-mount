@@ -1,5 +1,5 @@
-export type CloudProvider = "B2" | "GoogleDrive" | "Seedbox";
-export type MountOperation = "mounting" | "unmounting" | "restarting" | null;
+export type CloudProvider = "B2" | "GoogleDrive" | "OneDrive" | "Seedbox";
+export type MountOperation = "mounting" | "unmounting" | "restarting" | "refreshing" | null;
 
 export interface BucketMount {
   bucketName: string;
@@ -9,6 +9,10 @@ export interface BucketMount {
 export interface GoogleDriveSettings {
   remotePath: string;
   rootFolderId: string;
+}
+
+export interface OneDriveSettings {
+  remotePath: string;
 }
 
 export interface SeedboxSettings {
@@ -24,6 +28,7 @@ export interface AppSettings {
   selectedProvider: CloudProvider;
   buckets: BucketMount[];
   googleDrive: GoogleDriveSettings;
+  oneDrive: OneDriveSettings;
   seedbox: SeedboxSettings;
   startAtLogin: boolean;
   startMinimized: boolean;
@@ -38,6 +43,7 @@ export interface LoadedCredentials {
   hasSavedCredentials: boolean;
   b2Credentials?: B2Credentials | null;
   isGoogleDriveConfigured: boolean;
+  isOneDriveConfigured: boolean;
   isSeedboxConfigured: boolean;
   hasSavedSeedboxPassword: boolean;
 }

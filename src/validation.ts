@@ -1,4 +1,5 @@
 import type { AppSettings, LogLine } from "./types";
+import { RESERVED_WINDOWS_DRIVE_LETTERS } from "./driveLetters";
 import { formatLogTimestamp } from "./logs";
 
 interface ValidationElements {
@@ -172,7 +173,7 @@ export function createValidationController(
       }
 
       if (state.platform() !== "macos" && driveInput) {
-        if (validateDriveLetter(driveInput, new Set(["G", "S"]))) {
+        if (validateDriveLetter(driveInput, new Set(RESERVED_WINDOWS_DRIVE_LETTERS))) {
           const letter = normalizedDriveLetter(driveInput.value);
           if (seenDrives.has(letter)) {
             setFieldError(driveInput, "This drive is already used.");

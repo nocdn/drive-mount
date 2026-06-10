@@ -3,6 +3,7 @@ use std::path::PathBuf;
 const APP_DATA_DIR_ENV: &str = "CLOUD_DRIVE_MOUNT_APP_DATA_DIR";
 const LOG_DIR_ENV: &str = "CLOUD_DRIVE_MOUNT_LOG_DIR";
 pub const GOOGLE_DRIVE_MOUNT_NAME: &str = "google-drive";
+pub const ONEDRIVE_MOUNT_NAME: &str = "onedrive";
 pub const SEEDBOX_MOUNT_NAME: &str = "seedbox";
 
 pub fn app_data_dir() -> PathBuf {
@@ -91,6 +92,14 @@ pub fn default_bucket_mount_path(bucket_name: &str) -> String {
 pub fn default_google_drive_mount_path() -> String {
     drives_dir()
         .join(GOOGLE_DRIVE_MOUNT_NAME)
+        .to_string_lossy()
+        .into_owned()
+}
+
+#[cfg(target_os = "macos")]
+pub fn default_one_drive_mount_path() -> String {
+    drives_dir()
+        .join(ONEDRIVE_MOUNT_NAME)
         .to_string_lossy()
         .into_owned()
 }
@@ -201,6 +210,7 @@ mod tests {
     #[test]
     fn default_service_mount_paths_use_stable_lowercase_names() {
         assert!(default_google_drive_mount_path().ends_with("/Drives/google-drive"));
+        assert!(default_one_drive_mount_path().ends_with("/Drives/onedrive"));
         assert!(default_seedbox_mount_path().ends_with("/Drives/seedbox"));
     }
 
