@@ -86,17 +86,6 @@ pub fn is_mount_ready(target: &str) -> bool {
     drive_exists(target)
 }
 
-pub fn wait_for_mount_ready(target: &str, timeout_secs: u64) -> bool {
-    let deadline = Instant::now() + Duration::from_secs(timeout_secs);
-    while Instant::now() < deadline {
-        if drive_exists(target) {
-            return true;
-        }
-        std::thread::sleep(Duration::from_millis(200));
-    }
-    false
-}
-
 pub fn unmount_target_with_rclone(target: &str, rclone_path: Option<&Path>) -> bool {
     if !drive_exists(target) {
         return true;

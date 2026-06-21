@@ -64,17 +64,6 @@ pub fn is_mount_ready(target: &str) -> bool {
     is_mount_point(target)
 }
 
-pub fn wait_for_mount_ready(target: &str, timeout_secs: u64) -> bool {
-    let deadline = Instant::now() + Duration::from_secs(timeout_secs);
-    while Instant::now() < deadline {
-        if is_mount_point(target) {
-            return true;
-        }
-        std::thread::sleep(Duration::from_millis(100));
-    }
-    false
-}
-
 pub fn unmount_target(target: &str) -> bool {
     if !is_mount_point(target) {
         return true;

@@ -8,7 +8,7 @@ use std::path::{Path, PathBuf};
 use std::process::{Child, Stdio};
 use std::sync::{Arc, Mutex};
 use std::thread;
-use std::time::Duration;
+use std::time::{Duration, Instant};
 
 use serde::Deserialize;
 use tauri::{AppHandle, Emitter};
@@ -41,6 +41,9 @@ pub use platform::{is_fuse_installed, used_windows_drive_letters};
 const B2_REMOTE: &str = "b2remote";
 const MOUNT_STARTUP_TIMEOUT_SECS: u64 = 90;
 const MAX_ONEDRIVE_CONFIG_STEPS: usize = 8;
+const RCLONE_OUTPUT_CONTEXT_LINE_LIMIT: usize = 40;
+
+type OutputBuffer = Arc<Mutex<Vec<String>>>;
 
 struct RunningMount {
     child: Child,
@@ -758,22 +761,64 @@ impl RcloneManager {
             .spawn()
             .map_err(|e| format!("Failed to start rclone: {e}"))?;
 
+        let output_buffer: OutputBuffer = Arc::new(Mutex::new(Vec::new()));
         let stdout = child.stdout.take();
         let stderr = child.stderr.take();
         let logger = self.logger.clone();
         let label = spec.label.clone();
-        thread::spawn(move || stream_output(stdout, stderr, logger, label));
+        let output_threads =
+            stream_output(stdout, stderr, logger, label, Some(output_buffer.clone()));
 
         let target = spec.target.clone();
         let label = spec.label.clone();
 
-        if !platform::wait_for_mount_ready(&target, MOUNT_STARTUP_TIMEOUT_SECS) {
-            let _ = child.kill();
-            let _ = child.wait();
-            platform::unmount_target_with_rclone(&target, Some(rclone_path));
-            return Err(format!(
-                "{label} did not finish mounting in time. The partial mount was cleaned up."
-            ));
+        let deadline = Instant::now() + Duration::from_secs(MOUNT_STARTUP_TIMEOUT_SECS);
+        loop {
+            if platform::is_mount_ready(&target) {
+                break;
+            }
+
+            match child.try_wait() {
+                Ok(Some(status)) => {
+                    platform::unmount_target_with_rclone(&target, Some(rclone_path));
+                    wait_for_stream_output(output_threads);
+                    if output_indicates_network_connectivity_issue(&output_buffer) {
+                        return Err(network_connectivity_mount_error(&label));
+                    }
+                    let exit = status
+                        .code()
+                        .map(|code| format!(" with exit code {code}"))
+                        .unwrap_or_else(|| " without an exit code".to_string());
+                    return Err(format!(
+                        "{label} mount process exited{exit} before the mount was ready. The partial mount was cleaned up."
+                    ));
+                }
+                Ok(None) => {}
+                Err(err) => {
+                    let _ = child.kill();
+                    let _ = child.wait();
+                    platform::unmount_target_with_rclone(&target, Some(rclone_path));
+                    wait_for_stream_output(output_threads);
+                    return Err(format!(
+                        "Failed to check {label} mount process status: {err}"
+                    ));
+                }
+            }
+
+            if Instant::now() >= deadline {
+                let _ = child.kill();
+                let _ = child.wait();
+                platform::unmount_target_with_rclone(&target, Some(rclone_path));
+                wait_for_stream_output(output_threads);
+                if output_indicates_network_connectivity_issue(&output_buffer) {
+                    return Err(network_connectivity_mount_error(&label));
+                }
+                return Err(format!(
+                    "{label} did not finish mounting in time. The partial mount was cleaned up."
+                ));
+            }
+
+            thread::sleep(Duration::from_millis(100));
         }
 
         platform::notify_mount_change(&target, true);
@@ -1385,43 +1430,111 @@ fn stream_output(
     stderr: Option<std::process::ChildStderr>,
     logger: Arc<Mutex<LogEmitter>>,
     label: String,
-) {
+    output_buffer: Option<OutputBuffer>,
+) -> Vec<thread::JoinHandle<()>> {
+    let mut handles = Vec::new();
+
     if let Some(out) = stdout {
         let logger = logger.clone();
         let label = label.clone();
-        thread::spawn(move || {
+        let output_buffer = output_buffer.clone();
+        handles.push(thread::spawn(move || {
             use std::io::{BufRead, BufReader};
             let reader = BufReader::new(out);
             for line in reader.lines().map_while(Result::ok) {
-                let line = redact_sensitive_line(&line);
-                if is_expected_rclone_cleanup_noise(&line) {
-                    continue;
-                }
-                if let Ok(logger) = logger.lock() {
-                    logger.info(format!("[{label}] {line}"));
-                }
+                record_and_log_rclone_output(&line, &logger, &label, &output_buffer);
             }
-        });
+        }));
     }
     if let Some(err) = stderr {
-        thread::spawn(move || {
+        let output_buffer = output_buffer.clone();
+        handles.push(thread::spawn(move || {
             use std::io::{BufRead, BufReader};
             let reader = BufReader::new(err);
             for line in reader.lines().map_while(Result::ok) {
-                let line = redact_sensitive_line(&line);
-                if is_expected_rclone_cleanup_noise(&line) {
-                    continue;
-                }
-                if let Ok(logger) = logger.lock() {
-                    logger.info(format!("[{label}] {line}"));
-                }
+                record_and_log_rclone_output(&line, &logger, &label, &output_buffer);
             }
-        });
+        }));
+    }
+
+    handles
+}
+
+fn wait_for_stream_output(handles: Vec<thread::JoinHandle<()>>) {
+    for handle in handles {
+        let _ = handle.join();
+    }
+}
+
+fn record_and_log_rclone_output(
+    line: &str,
+    logger: &Arc<Mutex<LogEmitter>>,
+    label: &str,
+    output_buffer: &Option<OutputBuffer>,
+) {
+    let line = redact_sensitive_line(line);
+    if is_expected_rclone_cleanup_noise(&line) {
+        return;
+    }
+
+    if let Some(buffer) = output_buffer {
+        if let Ok(mut lines) = buffer.lock() {
+            if lines.len() >= RCLONE_OUTPUT_CONTEXT_LINE_LIMIT {
+                lines.remove(0);
+            }
+            lines.push(line.clone());
+        }
+    }
+
+    if let Ok(logger) = logger.lock() {
+        logger.info(format!("[{label}] {line}"));
     }
 }
 
 fn is_expected_rclone_cleanup_noise(line: &str) -> bool {
     line.contains(r#"rc: "mount/unmount": error: mount not found"#)
+}
+
+fn output_indicates_network_connectivity_issue(output_buffer: &OutputBuffer) -> bool {
+    output_buffer
+        .lock()
+        .map(|lines| lines.iter().any(|line| is_network_connectivity_error(line)))
+        .unwrap_or(false)
+}
+
+fn network_connectivity_mount_error(label: &str) -> String {
+    format!("{label} could not connect because of network connectivity. Check your internet connection and try again.")
+}
+
+pub(crate) fn is_network_connectivity_error(message: &str) -> bool {
+    let lower = message.to_ascii_lowercase();
+    [
+        "network connectivity",
+        "network is unreachable",
+        "no route to host",
+        "no such host",
+        "temporary failure in name resolution",
+        "name or service not known",
+        "could not resolve host",
+        "couldn't resolve host",
+        "dns",
+        "dial tcp",
+        "connection timed out",
+        "i/o timeout",
+        "tls handshake timeout",
+        "context deadline exceeded",
+        "timeout awaiting response headers",
+        "timed out waiting for headers",
+        "failed to connect",
+        "could not connect",
+        "couldn't connect",
+        "cannot connect",
+        "connection refused",
+        "connection reset",
+        "connection reset by peer",
+    ]
+    .iter()
+    .any(|needle| lower.contains(needle))
 }
 
 pub fn has_complete_b2_config(creds: &Option<B2Credentials>, buckets: &[BucketMount]) -> bool {
@@ -1574,7 +1687,7 @@ fn run_rclone_blocking(
     let stderr = child.stderr.take();
     let logger_out = logger.clone();
     let label_out = label.to_string();
-    thread::spawn(move || stream_output(stdout, stderr, logger_out, label_out));
+    stream_output(stdout, stderr, logger_out, label_out, None);
 
     let status = child
         .wait()
@@ -1604,7 +1717,7 @@ fn run_rclone_config_json_blocking(
     let stderr = child.stderr.take();
     let logger_err = logger.clone();
     let label_err = label.to_string();
-    thread::spawn(move || stream_output(None, stderr, logger_err, label_err));
+    stream_output(None, stderr, logger_err, label_err, None);
 
     let output = child
         .wait_with_output()
@@ -1736,6 +1849,37 @@ mod tests {
         assert!(!is_expected_rclone_cleanup_noise(
             "2026/06/09 20:46:45 NOTICE: Serving remote control on http://127.0.0.1:5578/"
         ));
+    }
+
+    #[test]
+    fn network_connectivity_classifier_matches_common_rclone_network_errors() {
+        for message in [
+            r#"Failed to create file system: dial tcp: lookup api.backblazeb2.com: no such host"#,
+            "oauth2: cannot fetch token: Post https://oauth2.googleapis.com/token: i/o timeout",
+            "Get https://graph.microsoft.com/v1.0/me/drive: connect: network is unreachable",
+            "FTP error: tls handshake timeout",
+            "Seedbox could not connect because of network connectivity. Check your internet connection and try again.",
+        ] {
+            assert!(
+                is_network_connectivity_error(message),
+                "expected network match for {message}"
+            );
+        }
+    }
+
+    #[test]
+    fn network_connectivity_classifier_ignores_non_network_errors() {
+        for message in [
+            "macFUSE is not installed or has not been enabled.",
+            "Google Drive authorization failed or was cancelled.",
+            "Enter both your Backblaze B2 Application Key ID and Application Key.",
+            "Mount target '/tmp/photos' is already mounted.",
+        ] {
+            assert!(
+                !is_network_connectivity_error(message),
+                "expected non-network message for {message}"
+            );
+        }
     }
 
     #[test]

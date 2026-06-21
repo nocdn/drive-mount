@@ -19,11 +19,6 @@ pub fn is_mount_ready(_target: &str) -> bool {
 }
 
 #[cfg(not(any(target_os = "macos", windows)))]
-pub fn wait_for_mount_ready(_target: &str, _timeout_secs: u64) -> bool {
-    false
-}
-
-#[cfg(not(any(target_os = "macos", windows)))]
 pub fn unmount_target(_target: &str) -> bool {
     false
 }

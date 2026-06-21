@@ -17,13 +17,16 @@ use crate::paths::{log_dir, platform_name};
 use crate::rclone::{
     has_complete_b2_config, has_complete_google_drive_config, has_complete_one_drive_config,
     has_complete_seedbox_config, is_fuse_installed, is_google_drive_configured,
-    is_one_drive_configured, is_seedbox_configured, used_windows_drive_letters, RcloneManager,
+    is_network_connectivity_error, is_one_drive_configured, is_seedbox_configured,
+    used_windows_drive_letters, RcloneManager,
 };
 use crate::settings::{load_settings, save_settings};
 
 const AUTO_MOUNT_START_NOTIFICATION: &str = "Mounting saved drives on launch. Please wait.";
 const AUTO_MOUNT_COMPLETE_NOTIFICATION: &str = "Auto-mount complete. Cloud Drive Mount is ready.";
 const AUTO_MOUNT_FAILED_NOTIFICATION: &str = "Auto-mount failed. Open Settings for details.";
+const AUTO_MOUNT_NETWORK_FAILED_NOTIFICATION: &str =
+    "Auto-mount failed because of network connectivity. Check your internet connection and try again.";
 
 pub struct AppState {
     pub rclone: Arc<RcloneManager>,
@@ -433,8 +436,16 @@ pub fn attempt_auto_mount(app: &AppHandle, state: &AppState) {
             if let Ok(logger) = state.logger.lock() {
                 logger.error(format!("Auto-mount failed: {err}"));
             }
-            show_app_notification(app, AUTO_MOUNT_FAILED_NOTIFICATION);
+            show_app_notification(app, auto_mount_failed_notification(&err));
         }
+    }
+}
+
+fn auto_mount_failed_notification(error: &str) -> &'static str {
+    if is_network_connectivity_error(error) {
+        AUTO_MOUNT_NETWORK_FAILED_NOTIFICATION
+    } else {
+        AUTO_MOUNT_FAILED_NOTIFICATION
     }
 }
 
@@ -520,6 +531,28 @@ mod tests {
     #[test]
     fn get_platform_delegates_to_platform_name() {
         assert_eq!(get_platform(), crate::paths::platform_name());
+    }
+
+    #[test]
+    fn auto_mount_failed_notification_mentions_network_connectivity_for_network_errors() {
+        assert_eq!(
+            auto_mount_failed_notification(
+                "Google Drive could not connect because of network connectivity."
+            ),
+            AUTO_MOUNT_NETWORK_FAILED_NOTIFICATION
+        );
+        assert_eq!(
+            auto_mount_failed_notification("dial tcp: lookup graph.microsoft.com: no such host"),
+            AUTO_MOUNT_NETWORK_FAILED_NOTIFICATION
+        );
+    }
+
+    #[test]
+    fn auto_mount_failed_notification_stays_generic_for_non_network_errors() {
+        assert_eq!(
+            auto_mount_failed_notification("macFUSE is not installed or has not been enabled."),
+            AUTO_MOUNT_FAILED_NOTIFICATION
+        );
     }
 
     #[test]

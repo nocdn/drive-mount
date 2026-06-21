@@ -248,6 +248,8 @@ fn launch_auto_mount_uses_start_and_finish_notifications() {
     assert!(commands.contains(
         "const AUTO_MOUNT_FAILED_NOTIFICATION: &str = \"Auto-mount failed. Open Settings for details.\";"
     ));
+    assert!(commands.contains("const AUTO_MOUNT_NETWORK_FAILED_NOTIFICATION: &str ="));
+    assert!(commands.contains("Auto-mount failed because of network connectivity."));
     assert!(
         commands
             .find("show_app_notification(app, AUTO_MOUNT_START_NOTIFICATION);")
@@ -257,7 +259,10 @@ fn launch_auto_mount_uses_start_and_finish_notifications() {
                 .unwrap()
     );
     assert!(commands.contains("show_app_notification(app, AUTO_MOUNT_COMPLETE_NOTIFICATION);"));
-    assert!(commands.contains("show_app_notification(app, AUTO_MOUNT_FAILED_NOTIFICATION);"));
+    assert!(commands.contains("show_app_notification(app, auto_mount_failed_notification(&err));"));
+    assert!(commands.contains("fn auto_mount_failed_notification(error: &str) -> &'static str"));
+    assert!(commands.contains("is_network_connectivity_error(error)"));
+    assert!(commands.contains("AUTO_MOUNT_FAILED_NOTIFICATION"));
 }
 
 #[test]
