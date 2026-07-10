@@ -45,6 +45,30 @@ struct HTTPClient: Sendable {
         try FileManager.default.moveItem(at: url, to: destination)
         return destination
     }
+
+    func upload(for request: URLRequest, fromFile fileURL: URL) async throws -> (Data, HTTPURLResponse) {
+        let (data, response) = try await URLSession.shared.upload(for: request, fromFile: fileURL)
+        guard let httpResponse = response as? HTTPURLResponse else {
+            throw RemoteFileError.invalidResponse("Missing HTTP response.")
+        }
+        guard 200..<300 ~= httpResponse.statusCode else {
+            let body = String(data: data.prefix(512), encoding: .utf8) ?? ""
+            throw RemoteFileError.server("HTTP \(httpResponse.statusCode) \(body)")
+        }
+        return (data, httpResponse)
+    }
+
+    func upload(for request: URLRequest, from data: Data) async throws -> (Data, HTTPURLResponse) {
+        let (responseData, response) = try await URLSession.shared.upload(for: request, from: data)
+        guard let httpResponse = response as? HTTPURLResponse else {
+            throw RemoteFileError.invalidResponse("Missing HTTP response.")
+        }
+        guard 200..<300 ~= httpResponse.statusCode else {
+            let body = String(data: responseData.prefix(512), encoding: .utf8) ?? ""
+            throw RemoteFileError.server("HTTP \(httpResponse.statusCode) \(body)")
+        }
+        return (responseData, httpResponse)
+    }
 }
 
 extension URLRequest {

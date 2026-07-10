@@ -27,10 +27,16 @@ struct Diagnostics: Sendable {
             error: error.map { DiagnosticError(domain: String(describing: type(of: $0)), message: String(describing: $0).redactedSecretText) }
         )
 
+        let fieldSummary = safeFields
+            .map { "\($0.key)=\($0.value)" }
+            .sorted()
+            .joined(separator: " ")
+        let errorSummary = error.map { " error=\(String(describing: $0).redactedSecretText)" } ?? ""
+        let line = "[\(area)] \(event) \(fieldSummary)\(errorSummary)"
         if level == "error" {
-            logger.error("\(event, privacy: .public)")
+            logger.error("\(line, privacy: .public)")
         } else {
-            logger.info("\(event, privacy: .public)")
+            logger.info("\(line, privacy: .public)")
         }
 
         guard let data = try? JSONEncoder().encode(payload),
@@ -57,6 +63,8 @@ struct Diagnostics: Sendable {
         let baseURL = FileManager.default.containerURL(forSecurityApplicationGroupIdentifier: AppConstants.appGroupIdentifier)
             ?? FileManager.default.urls(for: .applicationSupportDirectory, in: .userDomainMask)[0]
         return baseURL
+            .appendingPathComponent("Library", isDirectory: true)
+            .appendingPathComponent("Logs", isDirectory: true)
             .appendingPathComponent("Diagnostics", isDirectory: true)
             .appendingPathComponent(AppConstants.diagnosticsFileName)
     }

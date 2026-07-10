@@ -1,0 +1,19 @@
+{
+  "" : {
+    "diagnostics" : "/Users/bartosz/github/drive-mount/.codex/DerivedData-sim/Build/Intermediates.noindex/ios.build/Debug-iphonesimulator/DriveMountUITests.build/Objects-normal/arm64/DriveMountUITests-primary.dia",
+    "emit-module-dependencies" : "/Users/bartosz/github/drive-mount/.codex/DerivedData-sim/Build/Intermediates.noindex/ios.build/Debug-iphonesimulator/DriveMountUITests.build/Objects-normal/arm64/DriveMountUITests-primary-emit-module.d",
+    "emit-module-diagnostics" : "/Users/bartosz/github/drive-mount/.codex/DerivedData-sim/Build/Intermediates.noindex/ios.build/Debug-iphonesimulator/DriveMountUITests.build/Objects-normal/arm64/DriveMountUITests-primary-emit-module.dia",
+    "pch" : "/Users/bartosz/github/drive-mount/.codex/DerivedData-sim/Build/Intermediates.noindex/ios.build/Debug-iphonesimulator/DriveMountUITests.build/Objects-normal/arm64/DriveMountUITests-primary-Bridging-header.pch",
+    "swift-dependencies" : "/Users/bartosz/github/drive-mount/.codex/DerivedData-sim/Build/Intermediates.noindex/ios.build/Debug-iphonesimulator/DriveMountUITests.build/Objects-normal/arm64/DriveMountUITests-primary.swiftdeps"
+  },
+  "/Users/bartosz/github/drive-mount/ios/DriveMountUITests/DriveMountUITests.swift" : {
+    "const-values" : "/Users/bartosz/github/drive-mount/.codex/DerivedData-sim/Build/Intermediates.noindex/ios.build/Debug-iphonesimulator/DriveMountUITests.build/Objects-normal/arm64/DriveMountUITests.swiftconstvalues",
+    "dependencies" : "/Users/bartosz/github/drive-mount/.codex/DerivedData-sim/Build/Intermediates.noindex/ios.build/Debug-iphonesimulator/DriveMountUITests.build/Objects-normal/arm64/DriveMountUITests.d",
+    "diagnostics" : "/Users/bartosz/github/drive-mount/.codex/DerivedData-sim/Build/Intermediates.noindex/ios.build/Debug-iphonesimulator/DriveMountUITests.build/Objects-normal/arm64/DriveMountUITests.dia",
+    "index-unit-output-path" : "/ios.build/Debug-iphonesimulator/DriveMountUITests.build/Objects-normal/arm64/DriveMountUITests.o",
+    "llvm-bc" : "/Users/bartosz/github/drive-mount/.codex/DerivedData-sim/Build/Intermediates.noindex/ios.build/Debug-iphonesimulator/DriveMountUITests.build/Objects-normal/arm64/DriveMountUITests.bc",
+    "object" : "/Users/bartosz/github/drive-mount/.codex/DerivedData-sim/Build/Intermediates.noindex/ios.build/Debug-iphonesimulator/DriveMountUITests.build/Objects-normal/arm64/DriveMountUITests.o",
+    "swift-dependencies" : "/Users/bartosz/github/drive-mount/.codex/DerivedData-sim/Build/Intermediates.noindex/ios.build/Debug-iphonesimulator/DriveMountUITests.build/Objects-normal/arm64/DriveMountUITests.swiftdeps",
+    "swiftmodule" : "/Users/bartosz/github/drive-mount/.codex/DerivedData-sim/Build/Intermediates.noindex/ios.build/Debug-iphonesimulator/DriveMountUITests.build/Objects-normal/arm64/DriveMountUITests~partial.swiftmodule"
+  }
+}

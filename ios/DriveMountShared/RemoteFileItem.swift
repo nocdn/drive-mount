@@ -1,3 +1,4 @@
+import FileProvider
 import Foundation
 import UniformTypeIdentifiers
 
@@ -49,5 +50,59 @@ struct RemoteFileItem: Equatable, Sendable {
             modifiedAt: nil,
             contentType: nil
         )
+    }
+
+    /// Capabilities advertised to Files. Only B2 currently supports mutations.
+    var fileProviderCapabilities: NSFileProviderItemCapabilities {
+        guard key?.provider == .backblazeB2 else {
+            if isDirectory {
+                return [.allowsReading, .allowsContentEnumerating]
+            }
+            return [.allowsReading]
+        }
+
+        if isDirectory {
+            if key?.remoteID.hasPrefix("bucket:") == true {
+                return [.allowsReading, .allowsContentEnumerating, .allowsAddingSubItems]
+            }
+            return [
+                .allowsReading,
+                .allowsContentEnumerating,
+                .allowsAddingSubItems,
+                .allowsRenaming,
+                .allowsReparenting,
+                .allowsDeleting
+            ]
+        }
+
+        return [
+            .allowsReading,
+            .allowsWriting,
+            .allowsRenaming,
+            .allowsReparenting,
+            .allowsDeleting
+        ]
+    }
+
+    var fileProviderFileSystemFlags: NSFileProviderFileSystemFlags {
+        let capabilities = fileProviderCapabilities
+        let writable = capabilities.contains(.allowsWriting)
+            || capabilities.contains(.allowsAddingSubItems)
+            || capabilities.contains(.allowsDeleting)
+            || capabilities.contains(.allowsRenaming)
+
+        if isDirectory {
+            var flags: NSFileProviderFileSystemFlags = [.userReadable, .userExecutable]
+            if writable {
+                flags.insert(.userWritable)
+            }
+            return flags
+        }
+
+        var flags: NSFileProviderFileSystemFlags = [.userReadable]
+        if writable {
+            flags.insert(.userWritable)
+        }
+        return flags
     }
 }

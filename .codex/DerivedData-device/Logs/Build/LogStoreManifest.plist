@@ -6,7 +6,7 @@
 	<integer>13</integer>
 	<key>logs</key>
 	<dict>
-		<key>3D87DBAA-8E05-408F-8C6C-B2B93D7F38A1</key>
+		<key>A97015D5-ECB9-4D4B-BC67-8C760BF4D980</key>
 		<dict>
 			<key>className</key>
 			<string>IDECommandLineBuildLog</string>
@@ -15,7 +15,7 @@
 			<key>domainType</key>
 			<string>Xcode.IDEActivityLogDomainType.BuildLog</string>
 			<key>fileName</key>
-			<string>3D87DBAA-8E05-408F-8C6C-B2B93D7F38A1.xcactivitylog</string>
+			<string>A97015D5-ECB9-4D4B-BC67-8C760BF4D980.xcactivitylog</string>
 			<key>hasPrimaryLog</key>
 			<true/>
 			<key>primaryObservable</key>
@@ -40,15 +40,15 @@
 			<key>signature</key>
 			<string>Building project ios with scheme DriveMount and configuration Debug</string>
 			<key>timeStartedRecording</key>
-			<real>805401140.79963398</real>
+			<real>805415169.73759604</real>
 			<key>timeStoppedRecording</key>
-			<real>805401146.95926404</real>
+			<real>805415174.49786699</real>
 			<key>title</key>
 			<string>Building project ios with scheme DriveMount and configuration Debug</string>
 			<key>uniqueIdentifier</key>
-			<string>3D87DBAA-8E05-408F-8C6C-B2B93D7F38A1</string>
+			<string>A97015D5-ECB9-4D4B-BC67-8C760BF4D980</string>
 		</dict>
-		<key>EF664386-199B-4971-A136-A6DF41813641</key>
+		<key>DC554388-91DC-4242-B82A-7A48783709D7</key>
 		<dict>
 			<key>className</key>
 			<string>IDECommandLineBuildLog</string>
@@ -57,7 +57,7 @@
 			<key>domainType</key>
 			<string>Xcode.IDEActivityLogDomainType.BuildLog</string>
 			<key>fileName</key>
-			<string>EF664386-199B-4971-A136-A6DF41813641.xcactivitylog</string>
+			<string>DC554388-91DC-4242-B82A-7A48783709D7.xcactivitylog</string>
 			<key>hasPrimaryLog</key>
 			<true/>
 			<key>primaryObservable</key>
@@ -82,13 +82,13 @@
 			<key>signature</key>
 			<string>Building project ios with scheme DriveMount and configuration Debug</string>
 			<key>timeStartedRecording</key>
-			<real>805372615.81331503</real>
+			<real>805414622.293064</real>
 			<key>timeStoppedRecording</key>
-			<real>805372624.38596904</real>
+			<real>805414624.612607</real>
 			<key>title</key>
 			<string>Building project ios with scheme DriveMount and configuration Debug</string>
 			<key>uniqueIdentifier</key>
-			<string>EF664386-199B-4971-A136-A6DF41813641</string>
+			<string>DC554388-91DC-4242-B82A-7A48783709D7</string>
 		</dict>
 	</dict>
 </dict>

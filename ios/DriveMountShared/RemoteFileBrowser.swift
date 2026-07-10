@@ -1,9 +1,51 @@
+import FileProvider
 import Foundation
 
 protocol RemoteFileBrowsing: Sendable {
     func item(for identifier: String) async throws -> RemoteFileItem
     func children(of identifier: String) async throws -> [RemoteFileItem]
     func contents(of identifier: String) async throws -> URL
+    func createItem(
+        name: String,
+        parentIdentifier: String,
+        isDirectory: Bool,
+        contentsURL: URL?,
+        contentType: String?
+    ) async throws -> RemoteFileItem
+    func modifyItem(
+        identifier: String,
+        newName: String?,
+        newParentIdentifier: String?,
+        contentsURL: URL?,
+        contentType: String?
+    ) async throws -> RemoteFileItem
+    func deleteItem(identifier: String) async throws
+}
+
+extension RemoteFileBrowsing {
+    func createItem(
+        name: String,
+        parentIdentifier: String,
+        isDirectory: Bool,
+        contentsURL: URL?,
+        contentType: String?
+    ) async throws -> RemoteFileItem {
+        throw RemoteFileError.unsupported("Creating items is not supported for this provider yet.")
+    }
+
+    func modifyItem(
+        identifier: String,
+        newName: String?,
+        newParentIdentifier: String?,
+        contentsURL: URL?,
+        contentType: String?
+    ) async throws -> RemoteFileItem {
+        throw RemoteFileError.unsupported("Modifying items is not supported for this provider yet.")
+    }
+
+    func deleteItem(identifier: String) async throws {
+        throw RemoteFileError.unsupported("Deleting items is not supported for this provider yet.")
+    }
 }
 
 enum RemoteFileError: LocalizedError, Equatable {
@@ -29,6 +71,46 @@ enum RemoteFileError: LocalizedError, Equatable {
         case .server(let message):
             message
         }
+    }
+
+    /// Map to File Provider error codes so Files can show the right retry/auth UI.
+    var asFileProviderError: NSError {
+        let code: NSFileProviderError.Code
+        switch self {
+        case .missingConnection, .missingCredentials:
+            code = .notAuthenticated
+        case .notFound:
+            code = .noSuchItem
+        case .unsupported:
+            code = .cannotSynchronize
+        case .invalidResponse, .server:
+            code = .serverUnreachable
+        }
+        return NSError(
+            domain: NSFileProviderErrorDomain,
+            code: code.rawValue,
+            userInfo: [NSLocalizedDescriptionKey: errorDescription ?? "File Provider error"]
+        )
+    }
+}
+
+extension Error {
+    var asFileProviderError: NSError {
+        if let remote = self as? RemoteFileError {
+            return remote.asFileProviderError
+        }
+        let nsError = self as NSError
+        if nsError.domain == NSFileProviderErrorDomain {
+            return nsError
+        }
+        return NSError(
+            domain: NSFileProviderErrorDomain,
+            code: NSFileProviderError.Code.serverUnreachable.rawValue,
+            userInfo: [
+                NSLocalizedDescriptionKey: localizedDescription,
+                NSUnderlyingErrorKey: self
+            ]
+        )
     }
 }
 

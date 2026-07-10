@@ -5,6 +5,7 @@ struct ConnectionStore: Sendable {
 
     init(fileURL: URL? = nil) {
         self.fileURL = fileURL ?? Self.defaultStoreURL()
+        Self.migrateLegacyStoreIfNeeded(to: self.fileURL)
     }
 
     func load() throws -> [CloudConnection] {
@@ -23,11 +24,37 @@ struct ConnectionStore: Sendable {
     }
 
     static func defaultStoreURL() -> URL {
-        let baseURL = FileManager.default.containerURL(forSecurityApplicationGroupIdentifier: AppConstants.appGroupIdentifier)
-            ?? FileManager.default.urls(for: .applicationSupportDirectory, in: .userDomainMask)[0]
-        return baseURL
+        sharedContainerURL()
+            .appendingPathComponent("Library", isDirectory: true)
+            .appendingPathComponent("Application Support", isDirectory: true)
             .appendingPathComponent("Connections", isDirectory: true)
             .appendingPathComponent(AppConstants.connectionStoreFileName)
+    }
+
+    /// Older builds stored connections at App Group root; migrate once into Library/.
+    private static func migrateLegacyStoreIfNeeded(to destination: URL) {
+        let legacy = sharedContainerURL()
+            .appendingPathComponent("Connections", isDirectory: true)
+            .appendingPathComponent(AppConstants.connectionStoreFileName)
+        guard legacy.path != destination.path,
+              FileManager.default.fileExists(atPath: legacy.path),
+              !FileManager.default.fileExists(atPath: destination.path) else {
+            return
+        }
+        do {
+            try FileManager.default.createDirectory(
+                at: destination.deletingLastPathComponent(),
+                withIntermediateDirectories: true
+            )
+            try FileManager.default.copyItem(at: legacy, to: destination)
+        } catch {
+            Diagnostics.shared.error("connections.migrate.failed", area: "settings", error: error)
+        }
+    }
+
+    static func sharedContainerURL() -> URL {
+        FileManager.default.containerURL(forSecurityApplicationGroupIdentifier: AppConstants.appGroupIdentifier)
+            ?? FileManager.default.urls(for: .applicationSupportDirectory, in: .userDomainMask)[0]
     }
 
     private static let encoder: JSONEncoder = {

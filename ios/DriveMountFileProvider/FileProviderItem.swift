@@ -50,17 +50,11 @@ final class FileProviderItem: NSObject, NSFileProviderItem {
     }
 
     var capabilities: NSFileProviderItemCapabilities {
-        if item.isDirectory {
-            return [.allowsReading, .allowsWriting, .allowsContentEnumerating]
-        }
-        return [.allowsReading, .allowsWriting]
+        item.fileProviderCapabilities
     }
 
     var fileSystemFlags: NSFileProviderFileSystemFlags {
-        if item.isDirectory {
-            return [.userReadable, .userWritable, .userExecutable]
-        }
-        return [.userReadable, .userWritable]
+        item.fileProviderFileSystemFlags
     }
 
     private func versionComponent(seed: String) -> Data {

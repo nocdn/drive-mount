@@ -1,0 +1,209 @@
+{
+  "" : {
+    "diagnostics" : "/Users/bartosz/github/drive-mount/.codex/DerivedData-sim/Build/Intermediates.noindex/ios.build/Debug-iphonesimulator/DriveMount.build/Objects-normal/arm64/DriveMount-primary.dia",
+    "emit-module-dependencies" : "/Users/bartosz/github/drive-mount/.codex/DerivedData-sim/Build/Intermediates.noindex/ios.build/Debug-iphonesimulator/DriveMount.build/Objects-normal/arm64/DriveMount-primary-emit-module.d",
+    "emit-module-diagnostics" : "/Users/bartosz/github/drive-mount/.codex/DerivedData-sim/Build/Intermediates.noindex/ios.build/Debug-iphonesimulator/DriveMount.build/Objects-normal/arm64/DriveMount-primary-emit-module.dia",
+    "pch" : "/Users/bartosz/github/drive-mount/.codex/DerivedData-sim/Build/Intermediates.noindex/ios.build/Debug-iphonesimulator/DriveMount.build/Objects-normal/arm64/DriveMount-primary-Bridging-header.pch",
+    "swift-dependencies" : "/Users/bartosz/github/drive-mount/.codex/DerivedData-sim/Build/Intermediates.noindex/ios.build/Debug-iphonesimulator/DriveMount.build/Objects-normal/arm64/DriveMount-primary.swiftdeps"
+  },
+  "/Users/bartosz/github/drive-mount/.codex/DerivedData-sim/Build/Intermediates.noindex/ios.build/Debug-iphonesimulator/DriveMount.build/DerivedSources/GeneratedAssetSymbols.swift" : {
+    "const-values" : "/Users/bartosz/github/drive-mount/.codex/DerivedData-sim/Build/Intermediates.noindex/ios.build/Debug-iphonesimulator/DriveMount.build/Objects-normal/arm64/GeneratedAssetSymbols.swiftconstvalues",
+    "dependencies" : "/Users/bartosz/github/drive-mount/.codex/DerivedData-sim/Build/Intermediates.noindex/ios.build/Debug-iphonesimulator/DriveMount.build/Objects-normal/arm64/GeneratedAssetSymbols.d",
+    "diagnostics" : "/Users/bartosz/github/drive-mount/.codex/DerivedData-sim/Build/Intermediates.noindex/ios.build/Debug-iphonesimulator/DriveMount.build/Objects-normal/arm64/GeneratedAssetSymbols.dia",
+    "index-unit-output-path" : "/ios.build/Debug-iphonesimulator/DriveMount.build/Objects-normal/arm64/GeneratedAssetSymbols.o",
+    "llvm-bc" : "/Users/bartosz/github/drive-mount/.codex/DerivedData-sim/Build/Intermediates.noindex/ios.build/Debug-iphonesimulator/DriveMount.build/Objects-normal/arm64/GeneratedAssetSymbols.bc",
+    "object" : "/Users/bartosz/github/drive-mount/.codex/DerivedData-sim/Build/Intermediates.noindex/ios.build/Debug-iphonesimulator/DriveMount.build/Objects-normal/arm64/GeneratedAssetSymbols.o",
+    "swift-dependencies" : "/Users/bartosz/github/drive-mount/.codex/DerivedData-sim/Build/Intermediates.noindex/ios.build/Debug-iphonesimulator/DriveMount.build/Objects-normal/arm64/GeneratedAssetSymbols.swiftdeps",
+    "swiftmodule" : "/Users/bartosz/github/drive-mount/.codex/DerivedData-sim/Build/Intermediates.noindex/ios.build/Debug-iphonesimulator/DriveMount.build/Objects-normal/arm64/GeneratedAssetSymbols~partial.swiftmodule"
+  },
+  "/Users/bartosz/github/drive-mount/ios/DriveMountApp/AddConnectionView.swift" : {
+    "const-values" : "/Users/bartosz/github/drive-mount/.codex/DerivedData-sim/Build/Intermediates.noindex/ios.build/Debug-iphonesimulator/DriveMount.build/Objects-normal/arm64/AddConnectionView.swiftconstvalues",
+    "dependencies" : "/Users/bartosz/github/drive-mount/.codex/DerivedData-sim/Build/Intermediates.noindex/ios.build/Debug-iphonesimulator/DriveMount.build/Objects-normal/arm64/AddConnectionView.d",
+    "diagnostics" : "/Users/bartosz/github/drive-mount/.codex/DerivedData-sim/Build/Intermediates.noindex/ios.build/Debug-iphonesimulator/DriveMount.build/Objects-normal/arm64/AddConnectionView.dia",
+    "index-unit-output-path" : "/ios.build/Debug-iphonesimulator/DriveMount.build/Objects-normal/arm64/AddConnectionView.o",
+    "llvm-bc" : "/Users/bartosz/github/drive-mount/.codex/DerivedData-sim/Build/Intermediates.noindex/ios.build/Debug-iphonesimulator/DriveMount.build/Objects-normal/arm64/AddConnectionView.bc",
+    "object" : "/Users/bartosz/github/drive-mount/.codex/DerivedData-sim/Build/Intermediates.noindex/ios.build/Debug-iphonesimulator/DriveMount.build/Objects-normal/arm64/AddConnectionView.o",
+    "swift-dependencies" : "/Users/bartosz/github/drive-mount/.codex/DerivedData-sim/Build/Intermediates.noindex/ios.build/Debug-iphonesimulator/DriveMount.build/Objects-normal/arm64/AddConnectionView.swiftdeps",
+    "swiftmodule" : "/Users/bartosz/github/drive-mount/.codex/DerivedData-sim/Build/Intermediates.noindex/ios.build/Debug-iphonesimulator/DriveMount.build/Objects-normal/arm64/AddConnectionView~partial.swiftmodule"
+  },
+  "/Users/bartosz/github/drive-mount/ios/DriveMountApp/ConnectionEditorView.swift" : {
+    "const-values" : "/Users/bartosz/github/drive-mount/.codex/DerivedData-sim/Build/Intermediates.noindex/ios.build/Debug-iphonesimulator/DriveMount.build/Objects-normal/arm64/ConnectionEditorView.swiftconstvalues",
+    "dependencies" : "/Users/bartosz/github/drive-mount/.codex/DerivedData-sim/Build/Intermediates.noindex/ios.build/Debug-iphonesimulator/DriveMount.build/Objects-normal/arm64/ConnectionEditorView.d",
+    "diagnostics" : "/Users/bartosz/github/drive-mount/.codex/DerivedData-sim/Build/Intermediates.noindex/ios.build/Debug-iphonesimulator/DriveMount.build/Objects-normal/arm64/ConnectionEditorView.dia",
+    "index-unit-output-path" : "/ios.build/Debug-iphonesimulator/DriveMount.build/Objects-normal/arm64/ConnectionEditorView.o",
+    "llvm-bc" : "/Users/bartosz/github/drive-mount/.codex/DerivedData-sim/Build/Intermediates.noindex/ios.build/Debug-iphonesimulator/DriveMount.build/Objects-normal/arm64/ConnectionEditorView.bc",
+    "object" : "/Users/bartosz/github/drive-mount/.codex/DerivedData-sim/Build/Intermediates.noindex/ios.build/Debug-iphonesimulator/DriveMount.build/Objects-normal/arm64/ConnectionEditorView.o",
+    "swift-dependencies" : "/Users/bartosz/github/drive-mount/.codex/DerivedData-sim/Build/Intermediates.noindex/ios.build/Debug-iphonesimulator/DriveMount.build/Objects-normal/arm64/ConnectionEditorView.swiftdeps",
+    "swiftmodule" : "/Users/bartosz/github/drive-mount/.codex/DerivedData-sim/Build/Intermediates.noindex/ios.build/Debug-iphonesimulator/DriveMount.build/Objects-normal/arm64/ConnectionEditorView~partial.swiftmodule"
+  },
+  "/Users/bartosz/github/drive-mount/ios/DriveMountApp/ConnectionListViewModel.swift" : {
+    "const-values" : "/Users/bartosz/github/drive-mount/.codex/DerivedData-sim/Build/Intermediates.noindex/ios.build/Debug-iphonesimulator/DriveMount.build/Objects-normal/arm64/ConnectionListViewModel.swiftconstvalues",
+    "dependencies" : "/Users/bartosz/github/drive-mount/.codex/DerivedData-sim/Build/Intermediates.noindex/ios.build/Debug-iphonesimulator/DriveMount.build/Objects-normal/arm64/ConnectionListViewModel.d",
+    "diagnostics" : "/Users/bartosz/github/drive-mount/.codex/DerivedData-sim/Build/Intermediates.noindex/ios.build/Debug-iphonesimulator/DriveMount.build/Objects-normal/arm64/ConnectionListViewModel.dia",
+    "index-unit-output-path" : "/ios.build/Debug-iphonesimulator/DriveMount.build/Objects-normal/arm64/ConnectionListViewModel.o",
+    "llvm-bc" : "/Users/bartosz/github/drive-mount/.codex/DerivedData-sim/Build/Intermediates.noindex/ios.build/Debug-iphonesimulator/DriveMount.build/Objects-normal/arm64/ConnectionListViewModel.bc",
+    "object" : "/Users/bartosz/github/drive-mount/.codex/DerivedData-sim/Build/Intermediates.noindex/ios.build/Debug-iphonesimulator/DriveMount.build/Objects-normal/arm64/ConnectionListViewModel.o",
+    "swift-dependencies" : "/Users/bartosz/github/drive-mount/.codex/DerivedData-sim/Build/Intermediates.noindex/ios.build/Debug-iphonesimulator/DriveMount.build/Objects-normal/arm64/ConnectionListViewModel.swiftdeps",
+    "swiftmodule" : "/Users/bartosz/github/drive-mount/.codex/DerivedData-sim/Build/Intermediates.noindex/ios.build/Debug-iphonesimulator/DriveMount.build/Objects-normal/arm64/ConnectionListViewModel~partial.swiftmodule"
+  },
+  "/Users/bartosz/github/drive-mount/ios/DriveMountApp/ContentView.swift" : {
+    "const-values" : "/Users/bartosz/github/drive-mount/.codex/DerivedData-sim/Build/Intermediates.noindex/ios.build/Debug-iphonesimulator/DriveMount.build/Objects-normal/arm64/ContentView.swiftconstvalues",
+    "dependencies" : "/Users/bartosz/github/drive-mount/.codex/DerivedData-sim/Build/Intermediates.noindex/ios.build/Debug-iphonesimulator/DriveMount.build/Objects-normal/arm64/ContentView.d",
+    "diagnostics" : "/Users/bartosz/github/drive-mount/.codex/DerivedData-sim/Build/Intermediates.noindex/ios.build/Debug-iphonesimulator/DriveMount.build/Objects-normal/arm64/ContentView.dia",
+    "index-unit-output-path" : "/ios.build/Debug-iphonesimulator/DriveMount.build/Objects-normal/arm64/ContentView.o",
+    "llvm-bc" : "/Users/bartosz/github/drive-mount/.codex/DerivedData-sim/Build/Intermediates.noindex/ios.build/Debug-iphonesimulator/DriveMount.build/Objects-normal/arm64/ContentView.bc",
+    "object" : "/Users/bartosz/github/drive-mount/.codex/DerivedData-sim/Build/Intermediates.noindex/ios.build/Debug-iphonesimulator/DriveMount.build/Objects-normal/arm64/ContentView.o",
+    "swift-dependencies" : "/Users/bartosz/github/drive-mount/.codex/DerivedData-sim/Build/Intermediates.noindex/ios.build/Debug-iphonesimulator/DriveMount.build/Objects-normal/arm64/ContentView.swiftdeps",
+    "swiftmodule" : "/Users/bartosz/github/drive-mount/.codex/DerivedData-sim/Build/Intermediates.noindex/ios.build/Debug-iphonesimulator/DriveMount.build/Objects-normal/arm64/ContentView~partial.swiftmodule"
+  },
+  "/Users/bartosz/github/drive-mount/ios/DriveMountApp/DriveMountApp.swift" : {
+    "const-values" : "/Users/bartosz/github/drive-mount/.codex/DerivedData-sim/Build/Intermediates.noindex/ios.build/Debug-iphonesimulator/DriveMount.build/Objects-normal/arm64/DriveMountApp.swiftconstvalues",
+    "dependencies" : "/Users/bartosz/github/drive-mount/.codex/DerivedData-sim/Build/Intermediates.noindex/ios.build/Debug-iphonesimulator/DriveMount.build/Objects-normal/arm64/DriveMountApp.d",
+    "diagnostics" : "/Users/bartosz/github/drive-mount/.codex/DerivedData-sim/Build/Intermediates.noindex/ios.build/Debug-iphonesimulator/DriveMount.build/Objects-normal/arm64/DriveMountApp.dia",
+    "index-unit-output-path" : "/ios.build/Debug-iphonesimulator/DriveMount.build/Objects-normal/arm64/DriveMountApp.o",
+    "llvm-bc" : "/Users/bartosz/github/drive-mount/.codex/DerivedData-sim/Build/Intermediates.noindex/ios.build/Debug-iphonesimulator/DriveMount.build/Objects-normal/arm64/DriveMountApp.bc",
+    "object" : "/Users/bartosz/github/drive-mount/.codex/DerivedData-sim/Build/Intermediates.noindex/ios.build/Debug-iphonesimulator/DriveMount.build/Objects-normal/arm64/DriveMountApp.o",
+    "swift-dependencies" : "/Users/bartosz/github/drive-mount/.codex/DerivedData-sim/Build/Intermediates.noindex/ios.build/Debug-iphonesimulator/DriveMount.build/Objects-normal/arm64/DriveMountApp.swiftdeps",
+    "swiftmodule" : "/Users/bartosz/github/drive-mount/.codex/DerivedData-sim/Build/Intermediates.noindex/ios.build/Debug-iphonesimulator/DriveMount.build/Objects-normal/arm64/DriveMountApp~partial.swiftmodule"
+  },
+  "/Users/bartosz/github/drive-mount/ios/DriveMountShared/AppConstants.swift" : {
+    "const-values" : "/Users/bartosz/github/drive-mount/.codex/DerivedData-sim/Build/Intermediates.noindex/ios.build/Debug-iphonesimulator/DriveMount.build/Objects-normal/arm64/AppConstants.swiftconstvalues",
+    "dependencies" : "/Users/bartosz/github/drive-mount/.codex/DerivedData-sim/Build/Intermediates.noindex/ios.build/Debug-iphonesimulator/DriveMount.build/Objects-normal/arm64/AppConstants.d",
+    "diagnostics" : "/Users/bartosz/github/drive-mount/.codex/DerivedData-sim/Build/Intermediates.noindex/ios.build/Debug-iphonesimulator/DriveMount.build/Objects-normal/arm64/AppConstants.dia",
+    "index-unit-output-path" : "/ios.build/Debug-iphonesimulator/DriveMount.build/Objects-normal/arm64/AppConstants.o",
+    "llvm-bc" : "/Users/bartosz/github/drive-mount/.codex/DerivedData-sim/Build/Intermediates.noindex/ios.build/Debug-iphonesimulator/DriveMount.build/Objects-normal/arm64/AppConstants.bc",
+    "object" : "/Users/bartosz/github/drive-mount/.codex/DerivedData-sim/Build/Intermediates.noindex/ios.build/Debug-iphonesimulator/DriveMount.build/Objects-normal/arm64/AppConstants.o",
+    "swift-dependencies" : "/Users/bartosz/github/drive-mount/.codex/DerivedData-sim/Build/Intermediates.noindex/ios.build/Debug-iphonesimulator/DriveMount.build/Objects-normal/arm64/AppConstants.swiftdeps",
+    "swiftmodule" : "/Users/bartosz/github/drive-mount/.codex/DerivedData-sim/Build/Intermediates.noindex/ios.build/Debug-iphonesimulator/DriveMount.build/Objects-normal/arm64/AppConstants~partial.swiftmodule"
+  },
+  "/Users/bartosz/github/drive-mount/ios/DriveMountShared/B2RemoteFileBrowser.swift" : {
+    "const-values" : "/Users/bartosz/github/drive-mount/.codex/DerivedData-sim/Build/Intermediates.noindex/ios.build/Debug-iphonesimulator/DriveMount.build/Objects-normal/arm64/B2RemoteFileBrowser.swiftconstvalues",
+    "dependencies" : "/Users/bartosz/github/drive-mount/.codex/DerivedData-sim/Build/Intermediates.noindex/ios.build/Debug-iphonesimulator/DriveMount.build/Objects-normal/arm64/B2RemoteFileBrowser.d",
+    "diagnostics" : "/Users/bartosz/github/drive-mount/.codex/DerivedData-sim/Build/Intermediates.noindex/ios.build/Debug-iphonesimulator/DriveMount.build/Objects-normal/arm64/B2RemoteFileBrowser.dia",
+    "index-unit-output-path" : "/ios.build/Debug-iphonesimulator/DriveMount.build/Objects-normal/arm64/B2RemoteFileBrowser.o",
+    "llvm-bc" : "/Users/bartosz/github/drive-mount/.codex/DerivedData-sim/Build/Intermediates.noindex/ios.build/Debug-iphonesimulator/DriveMount.build/Objects-normal/arm64/B2RemoteFileBrowser.bc",
+    "object" : "/Users/bartosz/github/drive-mount/.codex/DerivedData-sim/Build/Intermediates.noindex/ios.build/Debug-iphonesimulator/DriveMount.build/Objects-normal/arm64/B2RemoteFileBrowser.o",
+    "swift-dependencies" : "/Users/bartosz/github/drive-mount/.codex/DerivedData-sim/Build/Intermediates.noindex/ios.build/Debug-iphonesimulator/DriveMount.build/Objects-normal/arm64/B2RemoteFileBrowser.swiftdeps",
+    "swiftmodule" : "/Users/bartosz/github/drive-mount/.codex/DerivedData-sim/Build/Intermediates.noindex/ios.build/Debug-iphonesimulator/DriveMount.build/Objects-normal/arm64/B2RemoteFileBrowser~partial.swiftmodule"
+  },
+  "/Users/bartosz/github/drive-mount/ios/DriveMountShared/CloudConnection.swift" : {
+    "const-values" : "/Users/bartosz/github/drive-mount/.codex/DerivedData-sim/Build/Intermediates.noindex/ios.build/Debug-iphonesimulator/DriveMount.build/Objects-normal/arm64/CloudConnection.swiftconstvalues",
+    "dependencies" : "/Users/bartosz/github/drive-mount/.codex/DerivedData-sim/Build/Intermediates.noindex/ios.build/Debug-iphonesimulator/DriveMount.build/Objects-normal/arm64/CloudConnection.d",
+    "diagnostics" : "/Users/bartosz/github/drive-mount/.codex/DerivedData-sim/Build/Intermediates.noindex/ios.build/Debug-iphonesimulator/DriveMount.build/Objects-normal/arm64/CloudConnection.dia",
+    "index-unit-output-path" : "/ios.build/Debug-iphonesimulator/DriveMount.build/Objects-normal/arm64/CloudConnection.o",
+    "llvm-bc" : "/Users/bartosz/github/drive-mount/.codex/DerivedData-sim/Build/Intermediates.noindex/ios.build/Debug-iphonesimulator/DriveMount.build/Objects-normal/arm64/CloudConnection.bc",
+    "object" : "/Users/bartosz/github/drive-mount/.codex/DerivedData-sim/Build/Intermediates.noindex/ios.build/Debug-iphonesimulator/DriveMount.build/Objects-normal/arm64/CloudConnection.o",
+    "swift-dependencies" : "/Users/bartosz/github/drive-mount/.codex/DerivedData-sim/Build/Intermediates.noindex/ios.build/Debug-iphonesimulator/DriveMount.build/Objects-normal/arm64/CloudConnection.swiftdeps",
+    "swiftmodule" : "/Users/bartosz/github/drive-mount/.codex/DerivedData-sim/Build/Intermediates.noindex/ios.build/Debug-iphonesimulator/DriveMount.build/Objects-normal/arm64/CloudConnection~partial.swiftmodule"
+  },
+  "/Users/bartosz/github/drive-mount/ios/DriveMountShared/CloudProvider.swift" : {
+    "const-values" : "/Users/bartosz/github/drive-mount/.codex/DerivedData-sim/Build/Intermediates.noindex/ios.build/Debug-iphonesimulator/DriveMount.build/Objects-normal/arm64/CloudProvider.swiftconstvalues",
+    "dependencies" : "/Users/bartosz/github/drive-mount/.codex/DerivedData-sim/Build/Intermediates.noindex/ios.build/Debug-iphonesimulator/DriveMount.build/Objects-normal/arm64/CloudProvider.d",
+    "diagnostics" : "/Users/bartosz/github/drive-mount/.codex/DerivedData-sim/Build/Intermediates.noindex/ios.build/Debug-iphonesimulator/DriveMount.build/Objects-normal/arm64/CloudProvider.dia",
+    "index-unit-output-path" : "/ios.build/Debug-iphonesimulator/DriveMount.build/Objects-normal/arm64/CloudProvider.o",
+    "llvm-bc" : "/Users/bartosz/github/drive-mount/.codex/DerivedData-sim/Build/Intermediates.noindex/ios.build/Debug-iphonesimulator/DriveMount.build/Objects-normal/arm64/CloudProvider.bc",
+    "object" : "/Users/bartosz/github/drive-mount/.codex/DerivedData-sim/Build/Intermediates.noindex/ios.build/Debug-iphonesimulator/DriveMount.build/Objects-normal/arm64/CloudProvider.o",
+    "swift-dependencies" : "/Users/bartosz/github/drive-mount/.codex/DerivedData-sim/Build/Intermediates.noindex/ios.build/Debug-iphonesimulator/DriveMount.build/Objects-normal/arm64/CloudProvider.swiftdeps",
+    "swiftmodule" : "/Users/bartosz/github/drive-mount/.codex/DerivedData-sim/Build/Intermediates.noindex/ios.build/Debug-iphonesimulator/DriveMount.build/Objects-normal/arm64/CloudProvider~partial.swiftmodule"
+  },
+  "/Users/bartosz/github/drive-mount/ios/DriveMountShared/ConnectionStore.swift" : {
+    "const-values" : "/Users/bartosz/github/drive-mount/.codex/DerivedData-sim/Build/Intermediates.noindex/ios.build/Debug-iphonesimulator/DriveMount.build/Objects-normal/arm64/ConnectionStore.swiftconstvalues",
+    "dependencies" : "/Users/bartosz/github/drive-mount/.codex/DerivedData-sim/Build/Intermediates.noindex/ios.build/Debug-iphonesimulator/DriveMount.build/Objects-normal/arm64/ConnectionStore.d",
+    "diagnostics" : "/Users/bartosz/github/drive-mount/.codex/DerivedData-sim/Build/Intermediates.noindex/ios.build/Debug-iphonesimulator/DriveMount.build/Objects-normal/arm64/ConnectionStore.dia",
+    "index-unit-output-path" : "/ios.build/Debug-iphonesimulator/DriveMount.build/Objects-normal/arm64/ConnectionStore.o",
+    "llvm-bc" : "/Users/bartosz/github/drive-mount/.codex/DerivedData-sim/Build/Intermediates.noindex/ios.build/Debug-iphonesimulator/DriveMount.build/Objects-normal/arm64/ConnectionStore.bc",
+    "object" : "/Users/bartosz/github/drive-mount/.codex/DerivedData-sim/Build/Intermediates.noindex/ios.build/Debug-iphonesimulator/DriveMount.build/Objects-normal/arm64/ConnectionStore.o",
+    "swift-dependencies" : "/Users/bartosz/github/drive-mount/.codex/DerivedData-sim/Build/Intermediates.noindex/ios.build/Debug-iphonesimulator/DriveMount.build/Objects-normal/arm64/ConnectionStore.swiftdeps",
+    "swiftmodule" : "/Users/bartosz/github/drive-mount/.codex/DerivedData-sim/Build/Intermediates.noindex/ios.build/Debug-iphonesimulator/DriveMount.build/Objects-normal/arm64/ConnectionStore~partial.swiftmodule"
+  },
+  "/Users/bartosz/github/drive-mount/ios/DriveMountShared/Diagnostics.swift" : {
+    "const-values" : "/Users/bartosz/github/drive-mount/.codex/DerivedData-sim/Build/Intermediates.noindex/ios.build/Debug-iphonesimulator/DriveMount.build/Objects-normal/arm64/Diagnostics.swiftconstvalues",
+    "dependencies" : "/Users/bartosz/github/drive-mount/.codex/DerivedData-sim/Build/Intermediates.noindex/ios.build/Debug-iphonesimulator/DriveMount.build/Objects-normal/arm64/Diagnostics.d",
+    "diagnostics" : "/Users/bartosz/github/drive-mount/.codex/DerivedData-sim/Build/Intermediates.noindex/ios.build/Debug-iphonesimulator/DriveMount.build/Objects-normal/arm64/Diagnostics.dia",
+    "index-unit-output-path" : "/ios.build/Debug-iphonesimulator/DriveMount.build/Objects-normal/arm64/Diagnostics.o",
+    "llvm-bc" : "/Users/bartosz/github/drive-mount/.codex/DerivedData-sim/Build/Intermediates.noindex/ios.build/Debug-iphonesimulator/DriveMount.build/Objects-normal/arm64/Diagnostics.bc",
+    "object" : "/Users/bartosz/github/drive-mount/.codex/DerivedData-sim/Build/Intermediates.noindex/ios.build/Debug-iphonesimulator/DriveMount.build/Objects-normal/arm64/Diagnostics.o",
+    "swift-dependencies" : "/Users/bartosz/github/drive-mount/.codex/DerivedData-sim/Build/Intermediates.noindex/ios.build/Debug-iphonesimulator/DriveMount.build/Objects-normal/arm64/Diagnostics.swiftdeps",
+    "swiftmodule" : "/Users/bartosz/github/drive-mount/.codex/DerivedData-sim/Build/Intermediates.noindex/ios.build/Debug-iphonesimulator/DriveMount.build/Objects-normal/arm64/Diagnostics~partial.swiftmodule"
+  },
+  "/Users/bartosz/github/drive-mount/ios/DriveMountShared/FixtureRemoteFileBrowser.swift" : {
+    "const-values" : "/Users/bartosz/github/drive-mount/.codex/DerivedData-sim/Build/Intermediates.noindex/ios.build/Debug-iphonesimulator/DriveMount.build/Objects-normal/arm64/FixtureRemoteFileBrowser.swiftconstvalues",
+    "dependencies" : "/Users/bartosz/github/drive-mount/.codex/DerivedData-sim/Build/Intermediates.noindex/ios.build/Debug-iphonesimulator/DriveMount.build/Objects-normal/arm64/FixtureRemoteFileBrowser.d",
+    "diagnostics" : "/Users/bartosz/github/drive-mount/.codex/DerivedData-sim/Build/Intermediates.noindex/ios.build/Debug-iphonesimulator/DriveMount.build/Objects-normal/arm64/FixtureRemoteFileBrowser.dia",
+    "index-unit-output-path" : "/ios.build/Debug-iphonesimulator/DriveMount.build/Objects-normal/arm64/FixtureRemoteFileBrowser.o",
+    "llvm-bc" : "/Users/bartosz/github/drive-mount/.codex/DerivedData-sim/Build/Intermediates.noindex/ios.build/Debug-iphonesimulator/DriveMount.build/Objects-normal/arm64/FixtureRemoteFileBrowser.bc",
+    "object" : "/Users/bartosz/github/drive-mount/.codex/DerivedData-sim/Build/Intermediates.noindex/ios.build/Debug-iphonesimulator/DriveMount.build/Objects-normal/arm64/FixtureRemoteFileBrowser.o",
+    "swift-dependencies" : "/Users/bartosz/github/drive-mount/.codex/DerivedData-sim/Build/Intermediates.noindex/ios.build/Debug-iphonesimulator/DriveMount.build/Objects-normal/arm64/FixtureRemoteFileBrowser.swiftdeps",
+    "swiftmodule" : "/Users/bartosz/github/drive-mount/.codex/DerivedData-sim/Build/Intermediates.noindex/ios.build/Debug-iphonesimulator/DriveMount.build/Objects-normal/arm64/FixtureRemoteFileBrowser~partial.swiftmodule"
+  },
+  "/Users/bartosz/github/drive-mount/ios/DriveMountShared/GoogleDriveRemoteFileBrowser.swift" : {
+    "const-values" : "/Users/bartosz/github/drive-mount/.codex/DerivedData-sim/Build/Intermediates.noindex/ios.build/Debug-iphonesimulator/DriveMount.build/Objects-normal/arm64/GoogleDriveRemoteFileBrowser.swiftconstvalues",
+    "dependencies" : "/Users/bartosz/github/drive-mount/.codex/DerivedData-sim/Build/Intermediates.noindex/ios.build/Debug-iphonesimulator/DriveMount.build/Objects-normal/arm64/GoogleDriveRemoteFileBrowser.d",
+    "diagnostics" : "/Users/bartosz/github/drive-mount/.codex/DerivedData-sim/Build/Intermediates.noindex/ios.build/Debug-iphonesimulator/DriveMount.build/Objects-normal/arm64/GoogleDriveRemoteFileBrowser.dia",
+    "index-unit-output-path" : "/ios.build/Debug-iphonesimulator/DriveMount.build/Objects-normal/arm64/GoogleDriveRemoteFileBrowser.o",
+    "llvm-bc" : "/Users/bartosz/github/drive-mount/.codex/DerivedData-sim/Build/Intermediates.noindex/ios.build/Debug-iphonesimulator/DriveMount.build/Objects-normal/arm64/GoogleDriveRemoteFileBrowser.bc",
+    "object" : "/Users/bartosz/github/drive-mount/.codex/DerivedData-sim/Build/Intermediates.noindex/ios.build/Debug-iphonesimulator/DriveMount.build/Objects-normal/arm64/GoogleDriveRemoteFileBrowser.o",
+    "swift-dependencies" : "/Users/bartosz/github/drive-mount/.codex/DerivedData-sim/Build/Intermediates.noindex/ios.build/Debug-iphonesimulator/DriveMount.build/Objects-normal/arm64/GoogleDriveRemoteFileBrowser.swiftdeps",
+    "swiftmodule" : "/Users/bartosz/github/drive-mount/.codex/DerivedData-sim/Build/Intermediates.noindex/ios.build/Debug-iphonesimulator/DriveMount.build/Objects-normal/arm64/GoogleDriveRemoteFileBrowser~partial.swiftmodule"
+  },
+  "/Users/bartosz/github/drive-mount/ios/DriveMountShared/HTTPClient.swift" : {
+    "const-values" : "/Users/bartosz/github/drive-mount/.codex/DerivedData-sim/Build/Intermediates.noindex/ios.build/Debug-iphonesimulator/DriveMount.build/Objects-normal/arm64/HTTPClient.swiftconstvalues",
+    "dependencies" : "/Users/bartosz/github/drive-mount/.codex/DerivedData-sim/Build/Intermediates.noindex/ios.build/Debug-iphonesimulator/DriveMount.build/Objects-normal/arm64/HTTPClient.d",
+    "diagnostics" : "/Users/bartosz/github/drive-mount/.codex/DerivedData-sim/Build/Intermediates.noindex/ios.build/Debug-iphonesimulator/DriveMount.build/Objects-normal/arm64/HTTPClient.dia",
+    "index-unit-output-path" : "/ios.build/Debug-iphonesimulator/DriveMount.build/Objects-normal/arm64/HTTPClient.o",
+    "llvm-bc" : "/Users/bartosz/github/drive-mount/.codex/DerivedData-sim/Build/Intermediates.noindex/ios.build/Debug-iphonesimulator/DriveMount.build/Objects-normal/arm64/HTTPClient.bc",
+    "object" : "/Users/bartosz/github/drive-mount/.codex/DerivedData-sim/Build/Intermediates.noindex/ios.build/Debug-iphonesimulator/DriveMount.build/Objects-normal/arm64/HTTPClient.o",
+    "swift-dependencies" : "/Users/bartosz/github/drive-mount/.codex/DerivedData-sim/Build/Intermediates.noindex/ios.build/Debug-iphonesimulator/DriveMount.build/Objects-normal/arm64/HTTPClient.swiftdeps",
+    "swiftmodule" : "/Users/bartosz/github/drive-mount/.codex/DerivedData-sim/Build/Intermediates.noindex/ios.build/Debug-iphonesimulator/DriveMount.build/Objects-normal/arm64/HTTPClient~partial.swiftmodule"
+  },
+  "/Users/bartosz/github/drive-mount/ios/DriveMountShared/OneDriveRemoteFileBrowser.swift" : {
+    "const-values" : "/Users/bartosz/github/drive-mount/.codex/DerivedData-sim/Build/Intermediates.noindex/ios.build/Debug-iphonesimulator/DriveMount.build/Objects-normal/arm64/OneDriveRemoteFileBrowser.swiftconstvalues",
+    "dependencies" : "/Users/bartosz/github/drive-mount/.codex/DerivedData-sim/Build/Intermediates.noindex/ios.build/Debug-iphonesimulator/DriveMount.build/Objects-normal/arm64/OneDriveRemoteFileBrowser.d",
+    "diagnostics" : "/Users/bartosz/github/drive-mount/.codex/DerivedData-sim/Build/Intermediates.noindex/ios.build/Debug-iphonesimulator/DriveMount.build/Objects-normal/arm64/OneDriveRemoteFileBrowser.dia",
+    "index-unit-output-path" : "/ios.build/Debug-iphonesimulator/DriveMount.build/Objects-normal/arm64/OneDriveRemoteFileBrowser.o",
+    "llvm-bc" : "/Users/bartosz/github/drive-mount/.codex/DerivedData-sim/Build/Intermediates.noindex/ios.build/Debug-iphonesimulator/DriveMount.build/Objects-normal/arm64/OneDriveRemoteFileBrowser.bc",
+    "object" : "/Users/bartosz/github/drive-mount/.codex/DerivedData-sim/Build/Intermediates.noindex/ios.build/Debug-iphonesimulator/DriveMount.build/Objects-normal/arm64/OneDriveRemoteFileBrowser.o",
+    "swift-dependencies" : "/Users/bartosz/github/drive-mount/.codex/DerivedData-sim/Build/Intermediates.noindex/ios.build/Debug-iphonesimulator/DriveMount.build/Objects-normal/arm64/OneDriveRemoteFileBrowser.swiftdeps",
+    "swiftmodule" : "/Users/bartosz/github/drive-mount/.codex/DerivedData-sim/Build/Intermediates.noindex/ios.build/Debug-iphonesimulator/DriveMount.build/Objects-normal/arm64/OneDriveRemoteFileBrowser~partial.swiftmodule"
+  },
+  "/Users/bartosz/github/drive-mount/ios/DriveMountShared/ProviderItemCache.swift" : {
+    "const-values" : "/Users/bartosz/github/drive-mount/.codex/DerivedData-sim/Build/Intermediates.noindex/ios.build/Debug-iphonesimulator/DriveMount.build/Objects-normal/arm64/ProviderItemCache.swiftconstvalues",
+    "dependencies" : "/Users/bartosz/github/drive-mount/.codex/DerivedData-sim/Build/Intermediates.noindex/ios.build/Debug-iphonesimulator/DriveMount.build/Objects-normal/arm64/ProviderItemCache.d",
+    "diagnostics" : "/Users/bartosz/github/drive-mount/.codex/DerivedData-sim/Build/Intermediates.noindex/ios.build/Debug-iphonesimulator/DriveMount.build/Objects-normal/arm64/ProviderItemCache.dia",
+    "index-unit-output-path" : "/ios.build/Debug-iphonesimulator/DriveMount.build/Objects-normal/arm64/ProviderItemCache.o",
+    "llvm-bc" : "/Users/bartosz/github/drive-mount/.codex/DerivedData-sim/Build/Intermediates.noindex/ios.build/Debug-iphonesimulator/DriveMount.build/Objects-normal/arm64/ProviderItemCache.bc",
+    "object" : "/Users/bartosz/github/drive-mount/.codex/DerivedData-sim/Build/Intermediates.noindex/ios.build/Debug-iphonesimulator/DriveMount.build/Objects-normal/arm64/ProviderItemCache.o",
+    "swift-dependencies" : "/Users/bartosz/github/drive-mount/.codex/DerivedData-sim/Build/Intermediates.noindex/ios.build/Debug-iphonesimulator/DriveMount.build/Objects-normal/arm64/ProviderItemCache.swiftdeps",
+    "swiftmodule" : "/Users/bartosz/github/drive-mount/.codex/DerivedData-sim/Build/Intermediates.noindex/ios.build/Debug-iphonesimulator/DriveMount.build/Objects-normal/arm64/ProviderItemCache~partial.swiftmodule"
+  },
+  "/Users/bartosz/github/drive-mount/ios/DriveMountShared/ProviderItemKey.swift" : {
+    "const-values" : "/Users/bartosz/github/drive-mount/.codex/DerivedData-sim/Build/Intermediates.noindex/ios.build/Debug-iphonesimulator/DriveMount.build/Objects-normal/arm64/ProviderItemKey.swiftconstvalues",
+    "dependencies" : "/Users/bartosz/github/drive-mount/.codex/DerivedData-sim/Build/Intermediates.noindex/ios.build/Debug-iphonesimulator/DriveMount.build/Objects-normal/arm64/ProviderItemKey.d",
+    "diagnostics" : "/Users/bartosz/github/drive-mount/.codex/DerivedData-sim/Build/Intermediates.noindex/ios.build/Debug-iphonesimulator/DriveMount.build/Objects-normal/arm64/ProviderItemKey.dia",
+    "index-unit-output-path" : "/ios.build/Debug-iphonesimulator/DriveMount.build/Objects-normal/arm64/ProviderItemKey.o",
+    "llvm-bc" : "/Users/bartosz/github/drive-mount/.codex/DerivedData-sim/Build/Intermediates.noindex/ios.build/Debug-iphonesimulator/DriveMount.build/Objects-normal/arm64/ProviderItemKey.bc",
+    "object" : "/Users/bartosz/github/drive-mount/.codex/DerivedData-sim/Build/Intermediates.noindex/ios.build/Debug-iphonesimulator/DriveMount.build/Objects-normal/arm64/ProviderItemKey.o",
+    "swift-dependencies" : "/Users/bartosz/github/drive-mount/.codex/DerivedData-sim/Build/Intermediates.noindex/ios.build/Debug-iphonesimulator/DriveMount.build/Objects-normal/arm64/ProviderItemKey.swiftdeps",
+    "swiftmodule" : "/Users/bartosz/github/drive-mount/.codex/DerivedData-sim/Build/Intermediates.noindex/ios.build/Debug-iphonesimulator/DriveMount.build/Objects-normal/arm64/ProviderItemKey~partial.swiftmodule"
+  },
+  "/Users/bartosz/github/drive-mount/ios/DriveMountShared/RemoteFileBrowser.swift" : {
+    "const-values" : "/Users/bartosz/github/drive-mount/.codex/DerivedData-sim/Build/Intermediates.noindex/ios.build/Debug-iphonesimulator/DriveMount.build/Objects-normal/arm64/RemoteFileBrowser.swiftconstvalues",
+    "dependencies" : "/Users/bartosz/github/drive-mount/.codex/DerivedData-sim/Build/Intermediates.noindex/ios.build/Debug-iphonesimulator/DriveMount.build/Objects-normal/arm64/RemoteFileBrowser.d",
+    "diagnostics" : "/Users/bartosz/github/drive-mount/.codex/DerivedData-sim/Build/Intermediates.noindex/ios.build/Debug-iphonesimulator/DriveMount.build/Objects-normal/arm64/RemoteFileBrowser.dia",
+    "index-unit-output-path" : "/ios.build/Debug-iphonesimulator/DriveMount.build/Objects-normal/arm64/RemoteFileBrowser.o",
+    "llvm-bc" : "/Users/bartosz/github/drive-mount/.codex/DerivedData-sim/Build/Intermediates.noindex/ios.build/Debug-iphonesimulator/DriveMount.build/Objects-normal/arm64/RemoteFileBrowser.bc",
+    "object" : "/Users/bartosz/github/drive-mount/.codex/DerivedData-sim/Build/Intermediates.noindex/ios.build/Debug-iphonesimulator/DriveMount.build/Objects-normal/arm64/RemoteFileBrowser.o",
+    "swift-dependencies" : "/Users/bartosz/github/drive-mount/.codex/DerivedData-sim/Build/Intermediates.noindex/ios.build/Debug-iphonesimulator/DriveMount.build/Objects-normal/arm64/RemoteFileBrowser.swiftdeps",
+    "swiftmodule" : "/Users/bartosz/github/drive-mount/.codex/DerivedData-sim/Build/Intermediates.noindex/ios.build/Debug-iphonesimulator/DriveMount.build/Objects-normal/arm64/RemoteFileBrowser~partial.swiftmodule"
+  },
+  "/Users/bartosz/github/drive-mount/ios/DriveMountShared/RemoteFileItem.swift" : {
+    "const-values" : "/Users/bartosz/github/drive-mount/.codex/DerivedData-sim/Build/Intermediates.noindex/ios.build/Debug-iphonesimulator/DriveMount.build/Objects-normal/arm64/RemoteFileItem.swiftconstvalues",
+    "dependencies" : "/Users/bartosz/github/drive-mount/.codex/DerivedData-sim/Build/Intermediates.noindex/ios.build/Debug-iphonesimulator/DriveMount.build/Objects-normal/arm64/RemoteFileItem.d",
+    "diagnostics" : "/Users/bartosz/github/drive-mount/.codex/DerivedData-sim/Build/Intermediates.noindex/ios.build/Debug-iphonesimulator/DriveMount.build/Objects-normal/arm64/RemoteFileItem.dia",
+    "index-unit-output-path" : "/ios.build/Debug-iphonesimulator/DriveMount.build/Objects-normal/arm64/RemoteFileItem.o",
+    "llvm-bc" : "/Users/bartosz/github/drive-mount/.codex/DerivedData-sim/Build/Intermediates.noindex/ios.build/Debug-iphonesimulator/DriveMount.build/Objects-normal/arm64/RemoteFileItem.bc",
+    "object" : "/Users/bartosz/github/drive-mount/.codex/DerivedData-sim/Build/Intermediates.noindex/ios.build/Debug-iphonesimulator/DriveMount.build/Objects-normal/arm64/RemoteFileItem.o",
+    "swift-dependencies" : "/Users/bartosz/github/drive-mount/.codex/DerivedData-sim/Build/Intermediates.noindex/ios.build/Debug-iphonesimulator/DriveMount.build/Objects-normal/arm64/RemoteFileItem.swiftdeps",
+    "swiftmodule" : "/Users/bartosz/github/drive-mount/.codex/DerivedData-sim/Build/Intermediates.noindex/ios.build/Debug-iphonesimulator/DriveMount.build/Objects-normal/arm64/RemoteFileItem~partial.swiftmodule"
+  }
+}

@@ -110,11 +110,46 @@ final class ConnectionListViewModel {
                 }
             }
 
-            registeredDomainCount = try await currentDomains().count
+            let domains = try await currentDomains()
+            registeredDomainCount = domains.count
+            for domain in domains {
+                await signalEnumerator(for: domain)
+            }
             Diagnostics.shared.info("domains.sync.finished", area: "fileprovider", fields: ["count": "\(registeredDomainCount)"])
         } catch {
             statusMessage = "Files registration needs a signed File Provider build."
             Diagnostics.shared.error("domains.sync.failed", area: "fileprovider", error: error)
+        }
+    }
+
+    /// Ask Files to re-enumerate and clear sticky error badges after a successful fix/sync.
+    private func signalEnumerator(for domain: NSFileProviderDomain) async {
+        guard let manager = NSFileProviderManager(for: domain) else {
+            return
+        }
+        do {
+            try await manager.signalEnumerator(for: .workingSet)
+            try await manager.signalEnumerator(for: .rootContainer)
+            for code in [
+                NSFileProviderError.Code.notAuthenticated,
+                .serverUnreachable,
+                .cannotSynchronize
+            ] {
+                let error = NSError(domain: NSFileProviderErrorDomain, code: code.rawValue)
+                try? await manager.signalErrorResolved(error)
+            }
+            Diagnostics.shared.info(
+                "domains.signal.finished",
+                area: "fileprovider",
+                fields: ["domain": domain.identifier.rawValue]
+            )
+        } catch {
+            Diagnostics.shared.error(
+                "domains.signal.failed",
+                area: "fileprovider",
+                error: error,
+                fields: ["domain": domain.identifier.rawValue]
+            )
         }
     }
 

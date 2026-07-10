@@ -27,9 +27,27 @@ final class ProviderItemCache: @unchecked Sendable {
     static func defaultCacheURL() -> URL {
         let baseURL = FileManager.default.containerURL(forSecurityApplicationGroupIdentifier: AppConstants.appGroupIdentifier)
             ?? FileManager.default.urls(for: .applicationSupportDirectory, in: .userDomainMask)[0]
-        return baseURL
+        let modern = baseURL
+            .appendingPathComponent("Library", isDirectory: true)
+            .appendingPathComponent("Caches", isDirectory: true)
             .appendingPathComponent("FileProvider", isDirectory: true)
             .appendingPathComponent(AppConstants.providerItemCacheFileName)
+        let legacy = baseURL
+            .appendingPathComponent("FileProvider", isDirectory: true)
+            .appendingPathComponent(AppConstants.providerItemCacheFileName)
+        if !FileManager.default.fileExists(atPath: modern.path),
+           FileManager.default.fileExists(atPath: legacy.path) {
+            do {
+                try FileManager.default.createDirectory(
+                    at: modern.deletingLastPathComponent(),
+                    withIntermediateDirectories: true
+                )
+                try FileManager.default.copyItem(at: legacy, to: modern)
+            } catch {
+                // Fall through and use modern path; cache will rebuild from listings.
+            }
+        }
+        return modern
     }
 
     private func loadUnlocked() -> [String: ProviderItemKey] {
