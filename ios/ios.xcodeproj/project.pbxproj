@@ -1,0 +1,859 @@
+// !$*UTF8*$!
+{
+	archiveVersion = 1;
+	classes = {
+	};
+	objectVersion = 56;
+	objects = {
+
+/* Begin PBXBuildFile section */
+		A1B000000000000000000001 /* AppConstants.swift in Sources */ = {isa = PBXBuildFile; fileRef = A10000000000000000000001 /* AppConstants.swift */; };
+		A1B000000000000000000002 /* CloudProvider.swift in Sources */ = {isa = PBXBuildFile; fileRef = A10000000000000000000002 /* CloudProvider.swift */; };
+		A1B000000000000000000003 /* CloudConnection.swift in Sources */ = {isa = PBXBuildFile; fileRef = A10000000000000000000003 /* CloudConnection.swift */; };
+		A1B000000000000000000004 /* ConnectionStore.swift in Sources */ = {isa = PBXBuildFile; fileRef = A10000000000000000000004 /* ConnectionStore.swift */; };
+		A1B000000000000000000005 /* Diagnostics.swift in Sources */ = {isa = PBXBuildFile; fileRef = A10000000000000000000005 /* Diagnostics.swift */; };
+		A1B000000000000000000006 /* ProviderItemKey.swift in Sources */ = {isa = PBXBuildFile; fileRef = A10000000000000000000006 /* ProviderItemKey.swift */; };
+		A1B000000000000000000007 /* RemoteFileItem.swift in Sources */ = {isa = PBXBuildFile; fileRef = A10000000000000000000007 /* RemoteFileItem.swift */; };
+		A1B000000000000000000008 /* RemoteFileBrowser.swift in Sources */ = {isa = PBXBuildFile; fileRef = A10000000000000000000008 /* RemoteFileBrowser.swift */; };
+		A1B000000000000000000009 /* FixtureRemoteFileBrowser.swift in Sources */ = {isa = PBXBuildFile; fileRef = A10000000000000000000009 /* FixtureRemoteFileBrowser.swift */; };
+		A1B00000000000000000000A /* HTTPClient.swift in Sources */ = {isa = PBXBuildFile; fileRef = A1000000000000000000000A /* HTTPClient.swift */; };
+		A1B00000000000000000000B /* B2RemoteFileBrowser.swift in Sources */ = {isa = PBXBuildFile; fileRef = A1000000000000000000000B /* B2RemoteFileBrowser.swift */; };
+		A1B00000000000000000000C /* GoogleDriveRemoteFileBrowser.swift in Sources */ = {isa = PBXBuildFile; fileRef = A1000000000000000000000C /* GoogleDriveRemoteFileBrowser.swift */; };
+		A1B00000000000000000000D /* OneDriveRemoteFileBrowser.swift in Sources */ = {isa = PBXBuildFile; fileRef = A1000000000000000000000D /* OneDriveRemoteFileBrowser.swift */; };
+		A1B00000000000000000000E /* ProviderItemCache.swift in Sources */ = {isa = PBXBuildFile; fileRef = A1000000000000000000000E /* ProviderItemCache.swift */; };
+		A2B000000000000000000001 /* DriveMountApp.swift in Sources */ = {isa = PBXBuildFile; fileRef = A20000000000000000000001 /* DriveMountApp.swift */; };
+		A2B000000000000000000002 /* ContentView.swift in Sources */ = {isa = PBXBuildFile; fileRef = A20000000000000000000002 /* ContentView.swift */; };
+		A2B000000000000000000003 /* ConnectionListViewModel.swift in Sources */ = {isa = PBXBuildFile; fileRef = A20000000000000000000003 /* ConnectionListViewModel.swift */; };
+		A2B000000000000000000004 /* AddConnectionView.swift in Sources */ = {isa = PBXBuildFile; fileRef = A20000000000000000000004 /* AddConnectionView.swift */; };
+		A2B000000000000000000005 /* ConnectionEditorView.swift in Sources */ = {isa = PBXBuildFile; fileRef = A20000000000000000000005 /* ConnectionEditorView.swift */; };
+		A2B000000000000000000006 /* Assets.xcassets in Resources */ = {isa = PBXBuildFile; fileRef = A20000000000000000000006 /* Assets.xcassets */; };
+		A2B000000000000000000007 /* DriveMountFileProvider.appex in Embed App Extensions */ = {isa = PBXBuildFile; fileRef = A90000000000000000000002 /* DriveMountFileProvider.appex */; settings = {ATTRIBUTES = (CodeSignOnCopy, RemoveHeadersOnCopy, ); }; };
+		A3B000000000000000000001 /* AppConstants.swift in Sources */ = {isa = PBXBuildFile; fileRef = A10000000000000000000001 /* AppConstants.swift */; };
+		A3B000000000000000000002 /* CloudProvider.swift in Sources */ = {isa = PBXBuildFile; fileRef = A10000000000000000000002 /* CloudProvider.swift */; };
+		A3B000000000000000000003 /* CloudConnection.swift in Sources */ = {isa = PBXBuildFile; fileRef = A10000000000000000000003 /* CloudConnection.swift */; };
+		A3B000000000000000000004 /* ConnectionStore.swift in Sources */ = {isa = PBXBuildFile; fileRef = A10000000000000000000004 /* ConnectionStore.swift */; };
+		A3B000000000000000000005 /* Diagnostics.swift in Sources */ = {isa = PBXBuildFile; fileRef = A10000000000000000000005 /* Diagnostics.swift */; };
+		A3B000000000000000000006 /* ProviderItemKey.swift in Sources */ = {isa = PBXBuildFile; fileRef = A10000000000000000000006 /* ProviderItemKey.swift */; };
+		A3B000000000000000000007 /* RemoteFileItem.swift in Sources */ = {isa = PBXBuildFile; fileRef = A10000000000000000000007 /* RemoteFileItem.swift */; };
+		A3B000000000000000000008 /* RemoteFileBrowser.swift in Sources */ = {isa = PBXBuildFile; fileRef = A10000000000000000000008 /* RemoteFileBrowser.swift */; };
+		A3B000000000000000000009 /* FixtureRemoteFileBrowser.swift in Sources */ = {isa = PBXBuildFile; fileRef = A10000000000000000000009 /* FixtureRemoteFileBrowser.swift */; };
+		A3B00000000000000000000A /* HTTPClient.swift in Sources */ = {isa = PBXBuildFile; fileRef = A1000000000000000000000A /* HTTPClient.swift */; };
+		A3B00000000000000000000B /* B2RemoteFileBrowser.swift in Sources */ = {isa = PBXBuildFile; fileRef = A1000000000000000000000B /* B2RemoteFileBrowser.swift */; };
+		A3B00000000000000000000C /* GoogleDriveRemoteFileBrowser.swift in Sources */ = {isa = PBXBuildFile; fileRef = A1000000000000000000000C /* GoogleDriveRemoteFileBrowser.swift */; };
+		A3B00000000000000000000D /* OneDriveRemoteFileBrowser.swift in Sources */ = {isa = PBXBuildFile; fileRef = A1000000000000000000000D /* OneDriveRemoteFileBrowser.swift */; };
+		A3B00000000000000000000E /* FileProviderItem.swift in Sources */ = {isa = PBXBuildFile; fileRef = A30000000000000000000003 /* FileProviderItem.swift */; };
+		A3B00000000000000000000F /* FileProviderEnumerator.swift in Sources */ = {isa = PBXBuildFile; fileRef = A30000000000000000000004 /* FileProviderEnumerator.swift */; };
+		A3B000000000000000000010 /* DriveMountFileProviderExtension.swift in Sources */ = {isa = PBXBuildFile; fileRef = A30000000000000000000005 /* DriveMountFileProviderExtension.swift */; };
+		A3B000000000000000000011 /* ProviderItemCache.swift in Sources */ = {isa = PBXBuildFile; fileRef = A1000000000000000000000E /* ProviderItemCache.swift */; };
+		A4B000000000000000000001 /* DriveMountTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = A40000000000000000000001 /* DriveMountTests.swift */; };
+		A5B000000000000000000001 /* DriveMountUITests.swift in Sources */ = {isa = PBXBuildFile; fileRef = A50000000000000000000001 /* DriveMountUITests.swift */; };
+/* End PBXBuildFile section */
+
+/* Begin PBXContainerItemProxy section */
+		A70000000000000000000001 /* PBXContainerItemProxy */ = {
+			isa = PBXContainerItemProxy;
+			containerPortal = A00000000000000000000001 /* Project object */;
+			proxyType = 1;
+			remoteGlobalIDString = A30000000000000000000010;
+			remoteInfo = DriveMountFileProvider;
+		};
+		A70000000000000000000002 /* PBXContainerItemProxy */ = {
+			isa = PBXContainerItemProxy;
+			containerPortal = A00000000000000000000001 /* Project object */;
+			proxyType = 1;
+			remoteGlobalIDString = A20000000000000000000010;
+			remoteInfo = DriveMount;
+		};
+		A70000000000000000000003 /* PBXContainerItemProxy */ = {
+			isa = PBXContainerItemProxy;
+			containerPortal = A00000000000000000000001 /* Project object */;
+			proxyType = 1;
+			remoteGlobalIDString = A20000000000000000000010;
+			remoteInfo = DriveMount;
+		};
+/* End PBXContainerItemProxy section */
+
+/* Begin PBXCopyFilesBuildPhase section */
+		A20000000000000000000014 /* Embed App Extensions */ = {
+			isa = PBXCopyFilesBuildPhase;
+			buildActionMask = 2147483647;
+			dstPath = "";
+			dstSubfolderSpec = 13;
+			files = (
+				A2B000000000000000000007 /* DriveMountFileProvider.appex in Embed App Extensions */,
+			);
+			name = "Embed App Extensions";
+			runOnlyForDeploymentPostprocessing = 0;
+		};
+/* End PBXCopyFilesBuildPhase section */
+
+/* Begin PBXFileReference section */
+		A10000000000000000000001 /* AppConstants.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AppConstants.swift; sourceTree = "<group>"; };
+		A10000000000000000000002 /* CloudProvider.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = CloudProvider.swift; sourceTree = "<group>"; };
+		A10000000000000000000003 /* CloudConnection.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = CloudConnection.swift; sourceTree = "<group>"; };
+		A10000000000000000000004 /* ConnectionStore.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ConnectionStore.swift; sourceTree = "<group>"; };
+		A10000000000000000000005 /* Diagnostics.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = Diagnostics.swift; sourceTree = "<group>"; };
+		A10000000000000000000006 /* ProviderItemKey.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ProviderItemKey.swift; sourceTree = "<group>"; };
+		A10000000000000000000007 /* RemoteFileItem.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = RemoteFileItem.swift; sourceTree = "<group>"; };
+		A10000000000000000000008 /* RemoteFileBrowser.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = RemoteFileBrowser.swift; sourceTree = "<group>"; };
+		A10000000000000000000009 /* FixtureRemoteFileBrowser.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = FixtureRemoteFileBrowser.swift; sourceTree = "<group>"; };
+		A1000000000000000000000A /* HTTPClient.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = HTTPClient.swift; sourceTree = "<group>"; };
+		A1000000000000000000000B /* B2RemoteFileBrowser.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = B2RemoteFileBrowser.swift; sourceTree = "<group>"; };
+		A1000000000000000000000C /* GoogleDriveRemoteFileBrowser.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = GoogleDriveRemoteFileBrowser.swift; sourceTree = "<group>"; };
+		A1000000000000000000000D /* OneDriveRemoteFileBrowser.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = OneDriveRemoteFileBrowser.swift; sourceTree = "<group>"; };
+		A1000000000000000000000E /* ProviderItemCache.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ProviderItemCache.swift; sourceTree = "<group>"; };
+		A20000000000000000000001 /* DriveMountApp.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = DriveMountApp.swift; sourceTree = "<group>"; };
+		A20000000000000000000002 /* ContentView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ContentView.swift; sourceTree = "<group>"; };
+		A20000000000000000000003 /* ConnectionListViewModel.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ConnectionListViewModel.swift; sourceTree = "<group>"; };
+		A20000000000000000000004 /* AddConnectionView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AddConnectionView.swift; sourceTree = "<group>"; };
+		A20000000000000000000005 /* ConnectionEditorView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ConnectionEditorView.swift; sourceTree = "<group>"; };
+		A20000000000000000000006 /* Assets.xcassets */ = {isa = PBXFileReference; lastKnownFileType = folder.assetcatalog; path = Assets.xcassets; sourceTree = "<group>"; };
+		A20000000000000000000007 /* DriveMount.entitlements */ = {isa = PBXFileReference; lastKnownFileType = text.plist.entitlements; path = DriveMount.entitlements; sourceTree = "<group>"; };
+		A30000000000000000000001 /* Info.plist */ = {isa = PBXFileReference; lastKnownFileType = text.plist.xml; path = Info.plist; sourceTree = "<group>"; };
+		A30000000000000000000002 /* FileProvider.entitlements */ = {isa = PBXFileReference; lastKnownFileType = text.plist.entitlements; path = FileProvider.entitlements; sourceTree = "<group>"; };
+		A30000000000000000000003 /* FileProviderItem.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = FileProviderItem.swift; sourceTree = "<group>"; };
+		A30000000000000000000004 /* FileProviderEnumerator.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = FileProviderEnumerator.swift; sourceTree = "<group>"; };
+		A30000000000000000000005 /* DriveMountFileProviderExtension.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = DriveMountFileProviderExtension.swift; sourceTree = "<group>"; };
+		A40000000000000000000001 /* DriveMountTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = DriveMountTests.swift; sourceTree = "<group>"; };
+		A50000000000000000000001 /* DriveMountUITests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = DriveMountUITests.swift; sourceTree = "<group>"; };
+		A90000000000000000000001 /* DriveMount.app */ = {isa = PBXFileReference; explicitFileType = wrapper.application; includeInIndex = 0; path = DriveMount.app; sourceTree = BUILT_PRODUCTS_DIR; };
+		A90000000000000000000002 /* DriveMountFileProvider.appex */ = {isa = PBXFileReference; explicitFileType = "wrapper.app-extension"; includeInIndex = 0; path = DriveMountFileProvider.appex; sourceTree = BUILT_PRODUCTS_DIR; };
+		A90000000000000000000003 /* DriveMountTests.xctest */ = {isa = PBXFileReference; explicitFileType = wrapper.cfbundle; includeInIndex = 0; path = DriveMountTests.xctest; sourceTree = BUILT_PRODUCTS_DIR; };
+		A90000000000000000000004 /* DriveMountUITests.xctest */ = {isa = PBXFileReference; explicitFileType = wrapper.cfbundle; includeInIndex = 0; path = DriveMountUITests.xctest; sourceTree = BUILT_PRODUCTS_DIR; };
+/* End PBXFileReference section */
+
+/* Begin PBXFrameworksBuildPhase section */
+		A20000000000000000000012 /* Frameworks */ = {
+			isa = PBXFrameworksBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+		};
+		A30000000000000000000012 /* Frameworks */ = {
+			isa = PBXFrameworksBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+		};
+		A40000000000000000000012 /* Frameworks */ = {
+			isa = PBXFrameworksBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+		};
+		A50000000000000000000012 /* Frameworks */ = {
+			isa = PBXFrameworksBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+		};
+/* End PBXFrameworksBuildPhase section */
+
+/* Begin PBXGroup section */
+		A00000000000000000000002 = {
+			isa = PBXGroup;
+			children = (
+				A20000000000000000000020 /* DriveMountApp */,
+				A10000000000000000000020 /* DriveMountShared */,
+				A30000000000000000000020 /* DriveMountFileProvider */,
+				A40000000000000000000020 /* DriveMountTests */,
+				A50000000000000000000020 /* DriveMountUITests */,
+				A90000000000000000000020 /* Products */,
+			);
+			sourceTree = "<group>";
+		};
+		A10000000000000000000020 /* DriveMountShared */ = {
+			isa = PBXGroup;
+			children = (
+				A10000000000000000000001 /* AppConstants.swift */,
+				A10000000000000000000002 /* CloudProvider.swift */,
+				A10000000000000000000003 /* CloudConnection.swift */,
+				A10000000000000000000004 /* ConnectionStore.swift */,
+				A10000000000000000000005 /* Diagnostics.swift */,
+				A10000000000000000000006 /* ProviderItemKey.swift */,
+				A1000000000000000000000E /* ProviderItemCache.swift */,
+				A10000000000000000000007 /* RemoteFileItem.swift */,
+				A10000000000000000000008 /* RemoteFileBrowser.swift */,
+				A10000000000000000000009 /* FixtureRemoteFileBrowser.swift */,
+				A1000000000000000000000A /* HTTPClient.swift */,
+				A1000000000000000000000B /* B2RemoteFileBrowser.swift */,
+				A1000000000000000000000C /* GoogleDriveRemoteFileBrowser.swift */,
+				A1000000000000000000000D /* OneDriveRemoteFileBrowser.swift */,
+			);
+			path = DriveMountShared;
+			sourceTree = "<group>";
+		};
+		A20000000000000000000020 /* DriveMountApp */ = {
+			isa = PBXGroup;
+			children = (
+				A20000000000000000000001 /* DriveMountApp.swift */,
+				A20000000000000000000002 /* ContentView.swift */,
+				A20000000000000000000003 /* ConnectionListViewModel.swift */,
+				A20000000000000000000004 /* AddConnectionView.swift */,
+				A20000000000000000000005 /* ConnectionEditorView.swift */,
+				A20000000000000000000006 /* Assets.xcassets */,
+				A20000000000000000000007 /* DriveMount.entitlements */,
+			);
+			path = DriveMountApp;
+			sourceTree = "<group>";
+		};
+		A30000000000000000000020 /* DriveMountFileProvider */ = {
+			isa = PBXGroup;
+			children = (
+				A30000000000000000000001 /* Info.plist */,
+				A30000000000000000000002 /* FileProvider.entitlements */,
+				A30000000000000000000003 /* FileProviderItem.swift */,
+				A30000000000000000000004 /* FileProviderEnumerator.swift */,
+				A30000000000000000000005 /* DriveMountFileProviderExtension.swift */,
+			);
+			path = DriveMountFileProvider;
+			sourceTree = "<group>";
+		};
+		A40000000000000000000020 /* DriveMountTests */ = {
+			isa = PBXGroup;
+			children = (
+				A40000000000000000000001 /* DriveMountTests.swift */,
+			);
+			path = DriveMountTests;
+			sourceTree = "<group>";
+		};
+		A50000000000000000000020 /* DriveMountUITests */ = {
+			isa = PBXGroup;
+			children = (
+				A50000000000000000000001 /* DriveMountUITests.swift */,
+			);
+			path = DriveMountUITests;
+			sourceTree = "<group>";
+		};
+		A90000000000000000000020 /* Products */ = {
+			isa = PBXGroup;
+			children = (
+				A90000000000000000000001 /* DriveMount.app */,
+				A90000000000000000000002 /* DriveMountFileProvider.appex */,
+				A90000000000000000000003 /* DriveMountTests.xctest */,
+				A90000000000000000000004 /* DriveMountUITests.xctest */,
+			);
+			name = Products;
+			sourceTree = "<group>";
+		};
+/* End PBXGroup section */
+
+/* Begin PBXNativeTarget section */
+		A20000000000000000000010 /* DriveMount */ = {
+			isa = PBXNativeTarget;
+			buildConfigurationList = A20000000000000000000030 /* Build configuration list for PBXNativeTarget "DriveMount" */;
+			buildPhases = (
+				A20000000000000000000011 /* Sources */,
+				A20000000000000000000012 /* Frameworks */,
+				A20000000000000000000013 /* Resources */,
+				A20000000000000000000014 /* Embed App Extensions */,
+			);
+			buildRules = (
+			);
+			dependencies = (
+				A70000000000000000000011 /* PBXTargetDependency */,
+			);
+			name = DriveMount;
+			productName = DriveMount;
+			productReference = A90000000000000000000001 /* DriveMount.app */;
+			productType = "com.apple.product-type.application";
+		};
+		A30000000000000000000010 /* DriveMountFileProvider */ = {
+			isa = PBXNativeTarget;
+			buildConfigurationList = A30000000000000000000030 /* Build configuration list for PBXNativeTarget "DriveMountFileProvider" */;
+			buildPhases = (
+				A30000000000000000000011 /* Sources */,
+				A30000000000000000000012 /* Frameworks */,
+				A30000000000000000000013 /* Resources */,
+			);
+			buildRules = (
+			);
+			dependencies = (
+			);
+			name = DriveMountFileProvider;
+			productName = DriveMountFileProvider;
+			productReference = A90000000000000000000002 /* DriveMountFileProvider.appex */;
+			productType = "com.apple.product-type.app-extension";
+		};
+		A40000000000000000000010 /* DriveMountTests */ = {
+			isa = PBXNativeTarget;
+			buildConfigurationList = A40000000000000000000030 /* Build configuration list for PBXNativeTarget "DriveMountTests" */;
+			buildPhases = (
+				A40000000000000000000011 /* Sources */,
+				A40000000000000000000012 /* Frameworks */,
+				A40000000000000000000013 /* Resources */,
+			);
+			buildRules = (
+			);
+			dependencies = (
+				A70000000000000000000012 /* PBXTargetDependency */,
+			);
+			name = DriveMountTests;
+			productName = DriveMountTests;
+			productReference = A90000000000000000000003 /* DriveMountTests.xctest */;
+			productType = "com.apple.product-type.bundle.unit-test";
+		};
+		A50000000000000000000010 /* DriveMountUITests */ = {
+			isa = PBXNativeTarget;
+			buildConfigurationList = A50000000000000000000030 /* Build configuration list for PBXNativeTarget "DriveMountUITests" */;
+			buildPhases = (
+				A50000000000000000000011 /* Sources */,
+				A50000000000000000000012 /* Frameworks */,
+				A50000000000000000000013 /* Resources */,
+			);
+			buildRules = (
+			);
+			dependencies = (
+				A70000000000000000000013 /* PBXTargetDependency */,
+			);
+			name = DriveMountUITests;
+			productName = DriveMountUITests;
+			productReference = A90000000000000000000004 /* DriveMountUITests.xctest */;
+			productType = "com.apple.product-type.bundle.ui-testing";
+		};
+/* End PBXNativeTarget section */
+
+/* Begin PBXProject section */
+		A00000000000000000000001 /* Project object */ = {
+			isa = PBXProject;
+			attributes = {
+				BuildIndependentTargetsInParallel = 1;
+				LastSwiftUpdateCheck = 2700;
+				LastUpgradeCheck = 2700;
+				TargetAttributes = {
+					A20000000000000000000010 = {
+						CreatedOnToolsVersion = 27.0;
+						ProvisioningStyle = Automatic;
+					};
+					A30000000000000000000010 = {
+						CreatedOnToolsVersion = 27.0;
+						ProvisioningStyle = Automatic;
+					};
+					A40000000000000000000010 = {
+						CreatedOnToolsVersion = 27.0;
+						TestTargetID = A20000000000000000000010;
+					};
+					A50000000000000000000010 = {
+						CreatedOnToolsVersion = 27.0;
+						TestTargetID = A20000000000000000000010;
+					};
+				};
+			};
+			buildConfigurationList = A00000000000000000000030 /* Build configuration list for PBXProject "ios" */;
+			compatibilityVersion = "Xcode 14.0";
+			developmentRegion = en;
+			hasScannedForEncodings = 0;
+			knownRegions = (
+				en,
+				Base,
+			);
+			mainGroup = A00000000000000000000002;
+			productRefGroup = A90000000000000000000020 /* Products */;
+			projectDirPath = "";
+			projectRoot = "";
+			targets = (
+				A20000000000000000000010 /* DriveMount */,
+				A30000000000000000000010 /* DriveMountFileProvider */,
+				A40000000000000000000010 /* DriveMountTests */,
+				A50000000000000000000010 /* DriveMountUITests */,
+			);
+		};
+/* End PBXProject section */
+
+/* Begin PBXResourcesBuildPhase section */
+		A20000000000000000000013 /* Resources */ = {
+			isa = PBXResourcesBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+				A2B000000000000000000006 /* Assets.xcassets in Resources */,
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+		};
+		A30000000000000000000013 /* Resources */ = {
+			isa = PBXResourcesBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+		};
+		A40000000000000000000013 /* Resources */ = {
+			isa = PBXResourcesBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+		};
+		A50000000000000000000013 /* Resources */ = {
+			isa = PBXResourcesBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+		};
+/* End PBXResourcesBuildPhase section */
+
+/* Begin PBXSourcesBuildPhase section */
+		A20000000000000000000011 /* Sources */ = {
+			isa = PBXSourcesBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+				A2B000000000000000000001 /* DriveMountApp.swift in Sources */,
+				A2B000000000000000000002 /* ContentView.swift in Sources */,
+				A2B000000000000000000003 /* ConnectionListViewModel.swift in Sources */,
+				A2B000000000000000000004 /* AddConnectionView.swift in Sources */,
+				A2B000000000000000000005 /* ConnectionEditorView.swift in Sources */,
+				A1B000000000000000000001 /* AppConstants.swift in Sources */,
+				A1B000000000000000000002 /* CloudProvider.swift in Sources */,
+				A1B000000000000000000003 /* CloudConnection.swift in Sources */,
+				A1B000000000000000000004 /* ConnectionStore.swift in Sources */,
+				A1B000000000000000000005 /* Diagnostics.swift in Sources */,
+				A1B000000000000000000006 /* ProviderItemKey.swift in Sources */,
+				A1B00000000000000000000E /* ProviderItemCache.swift in Sources */,
+				A1B000000000000000000007 /* RemoteFileItem.swift in Sources */,
+				A1B000000000000000000008 /* RemoteFileBrowser.swift in Sources */,
+				A1B000000000000000000009 /* FixtureRemoteFileBrowser.swift in Sources */,
+				A1B00000000000000000000A /* HTTPClient.swift in Sources */,
+				A1B00000000000000000000B /* B2RemoteFileBrowser.swift in Sources */,
+				A1B00000000000000000000C /* GoogleDriveRemoteFileBrowser.swift in Sources */,
+				A1B00000000000000000000D /* OneDriveRemoteFileBrowser.swift in Sources */,
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+		};
+		A30000000000000000000011 /* Sources */ = {
+			isa = PBXSourcesBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+				A3B00000000000000000000E /* FileProviderItem.swift in Sources */,
+				A3B00000000000000000000F /* FileProviderEnumerator.swift in Sources */,
+				A3B000000000000000000010 /* DriveMountFileProviderExtension.swift in Sources */,
+				A3B000000000000000000001 /* AppConstants.swift in Sources */,
+				A3B000000000000000000002 /* CloudProvider.swift in Sources */,
+				A3B000000000000000000003 /* CloudConnection.swift in Sources */,
+				A3B000000000000000000004 /* ConnectionStore.swift in Sources */,
+				A3B000000000000000000005 /* Diagnostics.swift in Sources */,
+				A3B000000000000000000006 /* ProviderItemKey.swift in Sources */,
+				A3B000000000000000000011 /* ProviderItemCache.swift in Sources */,
+				A3B000000000000000000007 /* RemoteFileItem.swift in Sources */,
+				A3B000000000000000000008 /* RemoteFileBrowser.swift in Sources */,
+				A3B000000000000000000009 /* FixtureRemoteFileBrowser.swift in Sources */,
+				A3B00000000000000000000A /* HTTPClient.swift in Sources */,
+				A3B00000000000000000000B /* B2RemoteFileBrowser.swift in Sources */,
+				A3B00000000000000000000C /* GoogleDriveRemoteFileBrowser.swift in Sources */,
+				A3B00000000000000000000D /* OneDriveRemoteFileBrowser.swift in Sources */,
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+		};
+		A40000000000000000000011 /* Sources */ = {
+			isa = PBXSourcesBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+				A4B000000000000000000001 /* DriveMountTests.swift in Sources */,
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+		};
+		A50000000000000000000011 /* Sources */ = {
+			isa = PBXSourcesBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+				A5B000000000000000000001 /* DriveMountUITests.swift in Sources */,
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+		};
+/* End PBXSourcesBuildPhase section */
+
+/* Begin PBXTargetDependency section */
+		A70000000000000000000011 /* PBXTargetDependency */ = {
+			isa = PBXTargetDependency;
+			target = A30000000000000000000010 /* DriveMountFileProvider */;
+			targetProxy = A70000000000000000000001 /* PBXContainerItemProxy */;
+		};
+		A70000000000000000000012 /* PBXTargetDependency */ = {
+			isa = PBXTargetDependency;
+			target = A20000000000000000000010 /* DriveMount */;
+			targetProxy = A70000000000000000000002 /* PBXContainerItemProxy */;
+		};
+		A70000000000000000000013 /* PBXTargetDependency */ = {
+			isa = PBXTargetDependency;
+			target = A20000000000000000000010 /* DriveMount */;
+			targetProxy = A70000000000000000000003 /* PBXContainerItemProxy */;
+		};
+/* End PBXTargetDependency section */
+
+/* Begin XCBuildConfiguration section */
+		A00000000000000000000031 /* Debug */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				ALWAYS_SEARCH_USER_PATHS = NO;
+				ASSETCATALOG_COMPILER_GENERATE_SWIFT_ASSET_SYMBOL_EXTENSIONS = YES;
+				CLANG_ANALYZER_NONNULL = YES;
+				CLANG_ANALYZER_NUMBER_OBJECT_CONVERSION = YES_AGGRESSIVE;
+				CLANG_CXX_LANGUAGE_STANDARD = "gnu++20";
+				CLANG_ENABLE_MODULES = YES;
+				CLANG_ENABLE_OBJC_ARC = YES;
+				CLANG_ENABLE_OBJC_WEAK = YES;
+				CLANG_WARN_BLOCK_CAPTURE_AUTORELEASING = YES;
+				CLANG_WARN_BOOL_CONVERSION = YES;
+				CLANG_WARN_COMMA = YES;
+				CLANG_WARN_CONSTANT_CONVERSION = YES;
+				CLANG_WARN_DEPRECATED_OBJC_IMPLEMENTATIONS = YES;
+				CLANG_WARN_DIRECT_OBJC_ISA_USAGE = YES_ERROR;
+				CLANG_WARN_DOCUMENTATION_COMMENTS = YES;
+				CLANG_WARN_EMPTY_BODY = YES;
+				CLANG_WARN_ENUM_CONVERSION = YES;
+				CLANG_WARN_INFINITE_RECURSION = YES;
+				CLANG_WARN_INT_CONVERSION = YES;
+				CLANG_WARN_NON_LITERAL_NULL_CONVERSION = YES;
+				CLANG_WARN_OBJC_IMPLICIT_RETAIN_SELF = YES;
+				CLANG_WARN_OBJC_LITERAL_CONVERSION = YES;
+				CLANG_WARN_OBJC_ROOT_CLASS = YES_ERROR;
+				CLANG_WARN_QUOTED_INCLUDE_IN_FRAMEWORK_HEADER = YES;
+				CLANG_WARN_RANGE_LOOP_ANALYSIS = YES;
+				CLANG_WARN_STRICT_PROTOTYPES = YES;
+				CLANG_WARN_SUSPICIOUS_MOVE = YES;
+				CLANG_WARN_UNGUARDED_AVAILABILITY = YES_AGGRESSIVE;
+				CLANG_WARN_UNREACHABLE_CODE = YES;
+				CLANG_WARN__DUPLICATE_METHOD_MATCH = YES;
+				COPY_PHASE_STRIP = NO;
+				DEBUG_INFORMATION_FORMAT = dwarf;
+				ENABLE_STRICT_OBJC_MSGSEND = YES;
+				ENABLE_TESTABILITY = YES;
+				ENABLE_USER_SCRIPT_SANDBOXING = YES;
+				GCC_C_LANGUAGE_STANDARD = gnu17;
+				GCC_DYNAMIC_NO_PIC = NO;
+				GCC_NO_COMMON_BLOCKS = YES;
+				GCC_OPTIMIZATION_LEVEL = 0;
+				GCC_PREPROCESSOR_DEFINITIONS = (
+					"DEBUG=1",
+					"$(inherited)",
+				);
+				GCC_WARN_64_TO_32_BIT_CONVERSION = YES;
+				GCC_WARN_ABOUT_RETURN_TYPE = YES_ERROR;
+				GCC_WARN_UNDECLARED_SELECTOR = YES;
+				GCC_WARN_UNINITIALIZED_AUTOS = YES_AGGRESSIVE;
+				GCC_WARN_UNUSED_FUNCTION = YES;
+				GCC_WARN_UNUSED_VARIABLE = YES;
+				IPHONEOS_DEPLOYMENT_TARGET = 26.0;
+				LOCALIZATION_PREFERS_STRING_CATALOGS = YES;
+				MTL_ENABLE_DEBUG_INFO = INCLUDE_SOURCE;
+				MTL_FAST_MATH = YES;
+				ONLY_ACTIVE_ARCH = YES;
+				SDKROOT = iphoneos;
+				SWIFT_ACTIVE_COMPILATION_CONDITIONS = "DEBUG $(inherited)";
+				SWIFT_OPTIMIZATION_LEVEL = "-Onone";
+			};
+			name = Debug;
+		};
+		A00000000000000000000032 /* Release */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				ALWAYS_SEARCH_USER_PATHS = NO;
+				ASSETCATALOG_COMPILER_GENERATE_SWIFT_ASSET_SYMBOL_EXTENSIONS = YES;
+				CLANG_ANALYZER_NONNULL = YES;
+				CLANG_ANALYZER_NUMBER_OBJECT_CONVERSION = YES_AGGRESSIVE;
+				CLANG_CXX_LANGUAGE_STANDARD = "gnu++20";
+				CLANG_ENABLE_MODULES = YES;
+				CLANG_ENABLE_OBJC_ARC = YES;
+				CLANG_ENABLE_OBJC_WEAK = YES;
+				CLANG_WARN_BLOCK_CAPTURE_AUTORELEASING = YES;
+				CLANG_WARN_BOOL_CONVERSION = YES;
+				CLANG_WARN_COMMA = YES;
+				CLANG_WARN_CONSTANT_CONVERSION = YES;
+				CLANG_WARN_DEPRECATED_OBJC_IMPLEMENTATIONS = YES;
+				CLANG_WARN_DIRECT_OBJC_ISA_USAGE = YES_ERROR;
+				CLANG_WARN_DOCUMENTATION_COMMENTS = YES;
+				CLANG_WARN_EMPTY_BODY = YES;
+				CLANG_WARN_ENUM_CONVERSION = YES;
+				CLANG_WARN_INFINITE_RECURSION = YES;
+				CLANG_WARN_INT_CONVERSION = YES;
+				CLANG_WARN_NON_LITERAL_NULL_CONVERSION = YES;
+				CLANG_WARN_OBJC_IMPLICIT_RETAIN_SELF = YES;
+				CLANG_WARN_OBJC_LITERAL_CONVERSION = YES;
+				CLANG_WARN_OBJC_ROOT_CLASS = YES_ERROR;
+				CLANG_WARN_QUOTED_INCLUDE_IN_FRAMEWORK_HEADER = YES;
+				CLANG_WARN_RANGE_LOOP_ANALYSIS = YES;
+				CLANG_WARN_STRICT_PROTOTYPES = YES;
+				CLANG_WARN_SUSPICIOUS_MOVE = YES;
+				CLANG_WARN_UNGUARDED_AVAILABILITY = YES_AGGRESSIVE;
+				CLANG_WARN_UNREACHABLE_CODE = YES;
+				CLANG_WARN__DUPLICATE_METHOD_MATCH = YES;
+				COPY_PHASE_STRIP = NO;
+				DEBUG_INFORMATION_FORMAT = "dwarf-with-dsym";
+				ENABLE_NS_ASSERTIONS = NO;
+				ENABLE_STRICT_OBJC_MSGSEND = YES;
+				ENABLE_USER_SCRIPT_SANDBOXING = YES;
+				GCC_C_LANGUAGE_STANDARD = gnu17;
+				GCC_NO_COMMON_BLOCKS = YES;
+				GCC_WARN_64_TO_32_BIT_CONVERSION = YES;
+				GCC_WARN_ABOUT_RETURN_TYPE = YES_ERROR;
+				GCC_WARN_UNDECLARED_SELECTOR = YES;
+				GCC_WARN_UNINITIALIZED_AUTOS = YES_AGGRESSIVE;
+				GCC_WARN_UNUSED_FUNCTION = YES;
+				GCC_WARN_UNUSED_VARIABLE = YES;
+				IPHONEOS_DEPLOYMENT_TARGET = 26.0;
+				LOCALIZATION_PREFERS_STRING_CATALOGS = YES;
+				MTL_ENABLE_DEBUG_INFO = NO;
+				MTL_FAST_MATH = YES;
+				SDKROOT = iphoneos;
+				SWIFT_COMPILATION_MODE = wholemodule;
+				VALIDATE_PRODUCT = YES;
+			};
+			name = Release;
+		};
+		A20000000000000000000031 /* Debug */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				ASSETCATALOG_COMPILER_APPICON_NAME = AppIcon;
+				ASSETCATALOG_COMPILER_GLOBAL_ACCENT_COLOR_NAME = AccentColor;
+				CODE_SIGN_ENTITLEMENTS = DriveMountApp/DriveMount.entitlements;
+				CODE_SIGN_IDENTITY = "-";
+				"CODE_SIGN_IDENTITY[sdk=iphoneos*]" = "Apple Development";
+				CODE_SIGN_STYLE = Automatic;
+				CURRENT_PROJECT_VERSION = 1;
+				DEVELOPMENT_TEAM = 7CAU3XFRLQ;
+				GENERATE_INFOPLIST_FILE = YES;
+				INFOPLIST_KEY_CFBundleDisplayName = "Drive Mount";
+				INFOPLIST_KEY_UIApplicationSceneManifest_Generation = YES;
+				INFOPLIST_KEY_UIApplicationSupportsIndirectInputEvents = YES;
+				INFOPLIST_KEY_UILaunchScreen_Generation = YES;
+				INFOPLIST_KEY_UISupportedInterfaceOrientations_iPad = "UIInterfaceOrientationPortrait UIInterfaceOrientationPortraitUpsideDown UIInterfaceOrientationLandscapeLeft UIInterfaceOrientationLandscapeRight";
+				INFOPLIST_KEY_UISupportedInterfaceOrientations_iPhone = "UIInterfaceOrientationPortrait UIInterfaceOrientationLandscapeLeft UIInterfaceOrientationLandscapeRight";
+				LD_RUNPATH_SEARCH_PATHS = (
+					"$(inherited)",
+					"@executable_path/Frameworks",
+				);
+				MARKETING_VERSION = 1.0;
+				PRODUCT_BUNDLE_IDENTIFIER = org.bartoszbak.drivemount;
+				PRODUCT_MODULE_NAME = DriveMount;
+				PRODUCT_NAME = DriveMount;
+				SWIFT_EMIT_LOC_STRINGS = YES;
+				SWIFT_VERSION = 5.0;
+				TARGETED_DEVICE_FAMILY = "1,2";
+			};
+			name = Debug;
+		};
+		A20000000000000000000032 /* Release */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				ASSETCATALOG_COMPILER_APPICON_NAME = AppIcon;
+				ASSETCATALOG_COMPILER_GLOBAL_ACCENT_COLOR_NAME = AccentColor;
+				CODE_SIGN_ENTITLEMENTS = DriveMountApp/DriveMount.entitlements;
+				CODE_SIGN_IDENTITY = "-";
+				"CODE_SIGN_IDENTITY[sdk=iphoneos*]" = "Apple Development";
+				CODE_SIGN_STYLE = Automatic;
+				CURRENT_PROJECT_VERSION = 1;
+				DEVELOPMENT_TEAM = 7CAU3XFRLQ;
+				GENERATE_INFOPLIST_FILE = YES;
+				INFOPLIST_KEY_CFBundleDisplayName = "Drive Mount";
+				INFOPLIST_KEY_UIApplicationSceneManifest_Generation = YES;
+				INFOPLIST_KEY_UIApplicationSupportsIndirectInputEvents = YES;
+				INFOPLIST_KEY_UILaunchScreen_Generation = YES;
+				INFOPLIST_KEY_UISupportedInterfaceOrientations_iPad = "UIInterfaceOrientationPortrait UIInterfaceOrientationPortraitUpsideDown UIInterfaceOrientationLandscapeLeft UIInterfaceOrientationLandscapeRight";
+				INFOPLIST_KEY_UISupportedInterfaceOrientations_iPhone = "UIInterfaceOrientationPortrait UIInterfaceOrientationLandscapeLeft UIInterfaceOrientationLandscapeRight";
+				LD_RUNPATH_SEARCH_PATHS = (
+					"$(inherited)",
+					"@executable_path/Frameworks",
+				);
+				MARKETING_VERSION = 1.0;
+				PRODUCT_BUNDLE_IDENTIFIER = org.bartoszbak.drivemount;
+				PRODUCT_MODULE_NAME = DriveMount;
+				PRODUCT_NAME = DriveMount;
+				SWIFT_EMIT_LOC_STRINGS = YES;
+				SWIFT_VERSION = 5.0;
+				TARGETED_DEVICE_FAMILY = "1,2";
+			};
+			name = Release;
+		};
+		A30000000000000000000031 /* Debug */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				APPLICATION_EXTENSION_API_ONLY = YES;
+				CODE_SIGN_ENTITLEMENTS = DriveMountFileProvider/FileProvider.entitlements;
+				CODE_SIGN_IDENTITY = "-";
+				"CODE_SIGN_IDENTITY[sdk=iphoneos*]" = "Apple Development";
+				CODE_SIGN_STYLE = Automatic;
+				CURRENT_PROJECT_VERSION = 1;
+				DEVELOPMENT_TEAM = 7CAU3XFRLQ;
+				GENERATE_INFOPLIST_FILE = NO;
+				INFOPLIST_FILE = DriveMountFileProvider/Info.plist;
+				LD_RUNPATH_SEARCH_PATHS = (
+					"$(inherited)",
+					"@executable_path/Frameworks",
+					"@executable_path/../../Frameworks",
+				);
+				MARKETING_VERSION = 1.0;
+				PRODUCT_BUNDLE_IDENTIFIER = org.bartoszbak.drivemount.fileprovider;
+				PRODUCT_MODULE_NAME = DriveMountFileProvider;
+				PRODUCT_NAME = DriveMountFileProvider;
+				SKIP_INSTALL = YES;
+				SWIFT_EMIT_LOC_STRINGS = YES;
+				SWIFT_VERSION = 5.0;
+				TARGETED_DEVICE_FAMILY = "1,2";
+			};
+			name = Debug;
+		};
+		A30000000000000000000032 /* Release */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				APPLICATION_EXTENSION_API_ONLY = YES;
+				CODE_SIGN_ENTITLEMENTS = DriveMountFileProvider/FileProvider.entitlements;
+				CODE_SIGN_IDENTITY = "-";
+				"CODE_SIGN_IDENTITY[sdk=iphoneos*]" = "Apple Development";
+				CODE_SIGN_STYLE = Automatic;
+				CURRENT_PROJECT_VERSION = 1;
+				DEVELOPMENT_TEAM = 7CAU3XFRLQ;
+				GENERATE_INFOPLIST_FILE = NO;
+				INFOPLIST_FILE = DriveMountFileProvider/Info.plist;
+				LD_RUNPATH_SEARCH_PATHS = (
+					"$(inherited)",
+					"@executable_path/Frameworks",
+					"@executable_path/../../Frameworks",
+				);
+				MARKETING_VERSION = 1.0;
+				PRODUCT_BUNDLE_IDENTIFIER = org.bartoszbak.drivemount.fileprovider;
+				PRODUCT_MODULE_NAME = DriveMountFileProvider;
+				PRODUCT_NAME = DriveMountFileProvider;
+				SKIP_INSTALL = YES;
+				SWIFT_EMIT_LOC_STRINGS = YES;
+				SWIFT_VERSION = 5.0;
+				TARGETED_DEVICE_FAMILY = "1,2";
+			};
+			name = Release;
+		};
+		A40000000000000000000031 /* Debug */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				BUNDLE_LOADER = "$(TEST_HOST)";
+				CODE_SIGN_STYLE = Automatic;
+				CURRENT_PROJECT_VERSION = 1;
+				GENERATE_INFOPLIST_FILE = YES;
+				LD_RUNPATH_SEARCH_PATHS = (
+					"$(inherited)",
+					"@executable_path/Frameworks",
+					"@loader_path/Frameworks",
+				);
+				MARKETING_VERSION = 1.0;
+				PRODUCT_BUNDLE_IDENTIFIER = org.bartoszbak.drivemount.tests;
+				PRODUCT_NAME = "$(TARGET_NAME)";
+				SWIFT_VERSION = 5.0;
+				TARGETED_DEVICE_FAMILY = "1,2";
+				TEST_HOST = "$(BUILT_PRODUCTS_DIR)/DriveMount.app/$(BUNDLE_EXECUTABLE_FOLDER_PATH)/DriveMount";
+			};
+			name = Debug;
+		};
+		A40000000000000000000032 /* Release */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				BUNDLE_LOADER = "$(TEST_HOST)";
+				CODE_SIGN_STYLE = Automatic;
+				CURRENT_PROJECT_VERSION = 1;
+				GENERATE_INFOPLIST_FILE = YES;
+				LD_RUNPATH_SEARCH_PATHS = (
+					"$(inherited)",
+					"@executable_path/Frameworks",
+					"@loader_path/Frameworks",
+				);
+				MARKETING_VERSION = 1.0;
+				PRODUCT_BUNDLE_IDENTIFIER = org.bartoszbak.drivemount.tests;
+				PRODUCT_NAME = "$(TARGET_NAME)";
+				SWIFT_VERSION = 5.0;
+				TARGETED_DEVICE_FAMILY = "1,2";
+				TEST_HOST = "$(BUILT_PRODUCTS_DIR)/DriveMount.app/$(BUNDLE_EXECUTABLE_FOLDER_PATH)/DriveMount";
+			};
+			name = Release;
+		};
+		A50000000000000000000031 /* Debug */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				CODE_SIGN_STYLE = Automatic;
+				CURRENT_PROJECT_VERSION = 1;
+				GENERATE_INFOPLIST_FILE = YES;
+				LD_RUNPATH_SEARCH_PATHS = (
+					"$(inherited)",
+					"@executable_path/Frameworks",
+					"@loader_path/Frameworks",
+				);
+				MARKETING_VERSION = 1.0;
+				PRODUCT_BUNDLE_IDENTIFIER = org.bartoszbak.drivemount.uitests;
+				PRODUCT_NAME = "$(TARGET_NAME)";
+				SWIFT_VERSION = 5.0;
+				TARGETED_DEVICE_FAMILY = "1,2";
+				TEST_TARGET_NAME = DriveMount;
+			};
+			name = Debug;
+		};
+		A50000000000000000000032 /* Release */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				CODE_SIGN_STYLE = Automatic;
+				CURRENT_PROJECT_VERSION = 1;
+				GENERATE_INFOPLIST_FILE = YES;
+				LD_RUNPATH_SEARCH_PATHS = (
+					"$(inherited)",
+					"@executable_path/Frameworks",
+					"@loader_path/Frameworks",
+				);
+				MARKETING_VERSION = 1.0;
+				PRODUCT_BUNDLE_IDENTIFIER = org.bartoszbak.drivemount.uitests;
+				PRODUCT_NAME = "$(TARGET_NAME)";
+				SWIFT_VERSION = 5.0;
+				TARGETED_DEVICE_FAMILY = "1,2";
+				TEST_TARGET_NAME = DriveMount;
+			};
+			name = Release;
+		};
+/* End XCBuildConfiguration section */
+
+/* Begin XCConfigurationList section */
+		A00000000000000000000030 /* Build configuration list for PBXProject "ios" */ = {
+			isa = XCConfigurationList;
+			buildConfigurations = (
+				A00000000000000000000031 /* Debug */,
+				A00000000000000000000032 /* Release */,
+			);
+			defaultConfigurationIsVisible = 0;
+			defaultConfigurationName = Release;
+		};
+		A20000000000000000000030 /* Build configuration list for PBXNativeTarget "DriveMount" */ = {
+			isa = XCConfigurationList;
+			buildConfigurations = (
+				A20000000000000000000031 /* Debug */,
+				A20000000000000000000032 /* Release */,
+			);
+			defaultConfigurationIsVisible = 0;
+			defaultConfigurationName = Release;
+		};
+		A30000000000000000000030 /* Build configuration list for PBXNativeTarget "DriveMountFileProvider" */ = {
+			isa = XCConfigurationList;
+			buildConfigurations = (
+				A30000000000000000000031 /* Debug */,
+				A30000000000000000000032 /* Release */,
+			);
+			defaultConfigurationIsVisible = 0;
+			defaultConfigurationName = Release;
+		};
+		A40000000000000000000030 /* Build configuration list for PBXNativeTarget "DriveMountTests" */ = {
+			isa = XCConfigurationList;
+			buildConfigurations = (
+				A40000000000000000000031 /* Debug */,
+				A40000000000000000000032 /* Release */,
+			);
+			defaultConfigurationIsVisible = 0;
+			defaultConfigurationName = Release;
+		};
+		A50000000000000000000030 /* Build configuration list for PBXNativeTarget "DriveMountUITests" */ = {
+			isa = XCConfigurationList;
+			buildConfigurations = (
+				A50000000000000000000031 /* Debug */,
+				A50000000000000000000032 /* Release */,
+			);
+			defaultConfigurationIsVisible = 0;
+			defaultConfigurationName = Release;
+		};
+/* End XCConfigurationList section */
+	};
+	rootObject = A00000000000000000000001 /* Project object */;
+}

@@ -1,0 +1,4 @@
+Target dependency graph (2 targets)
+Target 'DriveMount' in project 'ios'
+➜ Explicit dependency on target 'DriveMountFileProvider' in project 'ios'
+Target 'DriveMountFileProvider' in project 'ios' (no dependencies)

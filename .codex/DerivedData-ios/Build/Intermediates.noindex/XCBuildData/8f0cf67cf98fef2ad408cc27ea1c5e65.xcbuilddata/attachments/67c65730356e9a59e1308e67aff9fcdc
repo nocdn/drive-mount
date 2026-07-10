@@ -1,0 +1,16 @@
+/Users/bartosz/github/drive-mount/ios/DriveMountFileProvider/FileProviderItem.swift
+/Users/bartosz/github/drive-mount/ios/DriveMountFileProvider/FileProviderEnumerator.swift
+/Users/bartosz/github/drive-mount/ios/DriveMountFileProvider/DriveMountFileProviderExtension.swift
+/Users/bartosz/github/drive-mount/ios/DriveMountShared/AppConstants.swift
+/Users/bartosz/github/drive-mount/ios/DriveMountShared/CloudProvider.swift
+/Users/bartosz/github/drive-mount/ios/DriveMountShared/CloudConnection.swift
+/Users/bartosz/github/drive-mount/ios/DriveMountShared/ConnectionStore.swift
+/Users/bartosz/github/drive-mount/ios/DriveMountShared/Diagnostics.swift
+/Users/bartosz/github/drive-mount/ios/DriveMountShared/ProviderItemKey.swift
+/Users/bartosz/github/drive-mount/ios/DriveMountShared/RemoteFileItem.swift
+/Users/bartosz/github/drive-mount/ios/DriveMountShared/RemoteFileBrowser.swift
+/Users/bartosz/github/drive-mount/ios/DriveMountShared/FixtureRemoteFileBrowser.swift
+/Users/bartosz/github/drive-mount/ios/DriveMountShared/HTTPClient.swift
+/Users/bartosz/github/drive-mount/ios/DriveMountShared/B2RemoteFileBrowser.swift
+/Users/bartosz/github/drive-mount/ios/DriveMountShared/GoogleDriveRemoteFileBrowser.swift
+/Users/bartosz/github/drive-mount/ios/DriveMountShared/OneDriveRemoteFileBrowser.swift

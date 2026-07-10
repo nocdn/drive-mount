@@ -1,0 +1,95 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<plist version="1.0">
+<dict>
+	<key>logFormatVersion</key>
+	<integer>13</integer>
+	<key>logs</key>
+	<dict>
+		<key>3D87DBAA-8E05-408F-8C6C-B2B93D7F38A1</key>
+		<dict>
+			<key>className</key>
+			<string>IDECommandLineBuildLog</string>
+			<key>documentTypeString</key>
+			<string>&lt;nil&gt;</string>
+			<key>domainType</key>
+			<string>Xcode.IDEActivityLogDomainType.BuildLog</string>
+			<key>fileName</key>
+			<string>3D87DBAA-8E05-408F-8C6C-B2B93D7F38A1.xcactivitylog</string>
+			<key>hasPrimaryLog</key>
+			<true/>
+			<key>primaryObservable</key>
+			<dict>
+				<key>highLevelStatus</key>
+				<string>S</string>
+				<key>totalNumberOfAnalyzerIssues</key>
+				<integer>0</integer>
+				<key>totalNumberOfErrors</key>
+				<integer>0</integer>
+				<key>totalNumberOfTestFailures</key>
+				<integer>0</integer>
+				<key>totalNumberOfWarnings</key>
+				<integer>0</integer>
+			</dict>
+			<key>schemeIdentifier-containerName</key>
+			<string>ios project</string>
+			<key>schemeIdentifier-schemeName</key>
+			<string>DriveMount</string>
+			<key>schemeIdentifier-sharedScheme</key>
+			<integer>1</integer>
+			<key>signature</key>
+			<string>Building project ios with scheme DriveMount and configuration Debug</string>
+			<key>timeStartedRecording</key>
+			<real>805401140.79963398</real>
+			<key>timeStoppedRecording</key>
+			<real>805401146.95926404</real>
+			<key>title</key>
+			<string>Building project ios with scheme DriveMount and configuration Debug</string>
+			<key>uniqueIdentifier</key>
+			<string>3D87DBAA-8E05-408F-8C6C-B2B93D7F38A1</string>
+		</dict>
+		<key>EF664386-199B-4971-A136-A6DF41813641</key>
+		<dict>
+			<key>className</key>
+			<string>IDECommandLineBuildLog</string>
+			<key>documentTypeString</key>
+			<string>&lt;nil&gt;</string>
+			<key>domainType</key>
+			<string>Xcode.IDEActivityLogDomainType.BuildLog</string>
+			<key>fileName</key>
+			<string>EF664386-199B-4971-A136-A6DF41813641.xcactivitylog</string>
+			<key>hasPrimaryLog</key>
+			<true/>
+			<key>primaryObservable</key>
+			<dict>
+				<key>highLevelStatus</key>
+				<string>S</string>
+				<key>totalNumberOfAnalyzerIssues</key>
+				<integer>0</integer>
+				<key>totalNumberOfErrors</key>
+				<integer>0</integer>
+				<key>totalNumberOfTestFailures</key>
+				<integer>0</integer>
+				<key>totalNumberOfWarnings</key>
+				<integer>0</integer>
+			</dict>
+			<key>schemeIdentifier-containerName</key>
+			<string>ios project</string>
+			<key>schemeIdentifier-schemeName</key>
+			<string>DriveMount</string>
+			<key>schemeIdentifier-sharedScheme</key>
+			<integer>1</integer>
+			<key>signature</key>
+			<string>Building project ios with scheme DriveMount and configuration Debug</string>
+			<key>timeStartedRecording</key>
+			<real>805372615.81331503</real>
+			<key>timeStoppedRecording</key>
+			<real>805372624.38596904</real>
+			<key>title</key>
+			<string>Building project ios with scheme DriveMount and configuration Debug</string>
+			<key>uniqueIdentifier</key>
+			<string>EF664386-199B-4971-A136-A6DF41813641</string>
+		</dict>
+	</dict>
+</dict>
+</plist>
