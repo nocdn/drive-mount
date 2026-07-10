@@ -53,7 +53,7 @@ final class DriveMountTests: XCTestCase {
     }
 
     @MainActor
-    func testFileProviderDomainUsesReplicatedInitializer() {
+    func testB2FileProviderDomainUsesBucketConnectionIdentity() {
         let connection = CloudConnection(
             id: "b2-main",
             provider: .backblazeB2,
@@ -62,13 +62,13 @@ final class DriveMountTests: XCTestCase {
 
         let domain = ConnectionListViewModel.fileProviderDomain(for: connection)
 
-        XCTAssertEqual(domain.identifier.rawValue, AppConstants.b2FileProviderDomainIdentifier)
-        XCTAssertEqual(domain.displayName, AppConstants.b2FileProviderDomainDisplayName)
+        XCTAssertEqual(domain.identifier.rawValue, "b2-main")
+        XCTAssertEqual(domain.displayName, "nocdn-main")
         XCTAssertTrue(domain.isReplicated)
     }
 
     @MainActor
-    func testB2ConnectionsShareOneDomainWhileOtherProvidersStaySeparate() {
+    func testEachConnectionGetsItsOwnFileProviderDomain() {
         let connections = [
             CloudConnection(id: "b2-main", provider: .backblazeB2, displayName: "nocdn-main"),
             CloudConnection(id: "b2-backups", provider: .backblazeB2, displayName: "nocdn-backups"),
@@ -83,13 +83,22 @@ final class DriveMountTests: XCTestCase {
         XCTAssertEqual(domains.count, 4)
         XCTAssertEqual(
             identifiers,
-            [AppConstants.b2FileProviderDomainIdentifier, "seedbox", "google", "onedrive"]
+            ["b2-main", "b2-backups", "google", "onedrive"]
         )
         XCTAssertTrue(domains.allSatisfy(\.isReplicated))
     }
 
     @MainActor
-    func testSavingB2ReplacesOnlyTheGroupedB2Domain() {
+    func testUnsupportedSeedboxDoesNotRegisterAFileProviderDomain() {
+        let domains = ConnectionListViewModel.fileProviderDomains(for: [
+            CloudConnection(id: "seedbox", provider: .seedbox, displayName: "Seedbox")
+        ])
+
+        XCTAssertTrue(domains.isEmpty)
+    }
+
+    @MainActor
+    func testSavingB2ReplacesOnlyItsBucketDomain() {
         let b2Domain = ConnectionListViewModel.fileProviderDomain(for: CloudConnection(
             id: "b2-main",
             provider: .backblazeB2,
@@ -104,10 +113,10 @@ final class DriveMountTests: XCTestCase {
         let identifiers = ConnectionListViewModel.domainIdentifiersToRemove(
             existingDomains: [b2Domain, seedboxDomain],
             targetDomains: [b2Domain, seedboxDomain],
-            resettingDomainIDs: [AppConstants.b2FileProviderDomainIdentifier]
+            resettingDomainIDs: [b2Domain.identifier.rawValue]
         )
 
-        XCTAssertEqual(identifiers, [AppConstants.b2FileProviderDomainIdentifier])
+        XCTAssertEqual(identifiers, ["b2-main"])
     }
 
     func testProviderItemKeyRoundTripsThroughIdentifier() {
@@ -166,11 +175,14 @@ final class DriveMountTests: XCTestCase {
         )
         XCTAssertEqual(
             RemoteFileError.server("HTTP 401").asFileProviderError.code,
-            NSFileProviderError.Code.serverUnreachable.rawValue
+            NSFileProviderError.Code.notAuthenticated.rawValue
         )
+        let unsupported = RemoteFileError.unsupported("not yet").asFileProviderError
+        XCTAssertEqual(unsupported.domain, NSCocoaErrorDomain)
+        XCTAssertEqual(unsupported.code, NSFeatureUnsupportedError)
         XCTAssertEqual(
-            RemoteFileError.unsupported("not yet").asFileProviderError.code,
-            NSFileProviderError.Code.cannotSynchronize.rawValue
+            RemoteFileError.server("HTTP 403 {\"code\":\"download_cap_exceeded\"}").asFileProviderError.code,
+            NSFileProviderError.Code.insufficientQuota.rawValue
         )
     }
 
@@ -256,6 +268,27 @@ final class DriveMountTests: XCTestCase {
         XCTAssertFalse(item.fileProviderCapabilities.contains(.allowsRenaming))
     }
 
+    func testB2BucketIsTheWritableFilesRoot() async throws {
+        let browser = B2RemoteFileBrowser(connection: CloudConnection(
+            id: "b2-main",
+            provider: .backblazeB2,
+            displayName: "nocdn-main"
+        ))
+
+        let root = try await browser.item(for: RemoteFileItem.rootID)
+
+        XCTAssertTrue(root.fileProviderFileSystemFlags.contains(.userWritable))
+        XCTAssertTrue(root.fileProviderCapabilities.contains(.allowsAddingSubItems))
+    }
+
+    @MainActor
+    func testFileProviderStateResetRunsOncePerRevision() {
+        XCTAssertTrue(ConnectionListViewModel.requiresFileProviderStateReset(storedRevision: 0))
+        XCTAssertFalse(ConnectionListViewModel.requiresFileProviderStateReset(
+            storedRevision: AppConstants.fileProviderStateRevision
+        ))
+    }
+
     func testConnectionStoreMigratesLegacyAppGroupRootLocation() throws {
         let container = FileManager.default.temporaryDirectory
             .appendingPathComponent(UUID().uuidString, isDirectory: true)
@@ -339,11 +372,10 @@ final class DriveMountTests: XCTestCase {
         let rootChildren = try await browser.children(of: RemoteFileItem.rootID)
 
         XCTAssertEqual(root.filename, bucket)
-        let bucketFolder = try XCTUnwrap(rootChildren.first { $0.filename == bucket && $0.isDirectory })
-        let bucketChildren = try await browser.children(of: bucketFolder.id)
-        XCTAssertTrue(bucketChildren.filter { !$0.isDirectory }.allSatisfy { $0.size != nil })
+        XCTAssertTrue(root.fileProviderCapabilities.contains(.allowsAddingSubItems))
+        XCTAssertTrue(rootChildren.filter { !$0.isDirectory }.allSatisfy { $0.size != nil })
 
-        guard let downloadable = bucketChildren.first(where: {
+        guard let downloadable = rootChildren.first(where: {
             !$0.isDirectory && ($0.size ?? 0) > 0 && ($0.size ?? .max) < 1_048_576
         }) else {
             throw XCTSkip("No non-empty file under 1 MB was available at the bucket root.")

@@ -125,7 +125,7 @@ final class B2RemoteFileBrowser: RemoteFileBrowsing, @unchecked Sendable {
 
     func item(for identifier: String) async throws -> RemoteFileItem {
         if identifier == RemoteFileItem.rootID {
-            return .root(displayName: connection.effectiveDisplayName)
+            return .root(displayName: connection.effectiveDisplayName, allowsAddingSubItems: true)
         }
         guard let key = ProviderItemKey.decode(identifier) else {
             throw RemoteFileError.notFound(identifier)
@@ -144,20 +144,15 @@ final class B2RemoteFileBrowser: RemoteFileBrowsing, @unchecked Sendable {
     func children(of identifier: String) async throws -> [RemoteFileItem] {
         let auth = try await authorize()
         if identifier == RemoteFileItem.rootID {
-            let buckets = try await listBuckets(auth: auth)
-            let filtered = connection.b2.bucketName.trimmed
-            return buckets
-                .filter { filtered.isEmpty || $0.bucketName == filtered }
-                .map { bucket in
-                    makeItem(
-                        kind: .folder,
-                        name: bucket.bucketName,
-                        remoteID: "bucket:\(bucket.bucketID)",
-                        parentRemoteID: RemoteFileItem.rootID,
-                        parentItemID: RemoteFileItem.rootID,
-                        extra: ["bucketID": bucket.bucketID, "bucketName": bucket.bucketName, "prefix": ""]
-                    )
-                }
+            let bucket = try await rootBucket(auth: auth)
+            return try await listFileNames(
+                auth: auth,
+                bucketID: bucket.bucketID,
+                bucketName: bucket.bucketName,
+                prefix: "",
+                delimiter: "/",
+                parentItemID: RemoteFileItem.rootID
+            )
         }
 
         guard let key = ProviderItemKey.decode(identifier),
@@ -441,7 +436,14 @@ final class B2RemoteFileBrowser: RemoteFileBrowsing, @unchecked Sendable {
 
     private func parentLocation(for parentIdentifier: String) async throws -> B2ParentLocation {
         if parentIdentifier == RemoteFileItem.rootID {
-            throw RemoteFileError.unsupported("Create items inside a bucket, not at the Backblaze B2 root.")
+            let auth = try await authorize()
+            let bucket = try await rootBucket(auth: auth)
+            return B2ParentLocation(
+                bucketID: bucket.bucketID,
+                bucketName: bucket.bucketName,
+                prefix: "",
+                remoteID: "bucket:\(bucket.bucketID)"
+            )
         }
         guard let key = ProviderItemKey.decode(parentIdentifier),
               let bucketID = key.extra["bucketID"],
@@ -464,6 +466,22 @@ final class B2RemoteFileBrowser: RemoteFileBrowsing, @unchecked Sendable {
             prefix: normalizedPrefix,
             remoteID: key.remoteID
         )
+    }
+
+    private func rootBucket(auth: B2Authorization) async throws -> B2Bucket {
+        let buckets = try await listBuckets(auth: auth)
+        let configuredName = connection.b2.bucketName.nilIfEmpty
+            ?? connection.displayName.nilIfEmpty
+        if let configuredName,
+           let bucket = buckets.first(where: { $0.bucketName == configuredName }) {
+            return bucket
+        }
+        guard buckets.count == 1, let bucket = buckets.first else {
+            throw RemoteFileError.invalidResponse(
+                "Choose one Backblaze B2 bucket for this Files location."
+            )
+        }
+        return bucket
     }
 
     private func upload(

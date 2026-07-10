@@ -13,15 +13,13 @@ final class FileProviderEnumerator: NSObject, NSFileProviderEnumerator {
     func invalidate() {}
 
     func enumerateItems(for observer: NSFileProviderEnumerationObserver, startingAt page: NSFileProviderPage) {
-        // Working set / trash are not remote listings. Returning empty avoids domain errors
-        // when Files probes these containers (which previously contributed to the badge).
-        if itemIdentifier == .workingSet || itemIdentifier == .trashContainer {
+        if itemIdentifier == .workingSet {
             observer.finishEnumerating(upTo: nil)
             Diagnostics.shared.info(
                 "enumeration.finished",
                 area: "fileprovider",
                 fields: [
-                    "container": itemIdentifier == .workingSet ? "workingSet" : "trash",
+                    "container": "workingSet",
                     "count": "0"
                 ]
             )

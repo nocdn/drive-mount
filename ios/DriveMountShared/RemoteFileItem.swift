@@ -12,6 +12,7 @@ struct RemoteFileItem: Equatable, Sendable {
     var size: Int64?
     var modifiedAt: Date?
     var contentType: String?
+    var rootAllowsAddingSubItems = false
 
     var id: String {
         key?.encodedIdentifier ?? Self.rootID
@@ -40,7 +41,7 @@ struct RemoteFileItem: Equatable, Sendable {
         return UTType.data.identifier
     }
 
-    static func root(displayName: String) -> RemoteFileItem {
+    static func root(displayName: String, allowsAddingSubItems: Bool = false) -> RemoteFileItem {
         RemoteFileItem(
             key: nil,
             parentID: "",
@@ -48,12 +49,17 @@ struct RemoteFileItem: Equatable, Sendable {
             isDirectory: true,
             size: nil,
             modifiedAt: nil,
-            contentType: nil
+            contentType: nil,
+            rootAllowsAddingSubItems: allowsAddingSubItems
         )
     }
 
     /// Capabilities advertised to Files. Only B2 currently supports mutations.
     var fileProviderCapabilities: NSFileProviderItemCapabilities {
+        if id == Self.rootID, rootAllowsAddingSubItems {
+            return [.allowsReading, .allowsContentEnumerating, .allowsAddingSubItems]
+        }
+
         guard key?.provider == .backblazeB2 else {
             if isDirectory {
                 return [.allowsReading, .allowsContentEnumerating]

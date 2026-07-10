@@ -41,7 +41,14 @@ final class DriveMountFileProviderExtension: NSObject, NSFileProviderReplicatedE
     }
 
     func enumerator(for containerItemIdentifier: NSFileProviderItemIdentifier, request: NSFileProviderRequest) throws -> NSFileProviderEnumerator {
-        FileProviderEnumerator(itemIdentifier: containerItemIdentifier, browser: makeBrowser())
+        if containerItemIdentifier == .trashContainer {
+            throw NSError(
+                domain: NSCocoaErrorDomain,
+                code: NSFeatureUnsupportedError,
+                userInfo: [NSLocalizedDescriptionKey: "Drive Mount does not use the Files trash."]
+            )
+        }
+        return FileProviderEnumerator(itemIdentifier: containerItemIdentifier, browser: makeBrowser())
     }
 
     func fetchContents(
@@ -269,7 +276,7 @@ final class DriveMountFileProviderExtension: NSObject, NSFileProviderReplicatedE
         return (attributes[.size] as? NSNumber)?.int64Value ?? 0
     }
 
-    /// Tell Files to re-enumerate and clear sticky domain error badges after mutations.
+    /// Tell Files to re-enumerate after mutations.
     private func signalDomainRefresh(around identifier: String) async {
         guard let manager = NSFileProviderManager(for: domain) else {
             return
@@ -279,15 +286,6 @@ final class DriveMountFileProviderExtension: NSObject, NSFileProviderReplicatedE
             try await manager.signalEnumerator(for: .rootContainer)
             if identifier != RemoteFileItem.rootID {
                 try await manager.signalEnumerator(for: NSFileProviderItemIdentifier(identifier))
-            }
-            // Resolve common sticky error codes that produce the circular ↻! badge.
-            for code in [
-                NSFileProviderError.Code.notAuthenticated,
-                .serverUnreachable,
-                .cannotSynchronize
-            ] {
-                let error = NSError(domain: NSFileProviderErrorDomain, code: code.rawValue)
-                try? await manager.signalErrorResolved(error)
             }
         } catch {
             Diagnostics.shared.error(

@@ -75,22 +75,46 @@ enum RemoteFileError: LocalizedError, Equatable {
 
     /// Map to File Provider error codes so Files can show the right retry/auth UI.
     var asFileProviderError: NSError {
-        let code: NSFileProviderError.Code
         switch self {
         case .missingConnection, .missingCredentials:
-            code = .notAuthenticated
+            return fileProviderError(.notAuthenticated)
         case .notFound:
-            code = .noSuchItem
+            return fileProviderError(.noSuchItem)
         case .unsupported:
-            code = .cannotSynchronize
-        case .invalidResponse, .server:
-            code = .serverUnreachable
+            // Unsupported actions are capability/feature mismatches, not sync
+            // failures. Reporting cannotSynchronize makes Files throttle the
+            // domain and display a persistent circular error badge.
+            return NSError(
+                domain: NSCocoaErrorDomain,
+                code: NSFeatureUnsupportedError,
+                userInfo: [NSLocalizedDescriptionKey: errorDescription ?? "Unsupported operation"]
+            )
+        case .invalidResponse:
+            return fileProviderError(.serverUnreachable)
+        case .server(let message):
+            if Self.isQuotaError(message) {
+                return fileProviderError(.insufficientQuota)
+            }
+            if message.contains("HTTP 401") {
+                return fileProviderError(.notAuthenticated)
+            }
+            return fileProviderError(.serverUnreachable)
         }
+    }
+
+    private func fileProviderError(_ code: NSFileProviderError.Code) -> NSError {
         return NSError(
             domain: NSFileProviderErrorDomain,
             code: code.rawValue,
             userInfo: [NSLocalizedDescriptionKey: errorDescription ?? "File Provider error"]
         )
+    }
+
+    private static func isQuotaError(_ message: String) -> Bool {
+        let lowercased = message.lowercased()
+        return lowercased.contains("download_cap_exceeded")
+            || lowercased.contains("storage_cap_exceeded")
+            || lowercased.contains("quota exceeded")
     }
 }
 

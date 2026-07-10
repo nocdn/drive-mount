@@ -9,6 +9,8 @@ enum AppConstants {
     static let connectionStoreFileName = "connections.json"
     static let diagnosticsFileName = "runtime.jsonl"
     static let providerItemCacheFileName = "provider-items.json"
+    static let fileProviderStateRevision = 4
+    static let fileProviderStateRevisionKey = "fileProviderStateRevision"
 
     static var isUITesting: Bool {
         ProcessInfo.processInfo.arguments.contains("--uitesting")

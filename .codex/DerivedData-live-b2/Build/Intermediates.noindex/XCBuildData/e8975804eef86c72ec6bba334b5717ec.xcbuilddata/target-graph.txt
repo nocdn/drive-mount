@@ -1,8 +1,0 @@
-Target dependency graph (4 targets)
-Target 'DriveMountUITests' in project 'ios'
-➜ Explicit dependency on target 'DriveMount' in project 'ios'
-Target 'DriveMountTests' in project 'ios'
-➜ Explicit dependency on target 'DriveMount' in project 'ios'
-Target 'DriveMount' in project 'ios'
-➜ Explicit dependency on target 'DriveMountFileProvider' in project 'ios'
-Target 'DriveMountFileProvider' in project 'ios' (no dependencies)

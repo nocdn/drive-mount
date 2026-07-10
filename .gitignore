@@ -2,6 +2,7 @@
 release/
 dist/
 dist-ssr/
+.codex/
 
 # Node
 node_modules/
@@ -38,3 +39,6 @@ win/**/obj/
 Thumbs.db
 Desktop.ini
 *.local
+
+# Local UI/debug captures
+frontmost_*.png

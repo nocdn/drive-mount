@@ -22,7 +22,17 @@ final class ConnectionListViewModel {
             if ProcessInfo.processInfo.arguments.contains("--seed-b2-from-environment") {
                 try await seedB2FromEnvironment()
             }
-            await syncFileProviderDomains()
+            let defaults = UserDefaults(suiteName: AppConstants.appGroupIdentifier) ?? .standard
+            let storedRevision = defaults.integer(forKey: AppConstants.fileProviderStateRevisionKey)
+            let resettingDomainIDs = Self.requiresFileProviderStateReset(storedRevision: storedRevision)
+                ? Set(Self.fileProviderDomains(for: connections).map { $0.identifier.rawValue })
+                : []
+            if await syncFileProviderDomains(resettingDomainIDs: resettingDomainIDs) {
+                defaults.set(
+                    AppConstants.fileProviderStateRevision,
+                    forKey: AppConstants.fileProviderStateRevisionKey
+                )
+            }
         } catch {
             statusMessage = "Could not load settings."
             Diagnostics.shared.error("settings.load.failed", area: "settings", error: error)
@@ -83,7 +93,8 @@ final class ConnectionListViewModel {
         }
     }
 
-    func syncFileProviderDomains(resettingDomainIDs: Set<String> = []) async {
+    @discardableResult
+    func syncFileProviderDomains(resettingDomainIDs: Set<String> = []) async -> Bool {
         do {
             let existingDomains = try await currentDomains()
             let targetDomains = Self.fileProviderDomains(for: connections)
@@ -116,13 +127,15 @@ final class ConnectionListViewModel {
                 await signalEnumerator(for: domain)
             }
             Diagnostics.shared.info("domains.sync.finished", area: "fileprovider", fields: ["count": "\(registeredDomainCount)"])
+            return true
         } catch {
             statusMessage = "Files registration needs a signed File Provider build."
             Diagnostics.shared.error("domains.sync.failed", area: "fileprovider", error: error)
+            return false
         }
     }
 
-    /// Ask Files to re-enumerate and clear sticky error badges after a successful fix/sync.
+    /// Ask Files to re-enumerate after a successful settings sync.
     private func signalEnumerator(for domain: NSFileProviderDomain) async {
         guard let manager = NSFileProviderManager(for: domain) else {
             return
@@ -130,14 +143,6 @@ final class ConnectionListViewModel {
         do {
             try await manager.signalEnumerator(for: .workingSet)
             try await manager.signalEnumerator(for: .rootContainer)
-            for code in [
-                NSFileProviderError.Code.notAuthenticated,
-                .serverUnreachable,
-                .cannotSynchronize
-            ] {
-                let error = NSError(domain: NSFileProviderErrorDomain, code: code.rawValue)
-                try? await manager.signalErrorResolved(error)
-            }
             Diagnostics.shared.info(
                 "domains.signal.finished",
                 area: "fileprovider",
@@ -178,12 +183,6 @@ final class ConnectionListViewModel {
     }
 
     static func fileProviderDomain(for connection: CloudConnection) -> NSFileProviderDomain {
-        if connection.provider == .backblazeB2 {
-            return NSFileProviderDomain(
-                identifier: NSFileProviderDomainIdentifier(AppConstants.b2FileProviderDomainIdentifier),
-                displayName: AppConstants.b2FileProviderDomainDisplayName
-            )
-        }
         return NSFileProviderDomain(
             identifier: NSFileProviderDomainIdentifier(connection.id),
             displayName: connection.effectiveDisplayName
@@ -191,12 +190,11 @@ final class ConnectionListViewModel {
     }
 
     static func fileProviderDomains(for connections: [CloudConnection]) -> [NSFileProviderDomain] {
-        var domainsByID: [String: NSFileProviderDomain] = [:]
-        for connection in connections.map({ $0.normalized() }).filter(\.isEnabled) {
-            let domain = fileProviderDomain(for: connection)
-            domainsByID[domain.identifier.rawValue] = domain
-        }
-        return domainsByID.values.sorted {
+        connections
+            .map { $0.normalized() }
+            .filter { $0.isEnabled && $0.provider.supportsIOSFileProvider }
+            .map(fileProviderDomain(for:))
+            .sorted {
             $0.displayName.localizedStandardCompare($1.displayName) == .orderedAscending
         }
     }
@@ -213,6 +211,10 @@ final class ConnectionListViewModel {
                 ? identifier
                 : nil
         })
+    }
+
+    static func requiresFileProviderStateReset(storedRevision: Int) -> Bool {
+        storedRevision < AppConstants.fileProviderStateRevision
     }
 
     private func remove(domain: NSFileProviderDomain) async throws {
