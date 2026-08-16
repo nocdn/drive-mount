@@ -54,10 +54,14 @@ struct RemoteFileItem: Equatable, Sendable {
         )
     }
 
-    /// Capabilities advertised to Files. Only B2 currently supports mutations.
+    /// Capabilities advertised to Files. B2 always supports mutations; Seedbox does when not read-only.
     var fileProviderCapabilities: NSFileProviderItemCapabilities {
         if id == Self.rootID, rootAllowsAddingSubItems {
             return [.allowsReading, .allowsContentEnumerating, .allowsAddingSubItems]
+        }
+
+        if key?.provider == .seedbox {
+            return seedboxFileProviderCapabilities
         }
 
         guard key?.provider == .backblazeB2 else {
@@ -88,6 +92,22 @@ struct RemoteFileItem: Equatable, Sendable {
             .allowsReparenting,
             .allowsDeleting
         ]
+    }
+
+    private var seedboxFileProviderCapabilities: NSFileProviderItemCapabilities {
+        let writable = key?.extra["writable"] == "1"
+        if isDirectory {
+            var capabilities: NSFileProviderItemCapabilities = [.allowsReading, .allowsContentEnumerating]
+            if writable {
+                capabilities.formUnion([.allowsAddingSubItems, .allowsRenaming, .allowsReparenting, .allowsDeleting])
+            }
+            return capabilities
+        }
+        var capabilities: NSFileProviderItemCapabilities = [.allowsReading]
+        if writable {
+            capabilities.formUnion([.allowsWriting, .allowsRenaming, .allowsReparenting, .allowsDeleting])
+        }
+        return capabilities
     }
 
     var fileProviderFileSystemFlags: NSFileProviderFileSystemFlags {

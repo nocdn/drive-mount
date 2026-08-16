@@ -6,9 +6,9 @@ The app registers one File Provider domain per enabled connection. The extension
 
 Current provider state:
 
-- Backblaze B2: lists buckets/files and downloads files using the B2 Native API.
+- Backblaze B2: one shared key can expose multiple buckets. Each named bucket is listed in the app and registered as its own Files location.
 - Google Drive: lists/downloads via Drive API when an OAuth access token is supplied.
 - OneDrive: lists/downloads via Microsoft Graph when an access token is supplied.
-- Seedbox: settings are present, but it is not registered in Files until a production native FTP/FTPS transport is implemented.
+- Seedbox: lists and streams files over SFTP (offset reads in 256 KiB chunks) so 1–12 GB transfers stay out of process memory. Existing port 21 settings are treated as the old FTPS default and connect on port 22.
 
 Deployment target is iOS 26. The project is built with the installed iOS 27 SDK.

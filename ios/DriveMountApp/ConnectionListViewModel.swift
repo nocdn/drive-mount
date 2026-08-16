@@ -39,7 +39,27 @@ final class ConnectionListViewModel {
         }
     }
 
+    var b2Connections: [CloudConnection] {
+        connections.filter { $0.provider == .backblazeB2 }
+    }
+
+    var otherConnections: [CloudConnection] {
+        connections.filter { $0.provider != .backblazeB2 }
+    }
+
+    var b2BucketRows: [B2BucketRow] {
+        b2Connections.flatMap { connection in
+            connection.b2.normalizedBucketNames.map { name in
+                B2BucketRow(connectionID: connection.id, name: name)
+            }
+        }
+    }
+
     func addConnection(provider: CloudProvider) async {
+        if provider == .backblazeB2, connections.contains(where: { $0.provider == .backblazeB2 }) {
+            statusMessage = "Add more buckets in the Backblaze B2 section."
+            return
+        }
         var connection = CloudConnection(provider: provider, displayName: provider.defaultConnectionName)
         if provider == .seedbox {
             connection.seedbox.remotePath = "downloads"
@@ -52,23 +72,62 @@ final class ConnectionListViewModel {
         guard let index = connections.firstIndex(where: { $0.id == connection.id }) else {
             return
         }
+        let previous = connections[index]
         connections[index] = connection.normalized()
-        let domainID = Self.fileProviderDomain(for: connection).identifier.rawValue
         await persistAndSync(
-            status: "Saved \(connection.effectiveDisplayName).",
-            resettingDomainIDs: [domainID]
+            status: "Saved \(connection.provider == .backblazeB2 ? "Backblaze B2" : connection.effectiveDisplayName).",
+            resettingDomainIDs: Self.domainIdentifiers(for: [previous, connections[index]])
+        )
+    }
+
+    func deleteConnection(id: String) async {
+        guard let index = connections.firstIndex(where: { $0.id == id }) else {
+            return
+        }
+        let removed = connections.remove(at: index)
+        await persistAndSync(
+            status: "Removed \(removed.provider.displayName).",
+            resettingDomainIDs: Self.domainIdentifiers(for: [removed])
         )
     }
 
     func deleteConnections(at offsets: IndexSet) async {
-        let removedIDs = offsets.map { connections[$0].id }
-        let removedDomainIDs = Set(offsets.map {
-            Self.fileProviderDomain(for: connections[$0]).identifier.rawValue
-        })
+        let removed = offsets.map { connections[$0] }
         connections.remove(atOffsets: offsets)
         await persistAndSync(
-            status: "Removed \(removedIDs.count) connection(s).",
-            resettingDomainIDs: removedDomainIDs
+            status: "Removed \(removed.count) connection(s).",
+            resettingDomainIDs: Self.domainIdentifiers(for: removed)
+        )
+    }
+
+    func deleteOtherConnections(at offsets: IndexSet) async {
+        let others = otherConnections
+        let removed = offsets.map { others[$0] }
+        let removedIDs = Set(removed.map(\.id))
+        connections.removeAll { removedIDs.contains($0.id) }
+        await persistAndSync(
+            status: "Removed \(removed.count) connection(s).",
+            resettingDomainIDs: Self.domainIdentifiers(for: removed)
+        )
+    }
+
+    func deleteB2Buckets(at offsets: IndexSet) async {
+        let rows = b2BucketRows
+        let removedRows = offsets.map { rows[$0] }
+        for row in removedRows {
+            guard let index = connections.firstIndex(where: { $0.id == row.connectionID }) else {
+                continue
+            }
+            connections[index].b2.bucketNames.removeAll {
+                $0.trimmed.compare(row.name, options: [.caseInsensitive, .diacriticInsensitive]) == .orderedSame
+            }
+            connections[index] = connections[index].normalized()
+        }
+        await persistAndSync(
+            status: "Removed \(removedRows.count) bucket(s).",
+            resettingDomainIDs: Set(removedRows.map {
+                B2FileProviderDomainIdentity.identifier(connectionID: $0.connectionID, bucketName: $0.name)
+            })
         )
     }
 
@@ -183,7 +242,7 @@ final class ConnectionListViewModel {
     }
 
     static func fileProviderDomain(for connection: CloudConnection) -> NSFileProviderDomain {
-        return NSFileProviderDomain(
+        fileProviderDomains(for: [connection]).first ?? NSFileProviderDomain(
             identifier: NSFileProviderDomainIdentifier(connection.id),
             displayName: connection.effectiveDisplayName
         )
@@ -193,10 +252,34 @@ final class ConnectionListViewModel {
         connections
             .map { $0.normalized() }
             .filter { $0.isEnabled && $0.provider.supportsIOSFileProvider }
-            .map(fileProviderDomain(for:))
+            .flatMap { connection -> [NSFileProviderDomain] in
+                if connection.provider == .backblazeB2 {
+                    return connection.b2.normalizedBucketNames.map { bucketName in
+                        NSFileProviderDomain(
+                            identifier: NSFileProviderDomainIdentifier(
+                                B2FileProviderDomainIdentity.identifier(
+                                    connectionID: connection.id,
+                                    bucketName: bucketName
+                                )
+                            ),
+                            displayName: bucketName
+                        )
+                    }
+                }
+                return [
+                    NSFileProviderDomain(
+                        identifier: NSFileProviderDomainIdentifier(connection.id),
+                        displayName: connection.effectiveDisplayName
+                    )
+                ]
+            }
             .sorted {
             $0.displayName.localizedStandardCompare($1.displayName) == .orderedAscending
         }
+    }
+
+    static func domainIdentifiers(for connections: [CloudConnection]) -> Set<String> {
+        Set(fileProviderDomains(for: connections).map { $0.identifier.rawValue })
     }
 
     static func domainIdentifiersToRemove(
@@ -236,14 +319,21 @@ final class ConnectionListViewModel {
             return
         }
 
-        let bucketName = env["DRIVEMOUNT_TEST_B2_BUCKET"] ?? "nocdn-main"
-        let existingIndex = connections.firstIndex {
-            $0.provider == .backblazeB2 && $0.b2.bucketName == bucketName
-        }
+        let extraBuckets = env["DRIVEMOUNT_TEST_B2_BUCKETS"]?
+            .split(separator: ",")
+            .map { $0.trimmingCharacters(in: .whitespacesAndNewlines) }
+            .filter { !$0.isEmpty } ?? []
+        let bucketName = extraBuckets.first ?? env["DRIVEMOUNT_TEST_B2_BUCKET"] ?? "nocdn-main"
+        let bucketNames = extraBuckets.isEmpty ? [bucketName] : extraBuckets
+        let existingIndex = connections.firstIndex { $0.provider == .backblazeB2 }
         var connection = existingIndex.map { connections[$0] } ?? CloudConnection(provider: .backblazeB2)
-        connection.displayName = bucketName
+        connection.displayName = CloudProvider.backblazeB2.defaultConnectionName
         connection.isEnabled = true
-        connection.b2 = B2ConnectionSettings(applicationKeyID: keyID, applicationKey: applicationKey, bucketName: bucketName)
+        connection.b2 = B2ConnectionSettings(
+            applicationKeyID: keyID,
+            applicationKey: applicationKey,
+            bucketNames: bucketNames
+        )
         connection = connection.normalized()
 
         if let existingIndex {
@@ -252,15 +342,26 @@ final class ConnectionListViewModel {
             connections.append(connection)
         }
         try store.save(connections)
-        Diagnostics.shared.info("settings.seeded.b2", area: "settings", fields: ["bucket": bucketName])
+        Diagnostics.shared.info("settings.seeded.b2", area: "settings", fields: ["bucket": bucketNames.joined(separator: ",")])
     }
 
     static var preview: ConnectionListViewModel {
         let model = ConnectionListViewModel()
         model.connections = [
-            CloudConnection(provider: .backblazeB2, displayName: "nocdn-main", b2: B2ConnectionSettings(bucketName: "nocdn-main")),
+            CloudConnection(
+                provider: .backblazeB2,
+                displayName: "B2",
+                b2: B2ConnectionSettings(bucketNames: ["nocdn-main", "nocdn-music"])
+            ),
             CloudConnection(provider: .googleDrive, displayName: "Google Drive")
         ]
         return model
     }
+}
+
+struct B2BucketRow: Identifiable, Equatable, Hashable {
+    var connectionID: String
+    var name: String
+
+    var id: String { "\(connectionID)|\(name)" }
 }

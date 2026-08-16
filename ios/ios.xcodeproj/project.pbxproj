@@ -21,6 +21,9 @@
 		A1B00000000000000000000C /* GoogleDriveRemoteFileBrowser.swift in Sources */ = {isa = PBXBuildFile; fileRef = A1000000000000000000000C /* GoogleDriveRemoteFileBrowser.swift */; };
 		A1B00000000000000000000D /* OneDriveRemoteFileBrowser.swift in Sources */ = {isa = PBXBuildFile; fileRef = A1000000000000000000000D /* OneDriveRemoteFileBrowser.swift */; };
 		A1B00000000000000000000E /* ProviderItemCache.swift in Sources */ = {isa = PBXBuildFile; fileRef = A1000000000000000000000E /* ProviderItemCache.swift */; };
+		A1B00000000000000000000F /* SeedboxRemoteFileBrowser.swift in Sources */ = {isa = PBXBuildFile; fileRef = A1000000000000000000000F /* SeedboxRemoteFileBrowser.swift */; };
+		A1B000000000000000000010 /* SeedboxSFTPTransport.swift in Sources */ = {isa = PBXBuildFile; fileRef = A10000000000000000000010 /* SeedboxSFTPTransport.swift */; };
+		B1B000000000000000000001 /* Citadel in Frameworks */ = {isa = PBXBuildFile; productRef = B10000000000000000000001 /* Citadel */; };
 		A2B000000000000000000001 /* DriveMountApp.swift in Sources */ = {isa = PBXBuildFile; fileRef = A20000000000000000000001 /* DriveMountApp.swift */; };
 		A2B000000000000000000002 /* ContentView.swift in Sources */ = {isa = PBXBuildFile; fileRef = A20000000000000000000002 /* ContentView.swift */; };
 		A2B000000000000000000003 /* ConnectionListViewModel.swift in Sources */ = {isa = PBXBuildFile; fileRef = A20000000000000000000003 /* ConnectionListViewModel.swift */; };
@@ -45,6 +48,9 @@
 		A3B00000000000000000000F /* FileProviderEnumerator.swift in Sources */ = {isa = PBXBuildFile; fileRef = A30000000000000000000004 /* FileProviderEnumerator.swift */; };
 		A3B000000000000000000010 /* DriveMountFileProviderExtension.swift in Sources */ = {isa = PBXBuildFile; fileRef = A30000000000000000000005 /* DriveMountFileProviderExtension.swift */; };
 		A3B000000000000000000011 /* ProviderItemCache.swift in Sources */ = {isa = PBXBuildFile; fileRef = A1000000000000000000000E /* ProviderItemCache.swift */; };
+		A3B000000000000000000012 /* SeedboxRemoteFileBrowser.swift in Sources */ = {isa = PBXBuildFile; fileRef = A1000000000000000000000F /* SeedboxRemoteFileBrowser.swift */; };
+		A3B000000000000000000013 /* SeedboxSFTPTransport.swift in Sources */ = {isa = PBXBuildFile; fileRef = A10000000000000000000010 /* SeedboxSFTPTransport.swift */; };
+		B3B000000000000000000001 /* Citadel in Frameworks */ = {isa = PBXBuildFile; productRef = B10000000000000000000002 /* Citadel */; };
 		A4B000000000000000000001 /* DriveMountTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = A40000000000000000000001 /* DriveMountTests.swift */; };
 		A5B000000000000000000001 /* DriveMountUITests.swift in Sources */ = {isa = PBXBuildFile; fileRef = A50000000000000000000001 /* DriveMountUITests.swift */; };
 /* End PBXBuildFile section */
@@ -102,6 +108,8 @@
 		A1000000000000000000000C /* GoogleDriveRemoteFileBrowser.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = GoogleDriveRemoteFileBrowser.swift; sourceTree = "<group>"; };
 		A1000000000000000000000D /* OneDriveRemoteFileBrowser.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = OneDriveRemoteFileBrowser.swift; sourceTree = "<group>"; };
 		A1000000000000000000000E /* ProviderItemCache.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ProviderItemCache.swift; sourceTree = "<group>"; };
+		A1000000000000000000000F /* SeedboxRemoteFileBrowser.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SeedboxRemoteFileBrowser.swift; sourceTree = "<group>"; };
+		A10000000000000000000010 /* SeedboxSFTPTransport.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SeedboxSFTPTransport.swift; sourceTree = "<group>"; };
 		A20000000000000000000001 /* DriveMountApp.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = DriveMountApp.swift; sourceTree = "<group>"; };
 		A20000000000000000000002 /* ContentView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ContentView.swift; sourceTree = "<group>"; };
 		A20000000000000000000003 /* ConnectionListViewModel.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ConnectionListViewModel.swift; sourceTree = "<group>"; };
@@ -127,6 +135,7 @@
 			isa = PBXFrameworksBuildPhase;
 			buildActionMask = 2147483647;
 			files = (
+				B1B000000000000000000001 /* Citadel in Frameworks */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
@@ -134,6 +143,7 @@
 			isa = PBXFrameworksBuildPhase;
 			buildActionMask = 2147483647;
 			files = (
+				B3B000000000000000000001 /* Citadel in Frameworks */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
@@ -183,6 +193,8 @@
 				A1000000000000000000000B /* B2RemoteFileBrowser.swift */,
 				A1000000000000000000000C /* GoogleDriveRemoteFileBrowser.swift */,
 				A1000000000000000000000D /* OneDriveRemoteFileBrowser.swift */,
+				A1000000000000000000000F /* SeedboxRemoteFileBrowser.swift */,
+				A10000000000000000000010 /* SeedboxSFTPTransport.swift */,
 			);
 			path = DriveMountShared;
 			sourceTree = "<group>";
@@ -258,6 +270,9 @@
 				A70000000000000000000011 /* PBXTargetDependency */,
 			);
 			name = DriveMount;
+			packageProductDependencies = (
+				B10000000000000000000001 /* Citadel */,
+			);
 			productName = DriveMount;
 			productReference = A90000000000000000000001 /* DriveMount.app */;
 			productType = "com.apple.product-type.application";
@@ -275,6 +290,9 @@
 			dependencies = (
 			);
 			name = DriveMountFileProvider;
+			packageProductDependencies = (
+				B10000000000000000000002 /* Citadel */,
+			);
 			productName = DriveMountFileProvider;
 			productReference = A90000000000000000000002 /* DriveMountFileProvider.appex */;
 			productType = "com.apple.product-type.app-extension";
@@ -352,6 +370,9 @@
 				Base,
 			);
 			mainGroup = A00000000000000000000002;
+			packageReferences = (
+				B00000000000000000000001 /* XCRemoteSwiftPackageReference "Citadel" */,
+			);
 			productRefGroup = A90000000000000000000020 /* Products */;
 			projectDirPath = "";
 			projectRoot = "";
@@ -420,6 +441,8 @@
 				A1B00000000000000000000B /* B2RemoteFileBrowser.swift in Sources */,
 				A1B00000000000000000000C /* GoogleDriveRemoteFileBrowser.swift in Sources */,
 				A1B00000000000000000000D /* OneDriveRemoteFileBrowser.swift in Sources */,
+				A1B00000000000000000000F /* SeedboxRemoteFileBrowser.swift in Sources */,
+				A1B000000000000000000010 /* SeedboxSFTPTransport.swift in Sources */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
@@ -444,6 +467,8 @@
 				A3B00000000000000000000B /* B2RemoteFileBrowser.swift in Sources */,
 				A3B00000000000000000000C /* GoogleDriveRemoteFileBrowser.swift in Sources */,
 				A3B00000000000000000000D /* OneDriveRemoteFileBrowser.swift in Sources */,
+				A3B000000000000000000012 /* SeedboxRemoteFileBrowser.swift in Sources */,
+				A3B000000000000000000013 /* SeedboxSFTPTransport.swift in Sources */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
@@ -854,6 +879,30 @@
 			defaultConfigurationName = Release;
 		};
 /* End XCConfigurationList section */
+
+/* Begin XCRemoteSwiftPackageReference section */
+		B00000000000000000000001 /* XCRemoteSwiftPackageReference "Citadel" */ = {
+			isa = XCRemoteSwiftPackageReference;
+			repositoryURL = "https://github.com/orlandos-nl/Citadel.git";
+			requirement = {
+				kind = upToNextMajorVersion;
+				minimumVersion = 0.12.1;
+			};
+		};
+/* End XCRemoteSwiftPackageReference section */
+
+/* Begin XCSwiftPackageProductDependency section */
+		B10000000000000000000001 /* Citadel */ = {
+			isa = XCSwiftPackageProductDependency;
+			package = B00000000000000000000001 /* XCRemoteSwiftPackageReference "Citadel" */;
+			productName = Citadel;
+		};
+		B10000000000000000000002 /* Citadel */ = {
+			isa = XCSwiftPackageProductDependency;
+			package = B00000000000000000000001 /* XCRemoteSwiftPackageReference "Citadel" */;
+			productName = Citadel;
+		};
+/* End XCSwiftPackageProductDependency section */
 	};
 	rootObject = A00000000000000000000001 /* Project object */;
 }

@@ -5,8 +5,17 @@ final class B2GroupedRemoteFileBrowser: RemoteFileBrowsing, @unchecked Sendable 
 
     init(connections: [CloudConnection]) {
         var browsers: [String: any RemoteFileBrowsing] = [:]
-        for connection in connections {
-            browsers[connection.id] = B2RemoteFileBrowser(connection: connection)
+        for connection in connections where connection.provider == .backblazeB2 {
+            let bucketNames = connection.b2.normalizedBucketNames
+            if bucketNames.isEmpty {
+                browsers[connection.id] = B2RemoteFileBrowser(connection: connection)
+                continue
+            }
+            for bucketName in bucketNames {
+                browsers["\(connection.id)|\(bucketName)"] = B2RemoteFileBrowser(
+                    connection: connection.scopedToB2Bucket(bucketName)
+                )
+            }
         }
         browsersByConnectionID = browsers
     }

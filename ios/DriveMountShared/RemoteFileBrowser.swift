@@ -146,6 +146,18 @@ struct RemoteFileBrowserFactory {
     ) -> any RemoteFileBrowsing {
         let enabledConnections = connections.map { $0.normalized() }.filter(\.isEnabled)
 
+        if let identity = B2FileProviderDomainIdentity.parse(domainIdentifier) {
+            guard let connection = enabledConnections.first(where: {
+                $0.id == identity.connectionID && $0.provider == .backblazeB2
+            }) else {
+                return FixtureRemoteFileBrowser(
+                    connection: CloudConnection(provider: .backblazeB2, displayName: identity.bucketName),
+                    reason: .missingConnection
+                )
+            }
+            return browser(for: connection.scopedToB2Bucket(identity.bucketName))
+        }
+
         if domainIdentifier == AppConstants.b2FileProviderDomainIdentifier {
             let b2Connections = enabledConnections.filter { $0.provider == .backblazeB2 }
             guard !b2Connections.isEmpty else {
@@ -179,10 +191,7 @@ struct RemoteFileBrowserFactory {
         case .oneDrive:
             return OneDriveRemoteFileBrowser(connection: connection)
         case .seedbox:
-            return FixtureRemoteFileBrowser(
-                connection: connection,
-                reason: .unsupported("Seedbox FTP browsing needs a native FTP transport implementation.")
-            )
+            return SeedboxRemoteFileBrowser(connection: connection)
         }
     }
 }

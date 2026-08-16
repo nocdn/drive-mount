@@ -49,10 +49,8 @@ enum CloudProvider: String, CaseIterable, Codable, Identifiable, Sendable {
 
     var supportsIOSFileProvider: Bool {
         switch self {
-        case .backblazeB2, .googleDrive, .oneDrive:
+        case .backblazeB2, .googleDrive, .oneDrive, .seedbox:
             true
-        case .seedbox:
-            false
         }
     }
 }

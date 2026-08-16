@@ -2,14 +2,17 @@ import SwiftUI
 
 struct ConnectionEditorView: View {
     @Environment(ConnectionListViewModel.self) private var viewModel
+    @Environment(\.dismiss) private var dismiss
     @Binding var connection: CloudConnection
 
     var body: some View {
         Form {
             Section("Connection") {
-                TextField("Name", text: $connection.displayName)
-                    .textContentType(.name)
-                    .accessibilityIdentifier("connection-name-field")
+                if connection.provider != .backblazeB2 {
+                    TextField("Name", text: $connection.displayName)
+                        .textContentType(.name)
+                        .accessibilityIdentifier("connection-name-field")
+                }
                 Toggle("Show in Files", isOn: $connection.isEnabled)
                 LabeledContent("Type", value: connection.provider.displayName)
             }
@@ -42,8 +45,19 @@ struct ConnectionEditorView: View {
                         .foregroundStyle(.secondary)
                 }
             }
+
+            if connection.provider == .backblazeB2 {
+                Section {
+                    Button("Remove Backblaze B2", role: .destructive) {
+                        Task {
+                            await viewModel.deleteConnection(id: connection.id)
+                            dismiss()
+                        }
+                    }
+                }
+            }
         }
-        .navigationTitle(connection.effectiveDisplayName)
+        .navigationTitle(connection.provider == .backblazeB2 ? "Backblaze B2" : connection.effectiveDisplayName)
         .navigationBarTitleDisplayMode(.inline)
     }
 }
@@ -52,7 +66,7 @@ private struct B2Fields: View {
     @Binding var settings: B2ConnectionSettings
 
     var body: some View {
-        Section("Backblaze B2") {
+        Section("Credentials") {
             TextField("Key ID", text: $settings.applicationKeyID)
                 .textInputAutocapitalization(.never)
                 .textContentType(.username)
@@ -60,9 +74,29 @@ private struct B2Fields: View {
             SecureField("Application Key", text: $settings.applicationKey)
                 .textContentType(.password)
                 .accessibilityIdentifier("b2-application-key-field")
-            TextField("Bucket name", text: $settings.bucketName)
-                .textInputAutocapitalization(.never)
-                .accessibilityIdentifier("b2-bucket-field")
+            Text("These credentials are used for every bucket below.")
+                .font(.caption)
+                .foregroundStyle(.secondary)
+        }
+
+        Section("Buckets") {
+            ForEach(settings.bucketNames.indices, id: \.self) { index in
+                TextField("Bucket name", text: $settings.bucketNames[index])
+                    .textInputAutocapitalization(.never)
+                    .autocorrectionDisabled()
+                    .accessibilityIdentifier(index == 0 ? "b2-bucket-field" : "b2-bucket-field-\(index)")
+            }
+            .onDelete { offsets in
+                settings.bucketNames.remove(atOffsets: offsets)
+                if settings.bucketNames.isEmpty {
+                    settings.bucketNames = [""]
+                }
+            }
+
+            Button("Add Bucket") {
+                settings.bucketNames.append("")
+            }
+            .accessibilityIdentifier("b2-add-bucket-button")
         }
     }
 }
@@ -112,7 +146,15 @@ private struct SeedboxFields: View {
                 .textContentType(.password)
                 .accessibilityIdentifier("seedbox-password-field")
             Stepper(value: $settings.port, in: 1...65535) {
-                LabeledContent("Port", value: "\(settings.port)")
+                LabeledContent("SFTP Port", value: "\(settings.port)")
+            }
+            Text("SFTP is used for large downloads. Port 22 is the usual seedbox port.")
+                .font(.caption)
+                .foregroundStyle(.secondary)
+            if settings.port == 21 {
+                Text("Port 21 is the old FTPS default. Files will connect with SFTP on port 22.")
+                    .font(.caption)
+                    .foregroundStyle(.secondary)
             }
             TextField("Remote path", text: $settings.remotePath)
                 .textInputAutocapitalization(.never)
