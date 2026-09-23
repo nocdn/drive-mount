@@ -8,28 +8,28 @@ import { promisify } from "node:util";
 
 const run = promisify(execFile);
 
-const version = "v1.74.1";
+export const version = "v1.75.1";
 const scriptDir = path.dirname(fileURLToPath(import.meta.url));
 const binDir = path.resolve(scriptDir, "../src-tauri/binaries");
 
-const targets = {
+export const targets = {
   "aarch64-apple-darwin": {
     archiveName: `rclone-${version}-osx-arm64.zip`,
     binaryName: "rclone-aarch64-apple-darwin",
     executableName: "rclone",
-    sha256: "98c04f5f678fe87d435d6f4b1fe204103c5906b151357e631ba0111410691213",
+    sha256: "c61d7a371c62bcbbe882c3423aa4b8bf63485c248dd0f692997b8f0c3f6d0c6f",
   },
   "x86_64-apple-darwin": {
     archiveName: `rclone-${version}-osx-amd64.zip`,
     binaryName: "rclone-x86_64-apple-darwin",
     executableName: "rclone",
-    sha256: "4f10d7845422d8568e187a0f6813f124bca9b657ac7becd8bdf8508fa968a336",
+    sha256: "29253d0288b8fbbac46baad6e5f6add6cb01d462c79f10805bbd4631c4cdf82c",
   },
   "x86_64-pc-windows-msvc": {
     archiveName: `rclone-${version}-windows-amd64.zip`,
     binaryName: "rclone-x86_64-pc-windows-msvc.exe",
     executableName: "rclone.exe",
-    sha256: "51326acc0d9cf60234aa5787d8da66a621430aa373542a6b35bad8a4a26ca43e",
+    sha256: "200eb602c126d82aa38b51e0f6b9ae837473ff99b51278d3f6f837574c494d6e",
   },
 };
 
@@ -189,7 +189,9 @@ async function main() {
   }
 }
 
-main().catch((error) => {
-  console.error(error instanceof Error ? error.message : error);
-  process.exit(1);
-});
+if (import.meta.main) {
+  main().catch((error) => {
+    console.error(error instanceof Error ? error.message : error);
+    process.exit(1);
+  });
+}

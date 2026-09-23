@@ -30,6 +30,14 @@ fn string_array(value: &Value) -> Vec<&str> {
 }
 
 #[test]
+fn installer_version_matches_package_and_cargo_versions() {
+    let tauri = read_json("tauri.conf.json");
+    let package = read_json("../package.json");
+    assert_eq!(tauri["version"], package["version"]);
+    assert_eq!(tauri["version"], env!("CARGO_PKG_VERSION"));
+}
+
+#[test]
 fn base_bundle_config_enables_installers_and_rclone_sidecar() {
     let config = read_json("tauri.conf.json");
     let bundle = &config["bundle"];
