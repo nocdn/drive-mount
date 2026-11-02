@@ -1,24 +1,25 @@
-use std::sync::{Arc, Mutex};
+//! Everything the window asks of the backend, as plain blocking calls. The
+//! window runs each on a worker thread (see `ui::tasks`) and gets the result
+//! back on its own thread.
 
-use tauri::{AppHandle, Emitter, Manager, State};
-use tauri_plugin_opener::OpenerExt;
+use std::path::Path;
+use std::sync::{Arc, Mutex};
 
 use crate::credentials::{
     delete_seedbox_password, has_saved_seedbox_password, load_b2_credentials,
     load_seedbox_password, save_b2_credentials, save_seedbox_password,
 };
+use crate::host::Host;
 use crate::logging::LogEmitter;
 use crate::models::{
     AppSettings, B2Credentials, GoogleDriveSettings, LoadedCredentials, MountRequest,
     OneDriveSettings, SeedboxSettings,
 };
 use crate::notifications::show_app_notification;
-use crate::paths::{log_dir, platform_name};
 use crate::rclone::{
     has_complete_b2_config, has_complete_google_drive_config, has_complete_one_drive_config,
     has_complete_seedbox_config, is_fuse_installed, is_google_drive_configured,
-    is_network_connectivity_error, is_one_drive_configured, is_seedbox_configured,
-    used_windows_drive_letters, RcloneManager,
+    is_network_connectivity_error, is_one_drive_configured, is_seedbox_configured, RcloneManager,
 };
 use crate::settings::{load_settings, save_settings};
 
@@ -27,105 +28,74 @@ const AUTO_MOUNT_COMPLETE_NOTIFICATION: &str = "Auto-mount complete. Cloud Drive
 const AUTO_MOUNT_FAILED_NOTIFICATION: &str = "Auto-mount failed. Open Settings for details.";
 const AUTO_MOUNT_NETWORK_FAILED_NOTIFICATION: &str =
     "Auto-mount failed because of network connectivity. Check your internet connection and try again.";
+pub const QUIT_START_NOTIFICATION: &str = "Unmounting active drives before quitting. Please wait.";
+pub const QUIT_COMPLETE_NOTIFICATION: &str =
+    "Unmount complete. Cloud Drive Mount has finished shutting down.";
 
-pub struct AppState {
+/// The app's long-lived services, shared by the window, the tray and the
+/// launch sequence. Cloning shares them.
+#[derive(Clone)]
+pub struct Backend {
     pub rclone: Arc<RcloneManager>,
     pub logger: Arc<Mutex<LogEmitter>>,
-    pub auto_mount_attempted: Arc<Mutex<bool>>,
+    pub host: Host,
+    auto_mount_attempted: Arc<Mutex<bool>>,
 }
 
-async fn run_blocking<F, T>(f: F) -> Result<T, String>
-where
-    F: FnOnce() -> Result<T, String> + Send + 'static,
-    T: Send + 'static,
-{
-    tauri::async_runtime::spawn_blocking(f)
-        .await
-        .map_err(|e| e.to_string())?
-}
-
-#[tauri::command]
-pub fn get_platform() -> String {
-    platform_name().to_string()
-}
-
-#[tauri::command]
-pub fn load_settings_cmd(state: State<'_, AppState>) -> Result<AppSettings, String> {
-    let settings = load_settings();
-
-    if let Ok(logger) = state.logger.lock() {
-        logger.info("Settings loaded.");
+impl Backend {
+    pub fn new(host: Host) -> Self {
+        let logger = Arc::new(Mutex::new(LogEmitter::new(Some(host.clone()))));
+        Self {
+            rclone: Arc::new(RcloneManager::new(logger.clone())),
+            logger,
+            host,
+            auto_mount_attempted: Arc::new(Mutex::new(false)),
+        }
     }
 
-    Ok(settings)
-}
-
-#[tauri::command]
-pub async fn load_credentials_cmd(state: State<'_, AppState>) -> Result<LoadedCredentials, String> {
-    let logger = state.logger.clone();
-
-    run_blocking(move || {
-        let b2_credentials = load_b2_credentials()?;
-        let has_saved_credentials = b2_credentials.is_some();
-        let is_google_drive_configured = is_google_drive_configured();
-        let is_one_drive_configured = is_one_drive_configured();
-        let is_seedbox_configured = is_seedbox_configured();
-        let has_saved_seedbox_password = has_saved_seedbox_password().unwrap_or(false);
-
-        if let Ok(logger) = logger.lock() {
-            logger.info("Credential state loaded.");
+    pub fn log_info(&self, message: impl AsRef<str>) {
+        if let Ok(logger) = self.logger.lock() {
+            logger.info(message);
         }
+    }
 
-        Ok(LoadedCredentials {
-            has_saved_credentials,
+    pub fn log_error(&self, message: impl AsRef<str>) {
+        if let Ok(logger) = self.logger.lock() {
+            logger.error(message);
+        }
+    }
+
+    pub fn load_settings(&self) -> AppSettings {
+        let settings = load_settings();
+        self.log_info("Settings loaded.");
+        settings
+    }
+
+    pub fn load_credentials(&self) -> Result<LoadedCredentials, String> {
+        let b2_credentials = load_b2_credentials()?;
+        let loaded = LoadedCredentials {
+            has_saved_credentials: b2_credentials.is_some(),
             b2_credentials,
-            is_google_drive_configured,
-            is_one_drive_configured,
-            is_seedbox_configured,
-            has_saved_seedbox_password,
-        })
-    })
-    .await
-}
+            is_google_drive_configured: is_google_drive_configured(),
+            is_one_drive_configured: is_one_drive_configured(),
+            is_seedbox_configured: is_seedbox_configured(),
+            has_saved_seedbox_password: has_saved_seedbox_password().unwrap_or(false),
+        };
+        self.log_info("Credential state loaded.");
+        Ok(loaded)
+    }
 
-#[tauri::command]
-pub async fn attempt_auto_mount_cmd(
-    app: AppHandle,
-    state: State<'_, AppState>,
-) -> Result<(), String> {
-    let state = AppState {
-        rclone: state.rclone.clone(),
-        logger: state.logger.clone(),
-        auto_mount_attempted: state.auto_mount_attempted.clone(),
-    };
+    /// Cleans up mounts a previous run left behind, then reports the state.
+    pub fn startup_cleanup(&self) {
+        self.rclone.cleanup_stale_processes(&self.host);
+        self.rclone.refresh_configured_mount_targets();
+        if !is_fuse_installed() {
+            self.log_info("FUSE provider not detected on launch.");
+        }
+        self.host.emit_mount_state(self.rclone.mount_state());
+    }
 
-    run_blocking(move || {
-        attempt_auto_mount_once(&app, &state);
-        Ok(())
-    })
-    .await
-}
-#[tauri::command]
-pub fn save_settings_cmd(mut settings: AppSettings) -> Result<AppSettings, String> {
-    settings = settings.normalized();
-    save_settings(&settings)?;
-    Ok(settings)
-}
-
-#[tauri::command]
-pub fn save_b2_credentials_cmd(credentials: B2Credentials) -> Result<(), String> {
-    save_b2_credentials(&credentials)
-}
-
-#[tauri::command]
-pub async fn mount_all(
-    app: AppHandle,
-    state: State<'_, AppState>,
-    request: MountRequest,
-) -> Result<(), String> {
-    let rclone = state.rclone.clone();
-
-    run_blocking(move || {
+    pub fn mount_all(&self, request: MountRequest) -> Result<(), String> {
         if !request.application_key_id.trim().is_empty()
             || !request.application_key.trim().is_empty()
         {
@@ -146,299 +116,184 @@ pub async fn mount_all(
         .normalized();
         save_settings(&settings)?;
 
-        rclone.mount_all(&app, &request)
-    })
-    .await
-}
+        self.rclone.mount_all(&self.host, &request)
+    }
 
-#[tauri::command]
-pub fn is_google_drive_configured_cmd(state: State<'_, AppState>) -> Result<bool, String> {
-    Ok(state.rclone.is_google_drive_configured())
-}
+    pub fn configure_google_drive(&self, google_drive: GoogleDriveSettings) -> Result<(), String> {
+        save_section(|settings| settings.google_drive = google_drive.normalized())?;
+        self.rclone
+            .configure_google_drive(&self.host, &google_drive)
+    }
 
-#[tauri::command]
-pub async fn configure_google_drive_cmd(
-    app: AppHandle,
-    state: State<'_, AppState>,
-    google_drive: GoogleDriveSettings,
-) -> Result<(), String> {
-    let rclone = state.rclone.clone();
+    pub fn disconnect_google_drive(&self, google_drive: GoogleDriveSettings) -> Result<(), String> {
+        self.rclone
+            .disconnect_google_drive(&self.host, &google_drive)
+    }
 
-    run_blocking(move || {
-        let settings = AppSettings {
-            google_drive: google_drive.normalized(),
-            ..load_settings()
-        }
-        .normalized();
-        save_settings(&settings)?;
+    pub fn test_google_drive(&self, google_drive: GoogleDriveSettings) -> Result<(), String> {
+        save_section(|settings| settings.google_drive = google_drive.normalized())?;
+        self.rclone
+            .test_google_drive_connection(&self.host, &google_drive)
+    }
 
-        rclone.configure_google_drive(&app, &google_drive)
-    })
-    .await
-}
+    pub fn configure_one_drive(&self, one_drive: OneDriveSettings) -> Result<(), String> {
+        save_section(|settings| settings.one_drive = one_drive.normalized())?;
+        self.rclone.configure_one_drive(&self.host, &one_drive)
+    }
 
-#[tauri::command]
-pub async fn disconnect_google_drive_cmd(
-    app: AppHandle,
-    state: State<'_, AppState>,
-    google_drive: GoogleDriveSettings,
-) -> Result<(), String> {
-    let rclone = state.rclone.clone();
+    pub fn disconnect_one_drive(&self, one_drive: OneDriveSettings) -> Result<(), String> {
+        self.rclone.disconnect_one_drive(&self.host, &one_drive)
+    }
 
-    run_blocking(move || rclone.disconnect_google_drive(&app, &google_drive)).await
-}
+    pub fn test_one_drive(&self, one_drive: OneDriveSettings) -> Result<(), String> {
+        save_section(|settings| settings.one_drive = one_drive.normalized())?;
+        self.rclone
+            .test_one_drive_connection(&self.host, &one_drive)
+    }
 
-#[tauri::command]
-pub async fn test_google_drive_connection_cmd(
-    app: AppHandle,
-    state: State<'_, AppState>,
-    google_drive: GoogleDriveSettings,
-) -> Result<(), String> {
-    let rclone = state.rclone.clone();
-
-    run_blocking(move || rclone.test_google_drive_connection(&app, &google_drive)).await
-}
-
-#[tauri::command]
-pub fn is_one_drive_configured_cmd(state: State<'_, AppState>) -> Result<bool, String> {
-    Ok(state.rclone.is_one_drive_configured())
-}
-
-#[tauri::command]
-pub async fn configure_one_drive_cmd(
-    app: AppHandle,
-    state: State<'_, AppState>,
-    one_drive: OneDriveSettings,
-) -> Result<(), String> {
-    let rclone = state.rclone.clone();
-
-    run_blocking(move || {
-        let settings = AppSettings {
-            one_drive: one_drive.normalized(),
-            ..load_settings()
-        }
-        .normalized();
-        save_settings(&settings)?;
-
-        rclone.configure_one_drive(&app, &one_drive)
-    })
-    .await
-}
-
-#[tauri::command]
-pub async fn disconnect_one_drive_cmd(
-    app: AppHandle,
-    state: State<'_, AppState>,
-    one_drive: OneDriveSettings,
-) -> Result<(), String> {
-    let rclone = state.rclone.clone();
-
-    run_blocking(move || rclone.disconnect_one_drive(&app, &one_drive)).await
-}
-
-#[tauri::command]
-pub async fn test_one_drive_connection_cmd(
-    app: AppHandle,
-    state: State<'_, AppState>,
-    one_drive: OneDriveSettings,
-) -> Result<(), String> {
-    let rclone = state.rclone.clone();
-
-    run_blocking(move || rclone.test_one_drive_connection(&app, &one_drive)).await
-}
-
-#[tauri::command]
-pub fn is_seedbox_configured_cmd(state: State<'_, AppState>) -> Result<bool, String> {
-    Ok(state.rclone.is_seedbox_configured())
-}
-
-#[tauri::command]
-pub async fn test_seedbox_connection_cmd(
-    app: AppHandle,
-    state: State<'_, AppState>,
-    seedbox: SeedboxSettings,
-    password: String,
-) -> Result<(), String> {
-    let rclone = state.rclone.clone();
-
-    run_blocking(move || {
-        let settings = AppSettings {
-            seedbox: seedbox.normalized(),
-            ..load_settings()
-        }
-        .normalized();
-        save_settings(&settings)?;
-
+    pub fn test_seedbox(&self, seedbox: SeedboxSettings, password: String) -> Result<(), String> {
+        save_section(|settings| settings.seedbox = seedbox.normalized())?;
         let resolved_password = if password.trim().is_empty() {
             load_seedbox_password()?.unwrap_or_default()
         } else {
             password.trim().to_string()
         };
-
-        rclone.test_seedbox_connection(&app, &seedbox, &resolved_password)?;
-
+        self.rclone
+            .test_seedbox_connection(&self.host, &seedbox, &resolved_password)?;
         save_seedbox_password(&resolved_password)
-    })
-    .await
-}
-
-#[tauri::command]
-pub async fn forget_seedbox_cmd(
-    app: AppHandle,
-    state: State<'_, AppState>,
-    seedbox: SeedboxSettings,
-) -> Result<(), String> {
-    let rclone = state.rclone.clone();
-
-    run_blocking(move || {
-        rclone.disconnect_seedbox(&app, &seedbox)?;
-        delete_seedbox_password()
-    })
-    .await
-}
-
-#[tauri::command]
-pub async fn unmount_all(app: AppHandle, state: State<'_, AppState>) -> Result<(), String> {
-    let rclone = state.rclone.clone();
-
-    run_blocking(move || {
-        rclone.unmount_all(&app);
-        Ok(())
-    })
-    .await
-}
-
-#[tauri::command]
-pub async fn refresh_mount_caches(
-    app: AppHandle,
-    state: State<'_, AppState>,
-) -> Result<(), String> {
-    let rclone = state.rclone.clone();
-
-    run_blocking(move || rclone.refresh_mount_caches(&app)).await
-}
-
-#[tauri::command]
-pub fn is_mounted(state: State<'_, AppState>) -> Result<bool, String> {
-    Ok(state.rclone.is_mounted())
-}
-
-#[tauri::command]
-pub fn is_fuse_installed_cmd() -> bool {
-    is_fuse_installed()
-}
-
-#[tauri::command]
-pub fn used_windows_drive_letters_cmd() -> Vec<String> {
-    used_windows_drive_letters()
-}
-
-#[tauri::command]
-pub fn open_log_folder(app: AppHandle) -> Result<(), String> {
-    let dir = log_dir();
-    std::fs::create_dir_all(&dir).map_err(|e| e.to_string())?;
-    app.opener()
-        .open_path(dir.to_string_lossy().to_string(), None::<&str>)
-        .map_err(|e| e.to_string())
-}
-
-#[tauri::command]
-pub fn open_mount_target(app: AppHandle, target: String) -> Result<(), String> {
-    if target.trim().is_empty() {
-        return Err("Mount target is missing.".to_string());
     }
-    app.opener()
-        .open_path(target, None::<&str>)
-        .map_err(|e| e.to_string())
-}
 
-#[tauri::command]
-pub fn clear_logs(state: State<'_, AppState>) -> Result<(), String> {
-    state.logger.lock().map_err(|e| e.to_string())?.clear()
-}
+    pub fn forget_seedbox(&self, seedbox: SeedboxSettings) -> Result<(), String> {
+        self.rclone.disconnect_seedbox(&self.host, &seedbox)?;
+        delete_seedbox_password()
+    }
 
-#[tauri::command]
-pub async fn restart_mounts(app: AppHandle, state: State<'_, AppState>) -> Result<(), String> {
-    let rclone = state.rclone.clone();
-    let logger = state.logger.clone();
+    pub fn unmount_all(&self) {
+        self.rclone.unmount_all(&self.host);
+    }
 
-    run_blocking(move || {
-        if let Ok(logger) = logger.lock() {
-            logger.info("Restarting mount background processes.");
-        }
+    pub fn refresh_mount_caches(&self) -> Result<(), String> {
+        self.rclone.refresh_mount_caches(&self.host)
+    }
 
-        rclone.restart_mount_cleanup(&app);
+    pub fn clear_logs(&self) -> Result<(), String> {
+        self.logger.lock().map_err(|e| e.to_string())?.clear()
+    }
+
+    pub fn restart_mounts(&self) -> Result<(), String> {
+        self.log_info("Restarting mount background processes.");
+        self.rclone.restart_mount_cleanup(&self.host);
 
         if !is_fuse_installed() {
-            if let Ok(logger) = logger.lock() {
-                logger.info(
-                    "FUSE provider not detected; mount restart completed without remounting.",
-                );
-            }
+            self.log_info(
+                "FUSE provider not detected; mount restart completed without remounting.",
+            );
             return Ok(());
         }
 
         let Some(request) = saved_mount_request() else {
-            if let Ok(logger) = logger.lock() {
-                logger.info("No configured mounts to restart.");
-            }
+            self.log_info("No configured mounts to restart.");
             return Ok(());
         };
 
-        if let Ok(logger) = logger.lock() {
-            logger.info("Remounting configured targets after cleanup.");
-        }
-
-        match rclone.mount_all(&app, &request) {
+        self.log_info("Remounting configured targets after cleanup.");
+        match self.rclone.mount_all(&self.host, &request) {
             Ok(()) => {
-                if let Ok(logger) = logger.lock() {
-                    logger.info("Mount background processes restarted.");
-                }
+                self.log_info("Mount background processes restarted.");
                 Ok(())
             }
             Err(err) => {
-                if let Ok(logger) = logger.lock() {
-                    logger.error(format!("Mount restart failed: {err}"));
-                }
+                self.log_error(format!("Mount restart failed: {err}"));
                 Err(err)
             }
         }
-    })
-    .await
+    }
+
+    pub fn attempt_auto_mount(&self) {
+        if !is_fuse_installed() {
+            self.log_info("FUSE provider not detected; skipping auto-mount.");
+            return;
+        }
+
+        let Some(request) = saved_mount_request() else {
+            return;
+        };
+
+        show_app_notification(AUTO_MOUNT_START_NOTIFICATION);
+        self.log_info("Attempting auto-mount from saved settings.");
+
+        match self.rclone.mount_all(&self.host, &request) {
+            Ok(()) => {
+                self.log_info("Auto-mount completed.");
+                show_app_notification(AUTO_MOUNT_COMPLETE_NOTIFICATION);
+            }
+            Err(err) => {
+                self.log_error(format!("Auto-mount failed: {err}"));
+                show_app_notification(auto_mount_failed_notification(&err));
+            }
+        }
+    }
+
+    pub fn attempt_auto_mount_once(&self) {
+        let Ok(mut attempted) = self.auto_mount_attempted.lock() else {
+            return;
+        };
+        if *attempted {
+            return;
+        }
+        *attempted = true;
+        drop(attempted);
+        self.attempt_auto_mount();
+    }
+
+    /// Unmounts everything before the app exits, telling the user while it
+    /// takes time.
+    pub fn shut_down(&self) {
+        let busy = self.rclone.is_mounted();
+        if busy {
+            show_app_notification(QUIT_START_NOTIFICATION);
+        }
+        self.unmount_all();
+        if busy {
+            show_app_notification(QUIT_COMPLETE_NOTIFICATION);
+        }
+    }
 }
 
-pub fn attempt_auto_mount(app: &AppHandle, state: &AppState) {
-    if !is_fuse_installed() {
-        if let Ok(logger) = state.logger.lock() {
-            logger.info("FUSE provider not detected; skipping auto-mount.");
-        }
-        return;
+/// Saves the settings file with one section replaced.
+fn save_section(change: impl FnOnce(&mut AppSettings)) -> Result<(), String> {
+    let mut settings = load_settings();
+    change(&mut settings);
+    save_settings(&settings.normalized())
+}
+
+/// Normalizes and saves `settings`, returning what was written.
+pub fn save_settings_normalized(settings: AppSettings) -> Result<AppSettings, String> {
+    let settings = settings.normalized();
+    save_settings(&settings)?;
+    Ok(settings)
+}
+
+pub fn save_b2_credentials_now(credentials: &B2Credentials) -> Result<(), String> {
+    save_b2_credentials(credentials)
+}
+
+/// Opens a folder or drive in Finder or File Explorer.
+pub fn open_path(target: &Path) -> Result<(), String> {
+    if target.as_os_str().is_empty() {
+        return Err("Mount target is missing.".to_string());
     }
-
-    let Some(request) = saved_mount_request() else {
-        return;
-    };
-
-    show_app_notification(app, AUTO_MOUNT_START_NOTIFICATION);
-
-    if let Ok(logger) = state.logger.lock() {
-        logger.info("Attempting auto-mount from saved settings.");
-    }
-
-    match state.rclone.mount_all(app, &request) {
-        Ok(()) => {
-            if let Ok(logger) = state.logger.lock() {
-                logger.info("Auto-mount completed.");
-            }
-            show_app_notification(app, AUTO_MOUNT_COMPLETE_NOTIFICATION);
-        }
-        Err(err) => {
-            if let Ok(logger) = state.logger.lock() {
-                logger.error(format!("Auto-mount failed: {err}"));
-            }
-            show_app_notification(app, auto_mount_failed_notification(&err));
-        }
-    }
+    #[cfg(target_os = "macos")]
+    let mut command = std::process::Command::new("open");
+    #[cfg(windows)]
+    let mut command = std::process::Command::new("explorer.exe");
+    #[cfg(not(any(target_os = "macos", windows)))]
+    let mut command = std::process::Command::new("xdg-open");
+    command
+        .arg(target)
+        .spawn()
+        .map(|_| ())
+        .map_err(|e| e.to_string())
 }
 
 fn auto_mount_failed_notification(error: &str) -> &'static str {
@@ -447,21 +302,6 @@ fn auto_mount_failed_notification(error: &str) -> &'static str {
     } else {
         AUTO_MOUNT_FAILED_NOTIFICATION
     }
-}
-
-pub fn attempt_auto_mount_once(app: &AppHandle, state: &AppState) {
-    let Ok(mut attempted) = state.auto_mount_attempted.lock() else {
-        return;
-    };
-
-    if *attempted {
-        return;
-    }
-
-    *attempted = true;
-    drop(attempted);
-
-    attempt_auto_mount(app, state);
 }
 
 fn saved_mount_request() -> Option<MountRequest> {
@@ -494,44 +334,10 @@ fn saved_mount_request() -> Option<MountRequest> {
     })
 }
 
-pub fn show_settings_window(app: &AppHandle) {
-    if let Some(window) = app.get_webview_window("main") {
-        let _ = window.show();
-        let _ = window.unminimize();
-        let _ = window.set_focus();
-    }
-}
-
-pub fn setup_window_events(app: &AppHandle) {
-    if let Some(window) = app.get_webview_window("main") {
-        let window_clone = window.clone();
-        window.on_window_event(move |event| match event {
-            tauri::WindowEvent::CloseRequested { api, .. } => {
-                api.prevent_close();
-                let _ = window_clone.hide();
-            }
-            tauri::WindowEvent::Resized(_) if window_clone.is_minimized().unwrap_or(false) => {
-                let _ = window_clone.hide();
-                let _ = window_clone.unminimize();
-            }
-            _ => {}
-        });
-    }
-}
-
-pub fn emit_mount_state(app: &AppHandle, state: &AppState) {
-    let _ = app.emit("mount-state-changed", state.rclone.mount_state());
-}
-
 #[cfg(test)]
 mod tests {
     use super::*;
     use crate::models::CloudProvider;
-
-    #[test]
-    fn get_platform_delegates_to_platform_name() {
-        assert_eq!(get_platform(), crate::paths::platform_name());
-    }
 
     #[test]
     fn auto_mount_failed_notification_mentions_network_connectivity_for_network_errors() {
@@ -550,20 +356,20 @@ mod tests {
     #[test]
     fn auto_mount_failed_notification_stays_generic_for_non_network_errors() {
         assert_eq!(
-            auto_mount_failed_notification("macFUSE is not installed or has not been enabled."),
+            auto_mount_failed_notification("FUSE-T is not installed."),
             AUTO_MOUNT_FAILED_NOTIFICATION
         );
     }
 
     #[test]
-    fn save_settings_cmd_normalizes_cloud_specific_settings_before_writing() {
+    fn save_settings_normalizes_cloud_specific_settings_before_writing() {
         let _guard = crate::test_support::env_lock();
         crate::test_support::clear_test_dirs();
 
         let temp = tempfile::tempdir().unwrap();
         crate::test_support::set_test_dirs(&temp.path().join("app"), &temp.path().join("logs"));
 
-        save_settings_cmd(AppSettings {
+        save_settings_normalized(AppSettings {
             selected_provider: CloudProvider::Seedbox,
             google_drive: GoogleDriveSettings {
                 remote_path: " :/Team\\Docs ".to_string(),

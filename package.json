@@ -5,26 +5,15 @@
   "type": "module",
   "scripts": {
     "prepare:sidecars": "bun scripts/download-rclone.mjs",
-    "build:frontend": "tsc && vite build",
-    "test:frontend": "bun test tests",
-    "dev": "vite",
-    "build": "bun run prepare:sidecars && bun run build:frontend",
-    "build:installer": "tauri build",
-    "build:installer:mac": "tauri build --bundles dmg",
-    "build:installer:windows": "tauri build --bundles msi",
-    "build:installer:open": "bun scripts/build-open-installer.mjs",
-    "preview": "vite preview",
-    "tauri": "tauri",
-    "icons:generate": "tauri icon src-tauri/app-icon.svg -o src-tauri/icons"
-  },
-  "dependencies": {
-    "@tauri-apps/api": "^2",
-    "@tauri-apps/plugin-autostart": "~2",
-    "@tauri-apps/plugin-opener": "^2"
-  },
-  "devDependencies": {
-    "@tauri-apps/cli": "^2",
-    "vite": "^6.0.3",
-    "typescript": "~5.6.2"
+    "dev": "bun run prepare:sidecars && cargo run --manifest-path desktop/Cargo.toml",
+    "build": "bun run prepare:sidecars && cargo build --release --manifest-path desktop/Cargo.toml",
+    "test": "cargo test --manifest-path desktop/Cargo.toml && bun test tests",
+    "test:scripts": "bun test tests",
+    "snap": "cargo run --manifest-path desktop/Cargo.toml -- --snap",
+    "build:installer": "bun run prepare:sidecars && cd desktop && cargo packager --release",
+    "build:installer:mac": "bun run prepare:sidecars && cd desktop && cargo packager --release --formats dmg",
+    "build:installer:mac:notarized": "export APPLE_KEYCHAIN_PROFILE=cloud-drive-mount && bun run build:installer:mac && scripts/notarize-dmg.sh",
+    "build:installer:windows": "bun run prepare:sidecars && cd desktop && cargo packager --release --formats wix",
+    "build:installer:open": "bun scripts/build-open-installer.mjs"
   }
 }

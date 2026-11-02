@@ -13,10 +13,10 @@ yarn-error.log*
 pnpm-debug.log*
 lerna-debug.log*
 
-# Tauri / Rust
+# Rust
 **/target/
-src-tauri/binaries/rclone-*
-tauri/
+desktop/binaries/
+
 
 # Windows/.NET build output
 win/

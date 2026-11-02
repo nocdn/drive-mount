@@ -1,28 +1,23 @@
-use tauri::AppHandle;
-use tauri_plugin_notification::{NotificationExt, PermissionState};
+//! System notifications for work that happens while the window may be closed
+//! (mounting at launch, unmounting before quitting).
 
-fn ensure_notification_permission(app: &AppHandle) -> bool {
-    match app.notification().permission_state() {
-        Ok(PermissionState::Granted) => true,
-        Ok(PermissionState::Prompt | PermissionState::PromptWithRationale) => {
-            matches!(
-                app.notification().request_permission(),
-                Ok(PermissionState::Granted)
-            )
-        }
-        Ok(PermissionState::Denied) | Err(_) => false,
+pub const APP_TITLE: &str = "Cloud Drive Mount";
+#[cfg(target_os = "macos")]
+const BUNDLE_IDENTIFIER: &str = "com.bartek.clouddrivemount";
+
+/// Shows `body` under the app's name. Failures (notifications turned off,
+/// no notification service) are ignored: everything shown here is also in
+/// the log.
+pub fn show_app_notification(body: &str) {
+    #[cfg(target_os = "macos")]
+    {
+        static APPLICATION: std::sync::Once = std::sync::Once::new();
+        APPLICATION.call_once(|| {
+            let _ = notify_rust::set_application(BUNDLE_IDENTIFIER);
+        });
     }
-}
-
-pub fn show_app_notification(app: &AppHandle, body: &str) {
-    if !ensure_notification_permission(app) {
-        return;
-    }
-
-    let _ = app
-        .notification()
-        .builder()
-        .title("Cloud Drive Mount")
+    let _ = notify_rust::Notification::new()
+        .summary(APP_TITLE)
         .body(body)
         .show();
 }

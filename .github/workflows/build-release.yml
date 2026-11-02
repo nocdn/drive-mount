@@ -1,4 +1,4 @@
-name: Build And Release Tauri Installers
+name: Build And Release Installers
 
 on:
   push:
@@ -43,7 +43,7 @@ jobs:
           echo "mac_arm64_dmg_name=$mac_arm64_dmg_name" >> "$GITHUB_OUTPUT"
           echo "mac_x64_dmg_name=$mac_x64_dmg_name" >> "$GITHUB_OUTPUT"
 
-  build-tauri:
+  build-installers:
     needs: metadata
     strategy:
       fail-fast: false
@@ -52,20 +52,17 @@ jobs:
           - name: macos-arm64
             runner: macos-15
             rust_target: aarch64-apple-darwin
-            tauri_args: --target aarch64-apple-darwin --bundles dmg
-            bundle_dir: dmg
+            packager_format: dmg
             extension: dmg
           - name: macos-x64
             runner: macos-15-intel
             rust_target: x86_64-apple-darwin
-            tauri_args: --target x86_64-apple-darwin --bundles dmg
-            bundle_dir: dmg
+            packager_format: dmg
             extension: dmg
           - name: windows-x64
             runner: windows-2022
             rust_target: x86_64-pc-windows-msvc
-            tauri_args: --target x86_64-pc-windows-msvc --bundles msi
-            bundle_dir: msi
+            packager_format: wix
             extension: msi
     runs-on: ${{ matrix.runner }}
 
@@ -83,55 +80,85 @@ jobs:
         with:
           targets: ${{ matrix.rust_target }}
 
-      - name: Install frontend dependencies
-        run: bun install --frozen-lockfile
+      - name: Install cargo-packager
+        run: cargo install cargo-packager --version 0.11.8 --locked
 
-      - name: Prepare Tauri sidecars
+      - name: Prepare rclone sidecar
         env:
-          TAURI_ENV_TARGET_TRIPLE: ${{ matrix.rust_target }}
+          SIDECAR_TARGET_TRIPLE: ${{ matrix.rust_target }}
         run: bun run prepare:sidecars
 
-      - name: Build frontend
-        run: bun run build:frontend
-
       - name: Check Rust formatting
-        working-directory: src-tauri
+        working-directory: desktop
         run: cargo fmt --check
 
       - name: Run Rust clippy
-        working-directory: src-tauri
+        working-directory: desktop
         run: cargo clippy --locked --all-targets -- -D warnings
 
-      - name: Run Tauri tests
-        working-directory: src-tauri
+      - name: Run tests
+        working-directory: desktop
+        run: cargo test --locked
+
+      - name: Run script tests
+        run: bun test tests
+
+      - name: Set release version
+        working-directory: desktop
         shell: bash
         run: |
-          if [[ "${{ runner.os }}" == "Windows" ]]; then
-            # The Windows Tauri lib test executable can fail before test code runs
-            # because GUI/WebView runtime DLLs are loaded at process startup.
-            cargo test --locked --no-run
-            cargo test --locked --test installer_config
-          else
-            cargo test --locked
-          fi
+          # Only the first `version =` line, the package's own.
+          perl -0pi -e 's/^version = "[^"]*"/version = "${{ needs.metadata.outputs.app_version }}"/m' Cargo.toml
+          grep -m1 '^version' Cargo.toml
 
-      - name: Write release version override
+      - name: Prepare Apple signing and notarization
+        if: runner.os == 'macOS'
         shell: bash
-        run: |
-          printf '{"version":"%s"}\n' '${{ needs.metadata.outputs.app_version }}' > tauri-release-version.json
-
-      - name: Build Tauri installer
-        uses: tauri-apps/tauri-action@v0.6.2
         env:
-          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-        with:
-          tauriScript: bun run tauri
-          args: ${{ matrix.tauri_args }} --config tauri-release-version.json
+          APPLE_CERTIFICATE: ${{ secrets.APPLE_CERTIFICATE }}
+          APPLE_CERTIFICATE_PASSWORD: ${{ secrets.APPLE_CERTIFICATE_PASSWORD }}
+          APPLE_API_KEY: ${{ secrets.APPLE_API_KEY }}
+          APPLE_API_ISSUER: ${{ secrets.APPLE_API_ISSUER }}
+          APPLE_API_PRIVATE_KEY_BASE64: ${{ secrets.APPLE_API_PRIVATE_KEY_BASE64 }}
+        run: |
+          # Releases are always Developer ID signed and notarized: no unsigned fallback.
+          for name in APPLE_CERTIFICATE APPLE_CERTIFICATE_PASSWORD APPLE_API_KEY APPLE_API_ISSUER APPLE_API_PRIVATE_KEY_BASE64; do
+            if [[ -z "${!name}" ]]; then
+              echo "Missing the $name secret, needed to sign and notarize the macOS app." >&2
+              exit 1
+            fi
+          done
+          key_path="$RUNNER_TEMP/AuthKey_$APPLE_API_KEY.p8"
+          printf '%s' "$APPLE_API_PRIVATE_KEY_BASE64" | base64 --decode > "$key_path"
+          chmod 600 "$key_path"
+          echo "APPLE_API_KEY_PATH=$key_path" >> "$GITHUB_ENV"
+
+      - name: Build installer
+        working-directory: desktop
+        env:
+          # cargo-packager imports the certificate into a temporary keychain,
+          # signs with it, then notarizes and staples the app.
+          APPLE_CERTIFICATE: ${{ runner.os == 'macOS' && secrets.APPLE_CERTIFICATE || '' }}
+          APPLE_CERTIFICATE_PASSWORD: ${{ runner.os == 'macOS' && secrets.APPLE_CERTIFICATE_PASSWORD || '' }}
+          APPLE_API_KEY: ${{ runner.os == 'macOS' && secrets.APPLE_API_KEY || '' }}
+          APPLE_API_ISSUER: ${{ runner.os == 'macOS' && secrets.APPLE_API_ISSUER || '' }}
+        # Each runner builds for its own architecture, so no --target.
+        run: cargo packager --release --formats ${{ matrix.packager_format }}
+
+      - name: Notarize the DMG
+        if: runner.os == 'macOS'
+        shell: bash
+        env:
+          APPLE_API_KEY: ${{ secrets.APPLE_API_KEY }}
+          APPLE_API_ISSUER: ${{ secrets.APPLE_API_ISSUER }}
+        run: |
+          scripts/notarize-dmg.sh
+          rm -f "$APPLE_API_KEY_PATH"
 
       - name: Prepare release asset
         shell: bash
         run: |
-          bundle_dir="src-tauri/target/${{ matrix.rust_target }}/release/bundle/${{ matrix.bundle_dir }}"
+          bundle_dir="desktop/target/release/bundle"
           case "${{ matrix.name }}" in
             macos-arm64) asset_name="${{ needs.metadata.outputs.mac_arm64_dmg_name }}" ;;
             macos-x64) asset_name="${{ needs.metadata.outputs.mac_x64_dmg_name }}" ;;
@@ -154,24 +181,24 @@ jobs:
           cp "$bundle_path" "release/$asset_name"
           ls -lh release
 
-      - name: Upload Tauri release asset
+      - name: Upload release asset
         uses: actions/upload-artifact@v7
         with:
-          name: tauri-${{ matrix.name }}
+          name: installer-${{ matrix.name }}
           path: release/*.${{ matrix.extension }}
           if-no-files-found: error
 
   publish-release:
     needs:
       - metadata
-      - build-tauri
+      - build-installers
     runs-on: ubuntu-latest
 
     steps:
-      - name: Download Tauri release assets
+      - name: Download release assets
         uses: actions/download-artifact@v8
         with:
-          pattern: tauri-*
+          pattern: installer-*
           path: release
           merge-multiple: true
 
@@ -195,12 +222,12 @@ jobs:
           Published app version: `${{ needs.metadata.outputs.app_version }}`
 
           ### Assets
-          - `${{ needs.metadata.outputs.windows_msi_name }}` - Tauri Windows x64 MSI. WinFsp must already be installed for mounting to work.
-          - `${{ needs.metadata.outputs.mac_arm64_dmg_name }}` - Tauri macOS DMG for Apple Silicon Macs.
-          - `${{ needs.metadata.outputs.mac_x64_dmg_name }}` - Tauri macOS DMG for Intel Macs.
+          - `${{ needs.metadata.outputs.windows_msi_name }}` - Windows x64 MSI. WinFsp must already be installed for mounting to work.
+          - `${{ needs.metadata.outputs.mac_arm64_dmg_name }}` - macOS DMG for Apple Silicon Macs.
+          - `${{ needs.metadata.outputs.mac_x64_dmg_name }}` - macOS DMG for Intel Macs.
 
-          ### macOS security note
-          The macOS app is not Developer ID signed or notarized. On first launch, macOS may block it; after trying to open it, go to System Settings > Privacy & Security and choose Open Anyway/Open for Cloud Drive Mount. Only do this if you trust this release.
+          ### macOS
+          The macOS app is signed with a Developer ID and notarized by Apple. Mounting needs FUSE-T (`brew install --cask fuse-t`).
           EOF
 
       - name: Upload workflow release bundle

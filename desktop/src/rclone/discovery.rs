@@ -1,10 +1,10 @@
 use std::path::PathBuf;
 
-use tauri::{AppHandle, Manager};
+use crate::host::Host;
 
-pub fn find_bundled_rclone(app: &AppHandle) -> Option<PathBuf> {
+pub fn find_bundled_rclone(app: &Host) -> Option<PathBuf> {
     for name in sidecar_filenames() {
-        if let Ok(resource_dir) = app.path().resource_dir() {
+        if let Some(resource_dir) = app.resource_dir() {
             let candidate = resource_dir.join(name);
             if candidate.exists() {
                 return Some(candidate);
@@ -19,6 +19,16 @@ pub fn find_bundled_rclone(app: &AppHandle) -> Option<PathBuf> {
                 }
             }
         }
+
+        // Development builds use the sidecar `bun run prepare:sidecars` downloaded.
+        if cfg!(debug_assertions) {
+            let candidate = std::path::Path::new(env!("CARGO_MANIFEST_DIR"))
+                .join("binaries")
+                .join(name);
+            if candidate.exists() {
+                return Some(candidate);
+            }
+        }
     }
 
     None
@@ -27,11 +37,11 @@ pub fn find_bundled_rclone(app: &AppHandle) -> Option<PathBuf> {
 fn sidecar_filenames() -> &'static [&'static str] {
     #[cfg(all(target_os = "macos", target_arch = "aarch64"))]
     {
-        &["rclone-aarch64-apple-darwin"]
+        &["rclone", "rclone-aarch64-apple-darwin"]
     }
     #[cfg(all(target_os = "macos", target_arch = "x86_64"))]
     {
-        &["rclone-x86_64-apple-darwin"]
+        &["rclone", "rclone-x86_64-apple-darwin"]
     }
     #[cfg(windows)]
     {
@@ -90,7 +100,7 @@ mod tests {
 
     #[test]
     #[cfg(windows)]
-    fn windows_sidecar_filenames_include_tauri_installed_name() {
+    fn windows_sidecar_filenames_include_installed_name() {
         assert_eq!(
             sidecar_filenames(),
             &["rclone.exe", "rclone-x86_64-pc-windows-msvc.exe"]
@@ -100,12 +110,18 @@ mod tests {
     #[test]
     #[cfg(all(target_os = "macos", target_arch = "aarch64"))]
     fn apple_silicon_sidecar_filename_uses_target_triple() {
-        assert_eq!(sidecar_filenames(), &["rclone-aarch64-apple-darwin"]);
+        assert_eq!(
+            sidecar_filenames(),
+            &["rclone", "rclone-aarch64-apple-darwin"]
+        );
     }
 
     #[test]
     #[cfg(all(target_os = "macos", target_arch = "x86_64"))]
     fn intel_macos_sidecar_filename_uses_target_triple() {
-        assert_eq!(sidecar_filenames(), &["rclone-x86_64-apple-darwin"]);
+        assert_eq!(
+            sidecar_filenames(),
+            &["rclone", "rclone-x86_64-apple-darwin"]
+        );
     }
 }

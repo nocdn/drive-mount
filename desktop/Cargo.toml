@@ -4,32 +4,70 @@ version = "0.1.61"
 description = "Cloud Drive Mount"
 authors = ["bartek"]
 edition = "2021"
+default-run = "cloud-drive-mount"
 
-[lib]
-name = "tauri_app_lib"
-crate-type = ["staticlib", "cdylib", "rlib"]
+[[bin]]
+name = "cloud-drive-mount"
+path = "src/main.rs"
 
-[build-dependencies]
-tauri-build = { version = "2", features = [] }
-
+# The window is drawn with Rune (https://github.com/anomalyco/rune) in OpenCode's
+# design language, the same way Hex is. Keep all three on one Rune revision.
 [dependencies]
-tauri = { version = "2", features = ["tray-icon", "image-png"] }
-tauri-plugin-opener = "2"
+rune = { git = "https://github.com/anomalyco/rune.git", rev = "f5def6d4f9259580cbbd6472498e4de6b4d754b6" }
+rune-kit = { git = "https://github.com/anomalyco/rune.git", rev = "f5def6d4f9259580cbbd6472498e4de6b4d754b6" }
+rune-theme-opencode = { git = "https://github.com/anomalyco/rune.git", rev = "f5def6d4f9259580cbbd6472498e4de6b4d754b6" }
 serde = { version = "1", features = ["derive"] }
 serde_json = "1"
 thiserror = "2"
 keyring = { version = "3", features = ["apple-native", "windows-native", "linux-native"] }
-tokio = { version = "1", features = ["process", "io-util", "sync", "rt-multi-thread", "macros", "time"] }
 chrono = "0.4"
 dirs = "6"
-tauri-plugin-notification = "2.3.3"
+auto-launch = "0.5"
+notify-rust = "4"
+png = "0.18"
 
-[target.'cfg(not(any(target_os = "android", target_os = "ios")))'.dependencies]
-tauri-plugin-autostart = "2"
-tauri-plugin-single-instance = "2"
+[target.'cfg(target_os = "macos")'.dependencies]
+block2 = "0.6.2"
+objc2 = "0.6.4"
+objc2-app-kit = { version = "0.3.2", features = ["NSApplication", "NSImage", "NSMenu", "NSMenuItem", "NSStatusBar", "NSStatusBarButton", "NSStatusItem", "NSButton", "NSControl", "NSResponder", "NSView", "NSRunningApplication", "NSWindow"] }
+objc2-foundation = { version = "0.3.2", features = ["NSData", "NSGeometry", "NSObject", "NSString", "NSThread", "NSTimer", "NSRunLoop", "NSDate"] }
 
 [target.'cfg(windows)'.dependencies]
-windows = { version = "0.62", features = ["Win32_Storage_FileSystem", "Win32_System_Registry", "Win32_UI_Shell"] }
+windows = { version = "0.62", features = ["Win32_Foundation", "Win32_Graphics_Dwm", "Win32_Storage_FileSystem", "Win32_System_Registry", "Win32_UI_Shell", "Win32_UI_WindowsAndMessaging"] }
 
 [dev-dependencies]
 tempfile = "3"
+
+[profile.dev.package."*"]
+# Rune's dependencies build fast and run smoothly with optimisation even in debug.
+opt-level = 2
+debug = false
+
+[profile.release]
+strip = true
+
+# Installers, built with cargo-packager (`bun run build:installer`): a DMG on
+# macOS and an MSI on Windows, each with the rclone sidecar beside the app.
+[package.metadata.packager]
+product-name = "Cloud Drive Mount"
+identifier = "com.bartek.clouddrivemount"
+publisher = "bartek"
+category = "Utility"
+before-packaging-command = "cargo build --release"
+out-dir = "target/release/bundle"
+binaries = [{ path = "cloud-drive-mount", main = true }]
+external-binaries = ["binaries/rclone"]
+icons = ["icons/32x32.png", "icons/128x128.png", "icons/128x128@2x.png", "icons/icon.icns", "icons/icon.ico"]
+
+[package.metadata.packager.macos]
+# Dev builds are signed with it too (scripts/macos-dev-runner.sh), so the
+# keychain sees one app across builds. CI imports it from APPLE_CERTIFICATE.
+# With APPLE_KEYCHAIN_PROFILE or an APPLE_API_KEY set, the app is notarized.
+signing-identity = "Developer ID Application: Bartosz Bak (7CAU3XFRLQ)"
+entitlements = "packaging/macos/entitlements.plist"
+minimum-system-version = "11.0"
+
+[package.metadata.packager.wix]
+languages = ["en-US"]
+# The Tauri build's upgrade code, so the MSI replaces an installed copy.
+template = "packaging/windows/main.wxs"

@@ -3,8 +3,8 @@ use std::io::Write;
 use std::path::PathBuf;
 use std::sync::Mutex;
 
+use crate::host::Host;
 use chrono::Local;
-use tauri::{AppHandle, Emitter};
 
 use crate::models::LogLine;
 use crate::paths::log_dir;
@@ -13,16 +13,12 @@ static LOG_LOCK: Mutex<()> = Mutex::new(());
 const MAX_LOG_SIZE_BYTES: u64 = 5 * 1024 * 1024;
 
 pub struct LogEmitter {
-    app: Option<AppHandle>,
+    app: Option<Host>,
 }
 
 impl LogEmitter {
-    pub fn new(app: Option<AppHandle>) -> Self {
+    pub fn new(app: Option<Host>) -> Self {
         Self { app }
-    }
-
-    pub fn set_app(&mut self, app: AppHandle) {
-        self.app = Some(app);
     }
 
     pub fn info(&self, message: impl AsRef<str>) {
@@ -44,14 +40,11 @@ impl LogEmitter {
         }
 
         if let Some(app) = &self.app {
-            let _ = app.emit(
-                "log-line",
-                LogLine {
-                    level: level.to_string(),
-                    message: message.to_string(),
-                    timestamp,
-                },
-            );
+            app.emit_log(LogLine {
+                level: level.to_string(),
+                message: message.to_string(),
+                timestamp,
+            });
         }
     }
 

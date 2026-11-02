@@ -3,7 +3,9 @@ use std::sync::{Mutex, OnceLock};
 
 use crate::models::B2Credentials;
 
+#[cfg(not(test))]
 const CREDENTIALS_SERVICE: &str = "com.bartek.clouddrivemount.credentials";
+#[cfg(not(test))]
 const CREDENTIALS_ACCOUNT: &str = "cloud-drive-mount";
 
 #[derive(Debug, Clone, Default, Serialize, Deserialize)]
@@ -144,37 +146,87 @@ fn load_credentials_bundle() -> Result<SecureCredentials, String> {
 }
 
 fn read_credentials_bundle() -> Result<SecureCredentials, String> {
-    match keyring::Entry::new(CREDENTIALS_SERVICE, CREDENTIALS_ACCOUNT) {
-        Ok(entry) => match entry.get_password() {
-            Ok(json) if json.trim().is_empty() => Ok(SecureCredentials::default()),
-            Ok(json) => serde_json::from_str(&json)
-                .map_err(|_| "Invalid saved Cloud Drive Mount credentials".to_string()),
-            Err(keyring::Error::NoEntry) => Ok(SecureCredentials::default()),
-            Err(e) => Err(e.to_string()),
-        },
-        Err(e) => Err(e.to_string()),
+    match store::read()? {
+        Some(json) if json.trim().is_empty() => Ok(SecureCredentials::default()),
+        Some(json) => serde_json::from_str(&json)
+            .map_err(|_| "Invalid saved Cloud Drive Mount credentials".to_string()),
+        None => Ok(SecureCredentials::default()),
     }
 }
 
 fn save_credentials_bundle(bundle: &SecureCredentials) -> Result<(), String> {
-    let entry =
-        keyring::Entry::new(CREDENTIALS_SERVICE, CREDENTIALS_ACCOUNT).map_err(|e| e.to_string())?;
-
     if bundle.is_empty() {
-        match entry.delete_credential() {
-            Ok(()) | Err(keyring::Error::NoEntry) => Ok(()),
-            Err(e) => Err(e.to_string()),
-        }?;
+        store::delete()?;
         *credentials_cache().lock().map_err(|e| e.to_string())? =
             Some(SecureCredentials::default());
         return Ok(());
     }
 
     let json = serde_json::to_string(bundle).map_err(|e| e.to_string())?;
-    entry.set_password(&json).map_err(|e| e.to_string())?;
+    store::write(&json)?;
 
     *credentials_cache().lock().map_err(|e| e.to_string())? = Some(bundle.clone());
     Ok(())
+}
+
+/// The saved bundle's JSON: in the system keychain (the Keychain on macOS,
+/// Credential Manager on Windows).
+#[cfg(not(test))]
+mod store {
+    use super::{CREDENTIALS_ACCOUNT, CREDENTIALS_SERVICE};
+
+    fn entry() -> Result<keyring::Entry, String> {
+        keyring::Entry::new(CREDENTIALS_SERVICE, CREDENTIALS_ACCOUNT).map_err(|e| e.to_string())
+    }
+
+    pub(super) fn read() -> Result<Option<String>, String> {
+        match entry()?.get_password() {
+            Ok(json) => Ok(Some(json)),
+            Err(keyring::Error::NoEntry) => Ok(None),
+            Err(e) => Err(e.to_string()),
+        }
+    }
+
+    pub(super) fn write(json: &str) -> Result<(), String> {
+        entry()?.set_password(json).map_err(|e| e.to_string())
+    }
+
+    pub(super) fn delete() -> Result<(), String> {
+        match entry()?.delete_credential() {
+            Ok(()) | Err(keyring::Error::NoEntry) => Ok(()),
+            Err(e) => Err(e.to_string()),
+        }
+    }
+}
+
+/// Tests keep the bundle in memory: they must never read the user's real
+/// keychain item (each rebuilt test binary would make macOS ask for the
+/// keychain password again) or overwrite it.
+#[cfg(test)]
+mod store {
+    use std::sync::Mutex;
+
+    static SAVED: Mutex<Option<String>> = Mutex::new(None);
+
+    fn saved() -> std::sync::MutexGuard<'static, Option<String>> {
+        SAVED
+            .lock()
+            .unwrap_or_else(|poisoned| poisoned.into_inner())
+    }
+
+    pub(super) fn read() -> Result<Option<String>, String> {
+        Ok(saved().clone())
+    }
+
+    pub(super) fn write(json: &str) -> Result<(), String> {
+        *saved() = Some(json.to_string());
+        Ok(())
+    }
+
+    pub(super) fn delete() -> Result<(), String> {
+        *saved() = None;
+        Ok(())
+    }
 }
 
 fn update_credentials_bundle<F>(update: F) -> Result<(), String>
@@ -216,6 +268,20 @@ mod tests {
             ..SecureCredentials::default()
         }
         .is_empty());
+    }
+
+    #[test]
+    fn tests_keep_credentials_out_of_the_keychain() {
+        store::write("{\"seedboxPassword\":\"secret\"}").unwrap();
+        assert_eq!(
+            read_credentials_bundle()
+                .unwrap()
+                .seedbox_password
+                .as_deref(),
+            Some("secret")
+        );
+        store::delete().unwrap();
+        assert!(read_credentials_bundle().unwrap().is_empty());
     }
 
     #[test]

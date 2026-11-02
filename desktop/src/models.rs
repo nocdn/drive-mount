@@ -76,14 +76,16 @@ pub struct SeedboxSettings {
     #[serde(default = "default_seedbox_remote_path")]
     pub remote_path: String,
     #[serde(default = "default_true")]
-    pub allow_unverified_certificate: bool,
-    #[serde(default = "default_true")]
     pub read_only: bool,
 }
 
+/// Seedboxes serve SFTP on 22.
 fn default_seedbox_port() -> u16 {
-    21
+    22
 }
+
+/// The FTPS port earlier versions saved by default.
+const LEGACY_FTPS_PORT: u16 = 21;
 
 fn default_seedbox_remote_path() -> String {
     "downloads".to_string()
@@ -96,7 +98,6 @@ impl Default for SeedboxSettings {
             username: String::new(),
             port: default_seedbox_port(),
             remote_path: default_seedbox_remote_path(),
-            allow_unverified_certificate: true,
             read_only: true,
         }
     }
@@ -107,6 +108,10 @@ impl SeedboxSettings {
         let mut settings = self.clone();
         settings.host = crate::paths::normalize_seedbox_host(&settings.host);
         settings.username = settings.username.trim().to_string();
+        // The app used to mount over FTPS on 21; the same account answers SFTP on 22.
+        if settings.port == LEGACY_FTPS_PORT {
+            settings.port = default_seedbox_port();
+        }
         settings.remote_path = crate::paths::normalize_remote_path(&settings.remote_path);
         if settings.remote_path.is_empty() {
             settings.remote_path = default_seedbox_remote_path();
@@ -282,9 +287,8 @@ mod tests {
         assert_eq!(settings.buckets, vec![BucketMount::default()]);
         assert_eq!(settings.google_drive, GoogleDriveSettings::default());
         assert_eq!(settings.one_drive, OneDriveSettings::default());
-        assert_eq!(settings.seedbox.port, 21);
+        assert_eq!(settings.seedbox.port, 22);
         assert_eq!(settings.seedbox.remote_path, "downloads");
-        assert!(settings.seedbox.allow_unverified_certificate);
         assert!(settings.seedbox.read_only);
         assert!(!settings.start_at_login);
         assert!(!settings.start_minimized);
@@ -319,7 +323,6 @@ mod tests {
             username: " user ".to_string(),
             port: 2121,
             remote_path: " :/media\\shows ".to_string(),
-            allow_unverified_certificate: false,
             read_only: false,
         }
         .normalized();
@@ -328,8 +331,17 @@ mod tests {
         assert_eq!(settings.username, "user");
         assert_eq!(settings.port, 2121);
         assert_eq!(settings.remote_path, "media/shows");
-        assert!(!settings.allow_unverified_certificate);
         assert!(!settings.read_only);
+    }
+
+    #[test]
+    fn seedbox_normalized_moves_the_old_ftps_port_to_sftp() {
+        let saved: SeedboxSettings = serde_json::from_str(
+            r#"{ "host": "box.example.com", "port": 21, "allowUnverifiedCertificate": true }"#,
+        )
+        .unwrap();
+
+        assert_eq!(saved.normalized().port, 22);
     }
 
     #[test]
@@ -415,7 +427,7 @@ mod tests {
         assert_eq!(request.one_drive.remote_path, "personal");
         assert_eq!(request.seedbox.host, "ftp://example.com");
         assert_eq!(request.seedbox.username, "user");
-        assert_eq!(request.seedbox.port, 21);
+        assert_eq!(request.seedbox.port, 22);
         assert_eq!(request.seedbox_password, "secret");
         assert_eq!(request.selected_provider, CloudProvider::OneDrive);
     }

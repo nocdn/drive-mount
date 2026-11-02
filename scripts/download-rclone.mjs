@@ -10,7 +10,7 @@ const run = promisify(execFile);
 
 export const version = "v1.75.1";
 const scriptDir = path.dirname(fileURLToPath(import.meta.url));
-const binDir = path.resolve(scriptDir, "../src-tauri/binaries");
+const binDir = path.resolve(scriptDir, "../desktop/binaries");
 
 export const targets = {
   "aarch64-apple-darwin": {
@@ -34,15 +34,13 @@ export const targets = {
 };
 
 function normalizeTargetTriple() {
-  const tauriTarget = process.env.TAURI_ENV_TARGET_TRIPLE;
-  if (tauriTarget && targets[tauriTarget]) {
-    return tauriTarget;
+  const requestedTarget = process.env.SIDECAR_TARGET_TRIPLE;
+  if (requestedTarget && targets[requestedTarget]) {
+    return requestedTarget;
   }
 
-  const tauriPlatform = process.env.TAURI_ENV_PLATFORM;
-  const tauriArch = process.env.TAURI_ENV_ARCH;
-  const platform = tauriPlatform ?? process.platform;
-  const arch = tauriArch ?? process.arch;
+  const platform = process.platform;
+  const arch = process.arch;
 
   if ((platform === "darwin" || platform === "macos") && (arch === "arm64" || arch === "aarch64")) {
     return "aarch64-apple-darwin";

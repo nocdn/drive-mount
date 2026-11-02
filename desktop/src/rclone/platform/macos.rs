@@ -12,16 +12,14 @@ use crate::paths::{
     default_seedbox_mount_path, drives_dir,
 };
 
+/// The library FUSE-T installs, and the one rclone loads in preference to
+/// macFUSE's when it's there.
+const FUSE_T_LIBRARY: &str = "/usr/local/lib/libfuse-t.dylib";
+
+/// Mounts go through FUSE-T, which serves each one to macOS's own NFS client
+/// and so needs no kernel extension.
 pub fn is_fuse_installed() -> bool {
-    let paths = [
-        "/Library/Filesystems/macfuse.fs",
-        "/usr/local/lib/libfuse.2.dylib",
-        "/opt/homebrew/lib/libfuse.2.dylib",
-        "/Library/Filesystems/fuse-t.fs",
-        "/usr/local/bin/fuse-t",
-        "/opt/homebrew/bin/fuse-t",
-    ];
-    paths.iter().any(|p| Path::new(p).exists())
+    Path::new(FUSE_T_LIBRARY).exists()
 }
 
 pub fn normalize_mount_target(bucket: &BucketMount) -> Result<String, String> {
@@ -52,8 +50,19 @@ pub fn prepare_mount_target(target: &str) -> Result<(), String> {
     std::fs::create_dir_all(target).map_err(|e| e.to_string())
 }
 
+/// FUSE-T's options for every mount:
+/// - `backend=nfs`: its mature backend, not SMB or the newer FSKit one.
+/// - `nomtime`: macOS's NFS client stamps a file's modified time when it's
+///   read (a Finder preview is enough), which would make rclone upload it
+///   again.
+/// - `noappledouble`: keeps Finder's `._` metadata files out of the remote.
+/// - `nobrowse`: keeps the volumes out of Finder's sidebar device list, as
+///   they live in ~/Drives.
 pub fn extra_mount_args(_target: &str) -> Vec<String> {
-    vec!["--option".to_string(), "nobrowse".to_string()]
+    ["backend=nfs", "nomtime", "noappledouble", "nobrowse"]
+        .into_iter()
+        .flat_map(|option| ["--option".to_string(), option.to_string()])
+        .collect()
 }
 
 pub fn volume_name_args(volume_name: &str) -> Vec<String> {
@@ -301,10 +310,19 @@ mod tests {
     }
 
     #[test]
-    fn extra_mount_args_marks_macos_mounts_non_browsable() {
+    fn extra_mount_args_select_fuse_t_nfs_options() {
         assert_eq!(
             extra_mount_args("/tmp/mount"),
-            vec!["--option".to_string(), "nobrowse".to_string()]
+            [
+                "--option",
+                "backend=nfs",
+                "--option",
+                "nomtime",
+                "--option",
+                "noappledouble",
+                "--option",
+                "nobrowse",
+            ]
         );
         assert_eq!(
             volume_name_args("google-drive"),

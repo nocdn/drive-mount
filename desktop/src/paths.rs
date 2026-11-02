@@ -138,21 +138,6 @@ pub fn default_seedbox_mount_path() -> String {
         .into_owned()
 }
 
-pub fn platform_name() -> &'static str {
-    #[cfg(target_os = "macos")]
-    {
-        "macos"
-    }
-    #[cfg(windows)]
-    {
-        "windows"
-    }
-    #[cfg(not(any(target_os = "macos", windows)))]
-    {
-        "linux"
-    }
-}
-
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -228,15 +213,5 @@ mod tests {
             normalize_seedbox_host("plain.example.com"),
             "plain.example.com"
         );
-    }
-
-    #[test]
-    fn platform_name_matches_current_target() {
-        #[cfg(target_os = "macos")]
-        assert_eq!(platform_name(), "macos");
-        #[cfg(windows)]
-        assert_eq!(platform_name(), "windows");
-        #[cfg(not(any(target_os = "macos", windows)))]
-        assert_eq!(platform_name(), "linux");
     }
 }

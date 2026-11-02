@@ -8,10 +8,9 @@ const run = promisify(execFile);
 
 const scriptDir = path.dirname(fileURLToPath(import.meta.url));
 const repoRoot = path.resolve(scriptDir, "..");
-const bundleRoot = path.join(repoRoot, "src-tauri", "target", "release", "bundle");
+const bundleRoot = path.join(repoRoot, "desktop", "target", "release", "bundle");
 const packageJsonPath = path.join(repoRoot, "package.json");
-const tauriConfigPath = path.join(repoRoot, "src-tauri", "tauri.conf.json");
-const cargoTomlPath = path.join(repoRoot, "src-tauri", "Cargo.toml");
+const cargoTomlPath = path.join(repoRoot, "desktop", "Cargo.toml");
 
 const platformConfig = {
   darwin: {
@@ -107,12 +106,20 @@ function newestVersionFromLines(output) {
     .sort((left, right) => compareVersions(right.parsed, left.parsed))[0].raw;
 }
 
+function tomlString(toml, key) {
+  const match = new RegExp(`^${key} = "([^"]+)"$`, "m").exec(toml);
+  if (!match) {
+    throw new Error(`Could not find ${key} in ${cargoTomlPath}`);
+  }
+  return match[1];
+}
+
 async function readAppMetadata() {
-  const tauriConfig = await readJson(tauriConfigPath);
+  const cargoToml = await fs.readFile(cargoTomlPath, "utf8");
   return {
-    productName: tauriConfig.productName,
-    identifier: tauriConfig.identifier,
-    version: tauriConfig.version,
+    productName: tomlString(cargoToml, "product-name"),
+    identifier: tomlString(cargoToml, "identifier"),
+    version: tomlString(cargoToml, "version"),
   };
 }
 
@@ -188,10 +195,6 @@ function replaceCargoPackageVersion(cargoToml, nextVersion) {
 }
 
 async function syncProjectVersion(nextVersion) {
-  const tauriConfig = await readJson(tauriConfigPath);
-  tauriConfig.version = nextVersion;
-  await writeJson(tauriConfigPath, tauriConfig);
-
   const packageJson = await readJson(packageJsonPath);
   packageJson.version = nextVersion;
   await writeJson(packageJsonPath, packageJson);
@@ -240,6 +243,12 @@ async function findLatestInstaller(extension) {
       }
 
       if (path.extname(entry.name).toLowerCase() !== extension) {
+        continue;
+      }
+
+      // A writable "rw." image is left behind when the DMG's Finder
+      // layout step fails; it isn't the finished installer.
+      if (entry.name.startsWith("rw.")) {
         continue;
       }
 

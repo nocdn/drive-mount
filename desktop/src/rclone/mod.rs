@@ -10,8 +10,8 @@ use std::sync::{Arc, Mutex};
 use std::thread;
 use std::time::{Duration, Instant};
 
+use crate::host::Host;
 use serde::Deserialize;
-use tauri::{AppHandle, Emitter};
 
 use crate::credentials::{
     delete_google_drive_config, delete_one_drive_config, load_b2_credentials,
@@ -83,7 +83,7 @@ impl RcloneManager {
         current_mount_state(&self.mounts)
     }
 
-    pub fn resolve_rclone_path(&self, app: &AppHandle) -> Result<PathBuf, String> {
+    pub fn resolve_rclone_path(&self, app: &Host) -> Result<PathBuf, String> {
         if let Some(path) = self.rclone_path.lock().unwrap().clone() {
             if path.exists() {
                 return Ok(path);
@@ -110,10 +110,10 @@ impl RcloneManager {
         )
     }
 
-    pub fn mount_all(&self, app: &AppHandle, request: &MountRequest) -> Result<(), String> {
+    pub fn mount_all(&self, app: &Host, request: &MountRequest) -> Result<(), String> {
         if !is_fuse_installed() {
             #[cfg(target_os = "macos")]
-            return Err("macFUSE is not installed or has not been enabled.".to_string());
+            return Err("FUSE-T is not installed.".to_string());
             #[cfg(windows)]
             return Err("WinFsp is not installed.".to_string());
             #[cfg(not(any(target_os = "macos", windows)))]
@@ -169,17 +169,13 @@ impl RcloneManager {
             }
         }
 
-        let _ = app.emit("mount-state-changed", self.mount_state());
+        app.emit_mount_state(self.mount_state());
         Ok(())
-    }
-
-    pub fn is_google_drive_configured(&self) -> bool {
-        is_google_drive_configured()
     }
 
     pub fn configure_google_drive(
         &self,
-        app: &AppHandle,
+        app: &Host,
         google_drive: &GoogleDriveSettings,
     ) -> Result<(), String> {
         let google_drive = google_drive.normalized();
@@ -240,7 +236,7 @@ impl RcloneManager {
 
     pub fn disconnect_google_drive(
         &self,
-        app: &AppHandle,
+        app: &Host,
         google_drive: &GoogleDriveSettings,
     ) -> Result<(), String> {
         let google_drive = google_drive.normalized();
@@ -257,7 +253,7 @@ impl RcloneManager {
 
     pub fn test_google_drive_connection(
         &self,
-        app: &AppHandle,
+        app: &Host,
         google_drive: &GoogleDriveSettings,
     ) -> Result<(), String> {
         let google_drive = google_drive.normalized();
@@ -296,13 +292,9 @@ impl RcloneManager {
         }
     }
 
-    pub fn is_one_drive_configured(&self) -> bool {
-        is_one_drive_configured()
-    }
-
     pub fn configure_one_drive(
         &self,
-        app: &AppHandle,
+        app: &Host,
         one_drive: &OneDriveSettings,
     ) -> Result<(), String> {
         let _one_drive = one_drive.normalized();
@@ -432,7 +424,7 @@ impl RcloneManager {
 
     pub fn disconnect_one_drive(
         &self,
-        app: &AppHandle,
+        app: &Host,
         one_drive: &OneDriveSettings,
     ) -> Result<(), String> {
         let one_drive = one_drive.normalized();
@@ -449,7 +441,7 @@ impl RcloneManager {
 
     pub fn test_one_drive_connection(
         &self,
-        app: &AppHandle,
+        app: &Host,
         one_drive: &OneDriveSettings,
     ) -> Result<(), String> {
         let one_drive = one_drive.normalized();
@@ -484,13 +476,9 @@ impl RcloneManager {
         }
     }
 
-    pub fn is_seedbox_configured(&self) -> bool {
-        is_seedbox_configured()
-    }
-
     pub fn configure_seedbox(
         &self,
-        app: &AppHandle,
+        app: &Host,
         seedbox: &SeedboxSettings,
         password: &str,
     ) -> Result<(), String> {
@@ -499,57 +487,32 @@ impl RcloneManager {
             return Err("Enter Seedbox host, username, port, and mount target.".to_string());
         }
         let password = password.trim();
-        let resolved_password = if password.is_empty() {
-            if config::has_config_section(&rclone_config_path(), SEEDBOX_REMOTE) {
-                self.log_info("Using existing Seedbox rclone config.");
-                return Ok(());
-            }
+        let obscured_password = if password.is_empty() {
+            // No password typed or saved: keep the one already in rclone.conf.
+            // This also carries a password over from the old FTPS remote.
             let saved_password = load_seedbox_password()?.unwrap_or_default();
             if saved_password.is_empty() {
-                return Err(
-                    "Seedbox config is missing. Enter your FTPS password and click Test Connection."
-                        .to_string(),
-                );
+                existing_seedbox_obscured_password()?.ok_or_else(|| {
+                    "Seedbox config is missing. Enter your password and click Test Connection."
+                        .to_string()
+                })?
+            } else {
+                obscure_password(&self.resolve_rclone_path(app)?, &saved_password)?
             }
-            saved_password
         } else {
-            password.to_string()
+            obscure_password(&self.resolve_rclone_path(app)?, password)?
         };
 
-        let rclone_path = self.resolve_rclone_path(app)?;
-        let obscured_password = obscure_password(&rclone_path, &resolved_password)?;
-
-        let lines = vec![
-            "type = ftp".to_string(),
-            format!("host = {}", seedbox.host),
-            format!("user = {}", seedbox.username),
-            format!("port = {}", seedbox.port),
-            format!("pass = {obscured_password}"),
-            "explicit_tls = true".to_string(),
-            "tls = false".to_string(),
-            format!(
-                "no_check_certificate = {}",
-                if seedbox.allow_unverified_certificate {
-                    "true"
-                } else {
-                    "false"
-                }
-            ),
-        ];
-
+        let lines = seedbox_config_lines(&seedbox, &obscured_password);
         config::upsert_config_section(&rclone_config_path(), SEEDBOX_REMOTE, &lines)?;
         self.log_info(&format!(
-            "Seedbox FTPS rclone config written to: {}",
+            "Seedbox SFTP rclone config written to: {}",
             rclone_config_path().display()
         ));
         Ok(())
     }
 
-    pub fn disconnect_seedbox(
-        &self,
-        app: &AppHandle,
-        seedbox: &SeedboxSettings,
-    ) -> Result<(), String> {
+    pub fn disconnect_seedbox(&self, app: &Host, seedbox: &SeedboxSettings) -> Result<(), String> {
         let seedbox = seedbox.normalized();
         let target = platform::seedbox_mount_target(&seedbox);
         if !target.is_empty() {
@@ -563,7 +526,7 @@ impl RcloneManager {
 
     pub fn test_seedbox_connection(
         &self,
-        app: &AppHandle,
+        app: &Host,
         seedbox: &SeedboxSettings,
         password: &str,
     ) -> Result<(), String> {
@@ -573,7 +536,7 @@ impl RcloneManager {
         let rclone_path = self.resolve_rclone_path(app)?;
         let remote_path = build_seedbox_remote_path(&seedbox);
         self.log_info(&format!(
-            "Testing Seedbox FTPS connection using {remote_path}."
+            "Testing Seedbox SFTP connection using {remote_path}."
         ));
 
         let args = vec![
@@ -598,7 +561,7 @@ impl RcloneManager {
         }
     }
 
-    pub fn unmount_all(&self, app: &AppHandle) {
+    pub fn unmount_all(&self, app: &Host) {
         let mut targets: Vec<String> = self.mounts.lock().unwrap().keys().cloned().collect();
         targets.extend(configured_mount_targets());
         let mut seen = HashSet::new();
@@ -611,10 +574,10 @@ impl RcloneManager {
         for target in &targets {
             self.cleanup_mount_folder(target);
         }
-        let _ = app.emit("mount-state-changed", self.mount_state());
+        app.emit_mount_state(self.mount_state());
     }
 
-    pub fn refresh_mount_caches(&self, app: &AppHandle) -> Result<(), String> {
+    pub fn refresh_mount_caches(&self, app: &Host) -> Result<(), String> {
         let mounts = self.running_mount_infos();
 
         if mounts.is_empty() {
@@ -638,7 +601,7 @@ impl RcloneManager {
             }
         }
 
-        let _ = app.emit("mount-state-changed", self.mount_state());
+        app.emit_mount_state(self.mount_state());
 
         if failed.is_empty() {
             self.log_info(
@@ -653,7 +616,7 @@ impl RcloneManager {
         }
     }
 
-    pub fn restart_mount_cleanup(&self, app: &AppHandle) {
+    pub fn restart_mount_cleanup(&self, app: &Host) {
         self.log_info(
             "Mount restart requested; unmounting active drives and cleaning stale rclone processes.",
         );
@@ -663,7 +626,7 @@ impl RcloneManager {
     }
 
     #[cfg(not(windows))]
-    pub fn cleanup_stale_processes(&self, app: &AppHandle) {
+    pub fn cleanup_stale_processes(&self, app: &Host) {
         let Ok(rclone_path) = self.resolve_rclone_path(app) else {
             return;
         };
@@ -696,7 +659,7 @@ impl RcloneManager {
     }
 
     #[cfg(windows)]
-    pub fn cleanup_stale_processes(&self, app: &AppHandle) {
+    pub fn cleanup_stale_processes(&self, app: &Host) {
         let rclone_path = self.resolve_rclone_path(app).ok();
 
         for target in configured_mount_targets() {
@@ -708,12 +671,12 @@ impl RcloneManager {
     }
 
     #[cfg(not(windows))]
-    fn cleanup_stale_mount_processes(&self, app: &AppHandle) {
+    fn cleanup_stale_mount_processes(&self, app: &Host) {
         self.cleanup_stale_processes(app);
     }
 
     #[cfg(windows)]
-    fn cleanup_stale_mount_processes(&self, app: &AppHandle) {
+    fn cleanup_stale_mount_processes(&self, app: &Host) {
         let rclone_path = self.resolve_rclone_path(app).ok();
         cleanup_windows_rclone_processes(rclone_path.as_deref());
     }
@@ -728,12 +691,7 @@ impl RcloneManager {
         }
     }
 
-    fn mount_remote(
-        &self,
-        app: &AppHandle,
-        rclone_path: &Path,
-        spec: &MountSpec,
-    ) -> Result<(), String> {
+    fn mount_remote(&self, app: &Host, rclone_path: &Path, spec: &MountSpec) -> Result<(), String> {
         platform::prepare_mount_target(&spec.target)?;
         if platform::is_mount_ready(&spec.target) {
             platform::unmount_target_with_rclone(&spec.target, Some(rclone_path));
@@ -857,7 +815,7 @@ impl RcloneManager {
                             "Mount process exited unexpectedly for {label_watch}"
                         ));
                     }
-                    let _ = app_handle.emit("mount-state-changed", current_mount_state(&mounts));
+                    app_handle.emit_mount_state(current_mount_state(&mounts));
                 }
                 break;
             }
@@ -866,7 +824,7 @@ impl RcloneManager {
         Ok(())
     }
 
-    fn unmount_one(&self, app: &AppHandle, target: &str) {
+    fn unmount_one(&self, app: &Host, target: &str) {
         self.intentional_stops
             .lock()
             .unwrap()
@@ -876,7 +834,7 @@ impl RcloneManager {
         let should_unmount = running.is_some() || platform::is_mount_ready(target);
         if !should_unmount {
             self.cleanup_mount_folder(target);
-            let _ = app.emit("mount-state-changed", self.mount_state());
+            app.emit_mount_state(self.mount_state());
             return;
         }
 
@@ -892,10 +850,10 @@ impl RcloneManager {
 
         platform::notify_mount_change(target, false);
         self.cleanup_mount_folder(target);
-        let _ = app.emit("mount-state-changed", self.mount_state());
+        app.emit_mount_state(self.mount_state());
     }
 
-    fn unmount_platform_target(&self, app: &AppHandle, target: &str) -> bool {
+    fn unmount_platform_target(&self, app: &Host, target: &str) -> bool {
         let rclone_path = self.resolve_rclone_path(app).ok();
         platform::unmount_target_with_rclone(target, rclone_path.as_deref())
     }
@@ -1249,6 +1207,33 @@ fn resolve_seedbox_password(request_password: &str) -> Result<String, String> {
     Ok(crate::credentials::load_seedbox_password()?.unwrap_or_default())
 }
 
+/// The Seedbox remote: SFTP, which the seedbox serves on the same account as
+/// FTP. Its vsFTPd drops TLS handshakes now and then, so FTPS mounts failed
+/// at random.
+fn seedbox_config_lines(seedbox: &SeedboxSettings, obscured_password: &str) -> Vec<String> {
+    vec![
+        "type = sftp".to_string(),
+        format!("host = {}", seedbox.host),
+        format!("user = {}", seedbox.username),
+        format!("port = {}", seedbox.port),
+        format!("pass = {obscured_password}"),
+    ]
+}
+
+/// The obscured password in the current Seedbox section, whatever its type.
+fn existing_seedbox_obscured_password() -> Result<Option<String>, String> {
+    let lines = config::read_config_section_lines(&rclone_config_path(), SEEDBOX_REMOTE)?;
+    Ok(lines.and_then(|lines| config_value(&lines, "pass")))
+}
+
+fn config_value(lines: &[String], key: &str) -> Option<String> {
+    lines.iter().find_map(|line| {
+        let (name, value) = line.trim().split_once('=')?;
+        let value = value.trim();
+        (name.trim() == key && !value.is_empty()).then(|| value.to_string())
+    })
+}
+
 fn build_all_mount_specs(
     request: &MountRequest,
     google_drive: &GoogleDriveSettings,
@@ -1282,7 +1267,8 @@ fn build_all_mount_specs(
         }
         if !is_seedbox_configured() {
             return Err(
-                "Seedbox is not configured. Enter your FTPS password and click Test Connection first.".to_string(),
+                "Seedbox is not configured. Enter your password and click Test Connection first."
+                    .to_string(),
             );
         }
         specs.push(build_seedbox_spec(seedbox)?);
@@ -1565,12 +1551,7 @@ pub fn has_complete_seedbox_config() -> bool {
 }
 
 fn has_config_value(lines: &[String], key: &str) -> bool {
-    lines.iter().any(|line| {
-        let Some((name, value)) = line.trim().split_once('=') else {
-            return false;
-        };
-        name.trim() == key && !value.trim().is_empty()
-    })
+    config_value(lines, key).is_some()
 }
 
 fn one_drive_config_result(response: &RcloneConfigResponse) -> Result<String, String> {
@@ -1870,7 +1851,7 @@ mod tests {
     #[test]
     fn network_connectivity_classifier_ignores_non_network_errors() {
         for message in [
-            "macFUSE is not installed or has not been enabled.",
+            "FUSE-T is not installed.",
             "Google Drive authorization failed or was cancelled.",
             "Enter both your Backblaze B2 Application Key ID and Application Key.",
             "Mount target '/tmp/photos' is already mounted.",
@@ -2079,6 +2060,9 @@ mod tests {
         assert!(args
             .windows(2)
             .any(|pair| pair[0] == "--option" && pair[1] == "nobrowse"));
+        assert!(args
+            .windows(2)
+            .any(|pair| pair[0] == "--option" && pair[1] == "backend=nfs"));
 
         crate::test_support::clear_test_dirs();
     }
@@ -2111,7 +2095,7 @@ mod tests {
         config::upsert_config_section(
             &rclone_config_path(),
             SEEDBOX_REMOTE,
-            &["type = ftp".to_string()],
+            &["type = sftp".to_string()],
         )
         .unwrap();
 
@@ -2340,7 +2324,7 @@ mod tests {
         config::upsert_config_section(
             &rclone_config_path(),
             SEEDBOX_REMOTE,
-            &["type = ftp".to_string()],
+            &["type = sftp".to_string()],
         )
         .unwrap();
 
@@ -2419,7 +2403,7 @@ mod tests {
 
         assert_eq!(
             err,
-            "Seedbox is not configured. Enter your FTPS password and click Test Connection first."
+            "Seedbox is not configured. Enter your password and click Test Connection first."
         );
 
         crate::test_support::clear_test_dirs();
@@ -2438,7 +2422,7 @@ mod tests {
         config::upsert_config_section(
             &rclone_config_path(),
             SEEDBOX_REMOTE,
-            &["type = ftp".to_string()],
+            &["type = sftp".to_string()],
         )
         .unwrap();
         assert!(!has_complete_seedbox_config());
@@ -2451,6 +2435,55 @@ mod tests {
         .unwrap();
 
         assert!(has_complete_seedbox_config());
+
+        crate::test_support::clear_test_dirs();
+    }
+
+    #[test]
+    fn seedbox_remote_is_sftp_without_ftps_options() {
+        let seedbox = SeedboxSettings {
+            host: "box.example.com".to_string(),
+            username: "user".to_string(),
+            port: 21,
+            ..SeedboxSettings::default()
+        }
+        .normalized();
+
+        assert_eq!(
+            seedbox_config_lines(&seedbox, "obscured"),
+            vec![
+                "type = sftp",
+                "host = box.example.com",
+                "user = user",
+                "port = 22",
+                "pass = obscured",
+            ]
+        );
+    }
+
+    #[test]
+    fn existing_seedbox_password_carries_over_from_the_ftps_remote() {
+        let _guard = crate::test_support::env_lock();
+        crate::test_support::clear_test_dirs();
+        let temp = tempfile::tempdir().unwrap();
+        crate::test_support::set_test_dirs(&temp.path().join("app"), &temp.path().join("logs"));
+
+        assert_eq!(existing_seedbox_obscured_password().unwrap(), None);
+
+        config::upsert_config_section(
+            &rclone_config_path(),
+            SEEDBOX_REMOTE,
+            &[
+                "type = ftp".to_string(),
+                "pass = obscured-secret".to_string(),
+                "explicit_tls = true".to_string(),
+            ],
+        )
+        .unwrap();
+        assert_eq!(
+            existing_seedbox_obscured_password().unwrap().as_deref(),
+            Some("obscured-secret")
+        );
 
         crate::test_support::clear_test_dirs();
     }
