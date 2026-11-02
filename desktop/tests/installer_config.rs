@@ -119,6 +119,11 @@ fn release_workflow_packages_dmg_and_msi() {
     assert!(workflow.contains("cargo clippy --locked --all-targets -- -D warnings"));
     assert!(workflow.contains("bundle_dir=\"desktop/target/release/bundle\""));
     assert!(!workflow.contains("signing-identity"));
+    // Releases take their version from Cargo.toml, then the next free patch.
+    assert!(!workflow.contains("app_version=\"0.1.${GITHUB_RUN_NUMBER}\""));
+    assert!(workflow.contains("desktop/Cargo.toml | head -n 1"));
+    assert!(workflow.contains("git ls-remote --tags origin \"refs/tags/v$major_minor.*\""));
+    assert!(!workflow.contains("macos-15-intel"));
     assert!(!workflow.contains("tauri"));
 }
 

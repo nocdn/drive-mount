@@ -21,12 +21,30 @@ jobs:
       mac_arm64_dmg_name: ${{ steps.metadata.outputs.mac_arm64_dmg_name }}
 
     steps:
+      - name: Check out repository
+        uses: actions/checkout@v6
+
       - name: Compute build metadata
         id: metadata
         shell: bash
         run: |
           short_sha="${GITHUB_SHA::7}"
-          app_version="0.1.${GITHUB_RUN_NUMBER}"
+          # The version in desktop/Cargo.toml, or, once that is released, the
+          # next patch after the newest release in its major.minor line.
+          base_version="$(sed -n 's/^version = "\([0-9]*\.[0-9]*\.[0-9]*\)"$/\1/p' desktop/Cargo.toml | head -n 1)"
+          if [[ -z "$base_version" ]]; then
+            echo "No major.minor.patch version in desktop/Cargo.toml" >&2
+            exit 1
+          fi
+          major_minor="${base_version%.*}"
+          base_patch="${base_version##*.}"
+          latest_patch="$(git ls-remote --tags origin "refs/tags/v$major_minor.*" |
+            sed -n "s|.*refs/tags/v${major_minor//./\\.}\.\([0-9][0-9]*\)$|\1|p" | sort -n | tail -n 1)"
+          if [[ -n "$latest_patch" && "$latest_patch" -ge "$base_patch" ]]; then
+            app_version="$major_minor.$((latest_patch + 1))"
+          else
+            app_version="$base_version"
+          fi
           tag_name="v$app_version"
           release_name="Cloud Drive Mount $app_version"
           windows_msi_name="CloudDriveMount-$app_version-windows-x64.msi"
