@@ -19,12 +19,6 @@ export const targets = {
     executableName: "rclone",
     sha256: "c61d7a371c62bcbbe882c3423aa4b8bf63485c248dd0f692997b8f0c3f6d0c6f",
   },
-  "x86_64-apple-darwin": {
-    archiveName: `rclone-${version}-osx-amd64.zip`,
-    binaryName: "rclone-x86_64-apple-darwin",
-    executableName: "rclone",
-    sha256: "29253d0288b8fbbac46baad6e5f6add6cb01d462c79f10805bbd4631c4cdf82c",
-  },
   "x86_64-pc-windows-msvc": {
     archiveName: `rclone-${version}-windows-amd64.zip`,
     binaryName: "rclone-x86_64-pc-windows-msvc.exe",
@@ -44,10 +38,6 @@ function normalizeTargetTriple() {
 
   if ((platform === "darwin" || platform === "macos") && (arch === "arm64" || arch === "aarch64")) {
     return "aarch64-apple-darwin";
-  }
-
-  if ((platform === "darwin" || platform === "macos") && (arch === "x64" || arch === "x86_64")) {
-    return "x86_64-apple-darwin";
   }
 
   if ((platform === "win32" || platform === "windows") && (arch === "x64" || arch === "x86_64")) {

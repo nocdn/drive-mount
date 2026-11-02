@@ -160,7 +160,7 @@ fn sidecar_downloader_supports_ci_targets_without_powershell_args() {
     let script = read_repo_file("scripts/download-rclone.mjs");
 
     assert!(script.contains("rclone-aarch64-apple-darwin"));
-    assert!(script.contains("rclone-x86_64-apple-darwin"));
+    assert!(!script.contains("x86_64-apple-darwin"));
     assert!(script.contains("rclone-x86_64-pc-windows-msvc.exe"));
     assert!(script.contains("SIDECAR_TARGET_TRIPLE"));
     assert!(script.contains("\"../desktop/binaries\""));

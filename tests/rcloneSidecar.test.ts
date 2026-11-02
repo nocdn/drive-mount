@@ -10,7 +10,6 @@ describe("rclone sidecar release", () => {
   test("pins matching archives and SHA-256 hashes for every supported platform", () => {
     expect(Object.keys(targets).sort()).toEqual([
       "aarch64-apple-darwin",
-      "x86_64-apple-darwin",
       "x86_64-pc-windows-msvc",
     ]);
     for (const target of Object.values(targets)) {

@@ -19,7 +19,6 @@ jobs:
       release_name: ${{ steps.metadata.outputs.release_name }}
       windows_msi_name: ${{ steps.metadata.outputs.windows_msi_name }}
       mac_arm64_dmg_name: ${{ steps.metadata.outputs.mac_arm64_dmg_name }}
-      mac_x64_dmg_name: ${{ steps.metadata.outputs.mac_x64_dmg_name }}
 
     steps:
       - name: Compute build metadata
@@ -32,7 +31,6 @@ jobs:
           release_name="Cloud Drive Mount $app_version"
           windows_msi_name="CloudDriveMount-$app_version-windows-x64.msi"
           mac_arm64_dmg_name="CloudDriveMount-$app_version-macos-arm64.dmg"
-          mac_x64_dmg_name="CloudDriveMount-$app_version-macos-x64.dmg"
 
           echo "run_number=${GITHUB_RUN_NUMBER}" >> "$GITHUB_OUTPUT"
           echo "short_sha=$short_sha" >> "$GITHUB_OUTPUT"
@@ -41,7 +39,6 @@ jobs:
           echo "release_name=$release_name" >> "$GITHUB_OUTPUT"
           echo "windows_msi_name=$windows_msi_name" >> "$GITHUB_OUTPUT"
           echo "mac_arm64_dmg_name=$mac_arm64_dmg_name" >> "$GITHUB_OUTPUT"
-          echo "mac_x64_dmg_name=$mac_x64_dmg_name" >> "$GITHUB_OUTPUT"
 
   build-installers:
     needs: metadata
@@ -52,11 +49,6 @@ jobs:
           - name: macos-arm64
             runner: macos-15
             rust_target: aarch64-apple-darwin
-            packager_format: dmg
-            extension: dmg
-          - name: macos-x64
-            runner: macos-15-intel
-            rust_target: x86_64-apple-darwin
             packager_format: dmg
             extension: dmg
           - name: windows-x64
@@ -161,7 +153,6 @@ jobs:
           bundle_dir="desktop/target/release/bundle"
           case "${{ matrix.name }}" in
             macos-arm64) asset_name="${{ needs.metadata.outputs.mac_arm64_dmg_name }}" ;;
-            macos-x64) asset_name="${{ needs.metadata.outputs.mac_x64_dmg_name }}" ;;
             windows-x64) asset_name="${{ needs.metadata.outputs.windows_msi_name }}" ;;
             *) echo "Unknown release matrix item: ${{ matrix.name }}" >&2; exit 1 ;;
           esac
@@ -207,7 +198,6 @@ jobs:
         run: |
           test -f "release/${{ needs.metadata.outputs.windows_msi_name }}"
           test -f "release/${{ needs.metadata.outputs.mac_arm64_dmg_name }}"
-          test -f "release/${{ needs.metadata.outputs.mac_x64_dmg_name }}"
           find release -maxdepth 1 -type f -print | sort
 
       - name: Generate release notes
@@ -223,8 +213,7 @@ jobs:
 
           ### Assets
           - `${{ needs.metadata.outputs.windows_msi_name }}` - Windows x64 MSI. WinFsp must already be installed for mounting to work.
-          - `${{ needs.metadata.outputs.mac_arm64_dmg_name }}` - macOS DMG for Apple Silicon Macs.
-          - `${{ needs.metadata.outputs.mac_x64_dmg_name }}` - macOS DMG for Intel Macs.
+          - `${{ needs.metadata.outputs.mac_arm64_dmg_name }}` - macOS DMG for Apple Silicon Macs (Intel Macs are not supported).
 
           ### macOS
           The macOS app is signed with a Developer ID and notarized by Apple. Mounting needs FUSE-T (`brew install --cask fuse-t`).

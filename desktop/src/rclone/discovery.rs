@@ -39,19 +39,11 @@ fn sidecar_filenames() -> &'static [&'static str] {
     {
         &["rclone", "rclone-aarch64-apple-darwin"]
     }
-    #[cfg(all(target_os = "macos", target_arch = "x86_64"))]
-    {
-        &["rclone", "rclone-x86_64-apple-darwin"]
-    }
     #[cfg(windows)]
     {
         &["rclone.exe", "rclone-x86_64-pc-windows-msvc.exe"]
     }
-    #[cfg(not(any(
-        all(target_os = "macos", target_arch = "aarch64"),
-        all(target_os = "macos", target_arch = "x86_64"),
-        windows
-    )))]
+    #[cfg(not(any(all(target_os = "macos", target_arch = "aarch64"), windows)))]
     {
         &[] as &[&str]
     }
@@ -113,15 +105,6 @@ mod tests {
         assert_eq!(
             sidecar_filenames(),
             &["rclone", "rclone-aarch64-apple-darwin"]
-        );
-    }
-
-    #[test]
-    #[cfg(all(target_os = "macos", target_arch = "x86_64"))]
-    fn intel_macos_sidecar_filename_uses_target_triple() {
-        assert_eq!(
-            sidecar_filenames(),
-            &["rclone", "rclone-x86_64-apple-darwin"]
         );
     }
 }
