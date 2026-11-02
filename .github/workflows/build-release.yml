@@ -152,8 +152,17 @@ jobs:
           APPLE_CERTIFICATE_PASSWORD: ${{ runner.os == 'macOS' && secrets.APPLE_CERTIFICATE_PASSWORD || '' }}
           APPLE_API_KEY: ${{ runner.os == 'macOS' && secrets.APPLE_API_KEY || '' }}
           APPLE_API_ISSUER: ${{ runner.os == 'macOS' && secrets.APPLE_API_ISSUER || '' }}
+        shell: bash
         # Each runner builds for its own architecture, so no --target.
-        run: cargo packager --release --formats ${{ matrix.packager_format }}
+        # Retried because notarizing and stapling talk to Apple's servers,
+        # which sometimes drop the connection.
+        run: |
+          for attempt in 1 2 3; do
+            cargo packager --release --formats ${{ matrix.packager_format }} && exit 0
+            echo "Packaging failed (attempt $attempt of 3)." >&2
+            [[ $attempt -lt 3 ]] && sleep 30
+          done
+          exit 1
 
       - name: Notarize the DMG
         if: runner.os == 'macOS'

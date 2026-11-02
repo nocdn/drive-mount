@@ -41,6 +41,15 @@ if [[ "$status" != "Accepted" ]]; then
   exit 1
 fi
 
-xcrun stapler staple "$dmg"
+# Stapling fetches the ticket from Apple, whose servers sometimes drop the
+# connection, so try a few times.
+for attempt in 1 2 3; do
+  xcrun stapler staple "$dmg" && break
+  if [[ $attempt -eq 3 ]]; then
+    exit 1
+  fi
+  echo "Stapling failed (attempt $attempt of 3); retrying." >&2
+  sleep 30
+done
 xcrun stapler validate "$dmg"
 spctl --assess --type open --context context:primary-signature --verbose "$dmg"

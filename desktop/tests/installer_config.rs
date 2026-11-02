@@ -147,6 +147,9 @@ fn macos_releases_are_signed_and_notarized() {
     }
     assert!(workflow.contains("APPLE_API_KEY_PATH=$key_path"));
     assert!(workflow.contains("scripts/notarize-dmg.sh"));
+    // Apple's notary and ticket servers sometimes drop the connection.
+    assert!(workflow.contains("for attempt in 1 2 3; do"));
+    assert!(notarize.contains("for attempt in 1 2 3; do"));
     assert!(workflow.contains("signed with a Developer ID and notarized by Apple"));
     assert!(!workflow.contains("not Developer ID signed"));
 
