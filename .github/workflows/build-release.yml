@@ -4,6 +4,8 @@ on:
   push:
     branches:
       - main
+  # Re-run a release from the latest main without a new commit.
+  workflow_dispatch:
 
 permissions:
   contents: write
