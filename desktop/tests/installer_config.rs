@@ -233,14 +233,27 @@ fn the_release_binary_has_no_console_window_on_windows() {
 }
 
 #[test]
+fn a_system_quit_unmounts_too() {
+    let main = read_file("src/main.rs");
+    let terminate = read_file("src/terminate.rs");
+
+    // Cmd+Q, the Dock and logout terminate without returning from app.run().
+    assert!(terminate.contains("NSApplicationWillTerminateNotification"));
+    assert!(main.contains("terminate::on_terminate("));
+    assert!(main.contains("if !done.replace(true) {"));
+    assert!(main.contains("app.run();\n    quit();"));
+}
+
+#[test]
 fn quitting_unmounts_with_notifications_after_the_window_closes() {
     let main = read_file("src/main.rs");
     let backend = read_file("src/backend.rs");
     let tray = read_file("src/tray/mod.rs");
 
-    let run = main.find("app.run();").unwrap();
-    assert!(run < main.find("tray.set_quitting();").unwrap());
-    assert!(run < main.find("backend.shut_down();").unwrap());
+    // The shared quit closure runs after app.run() returns.
+    let quitting = main.find("tray.set_quitting();").unwrap();
+    assert!(quitting < main.find("backend.shut_down();").unwrap());
+    assert!(main.find("app.run();").unwrap() < main.rfind("quit();").unwrap());
     assert!(tray.contains("\"Quitting...\""));
 
     let shut_down = &backend[backend.find("pub fn shut_down(&self)").unwrap()..];

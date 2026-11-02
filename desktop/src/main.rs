@@ -12,6 +12,8 @@ mod paths;
 mod rclone;
 mod settings;
 mod single_instance;
+#[cfg(target_os = "macos")]
+mod terminate;
 mod tray;
 mod ui;
 
@@ -39,6 +41,8 @@ pub(crate) mod test_support {
     }
 }
 
+use std::cell::Cell;
+use std::rc::Rc;
 use std::sync::Arc;
 
 use backend::Backend;
@@ -99,12 +103,28 @@ fn main() {
         }
     }));
 
-    app.run();
+    // Unmounts once, however the app ends: the menu bar's Quit returns from
+    // `app.run()`, while a system quit (Cmd+Q, Dock, logout) only posts the
+    // terminate notification before AppKit exits the process.
+    let quit = Rc::new({
+        let backend = backend.clone();
+        let done = Cell::new(false);
+        move || {
+            if !done.replace(true) {
+                tray.set_quitting();
+                backend.shut_down();
+                backend.log_info("Cloud Drive Mount quit.");
+            }
+        }
+    });
+    #[cfg(target_os = "macos")]
+    terminate::on_terminate({
+        let quit = quit.clone();
+        move || quit()
+    });
 
-    // The window is gone; unmount before the process ends.
-    tray.set_quitting();
-    backend.shut_down();
-    backend.log_info("Cloud Drive Mount quit.");
+    app.run();
+    quit();
 }
 
 #[cfg(test)]

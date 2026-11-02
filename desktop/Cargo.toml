@@ -30,7 +30,7 @@ png = "0.18"
 block2 = "0.6.2"
 objc2 = "0.6.4"
 objc2-app-kit = { version = "0.3.2", features = ["NSApplication", "NSImage", "NSMenu", "NSMenuItem", "NSStatusBar", "NSStatusBarButton", "NSStatusItem", "NSButton", "NSControl", "NSResponder", "NSView", "NSRunningApplication", "NSWindow"] }
-objc2-foundation = { version = "0.3.2", features = ["NSData", "NSGeometry", "NSObject", "NSString", "NSThread", "NSTimer", "NSRunLoop", "NSDate"] }
+objc2-foundation = { version = "0.3.2", features = ["NSData", "NSGeometry", "NSObject", "NSString", "NSThread", "NSTimer", "NSRunLoop", "NSDate", "NSNotification", "NSOperation"] }
 
 [target.'cfg(windows)'.dependencies]
 windows = { version = "0.62", features = ["Win32_Foundation", "Win32_Graphics_Dwm", "Win32_Storage_FileSystem", "Win32_System_Registry", "Win32_UI_Shell", "Win32_UI_WindowsAndMessaging"] }
