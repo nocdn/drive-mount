@@ -119,10 +119,14 @@ impl Backend {
         self.rclone.mount_all(&self.host, &request)
     }
 
-    pub fn configure_google_drive(&self, google_drive: GoogleDriveSettings) -> Result<(), String> {
+    pub fn configure_google_drive(
+        &self,
+        google_drive: GoogleDriveSettings,
+        client_secret: &str,
+    ) -> Result<(), String> {
         save_section(|settings| settings.google_drive = google_drive.normalized())?;
         self.rclone
-            .configure_google_drive(&self.host, &google_drive)
+            .configure_google_drive(&self.host, &google_drive, client_secret)
     }
 
     pub fn disconnect_google_drive(&self, google_drive: GoogleDriveSettings) -> Result<(), String> {
@@ -374,6 +378,7 @@ mod tests {
             google_drive: GoogleDriveSettings {
                 remote_path: " :/Team\\Docs ".to_string(),
                 root_folder_id: " root ".to_string(),
+                ..GoogleDriveSettings::default()
             },
             one_drive: OneDriveSettings {
                 remote_path: " :/Personal\\Docs ".to_string(),

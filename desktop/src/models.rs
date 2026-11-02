@@ -38,6 +38,11 @@ pub struct GoogleDriveSettings {
     pub remote_path: String,
     #[serde(default)]
     pub root_folder_id: String,
+    /// The user's own Google OAuth client, so Google's rate limits count only
+    /// their requests. Empty means rclone's shared client. Its secret is only
+    /// needed to connect, after which it lives in the saved rclone config.
+    #[serde(default)]
+    pub client_id: String,
 }
 
 impl GoogleDriveSettings {
@@ -45,6 +50,7 @@ impl GoogleDriveSettings {
         let mut settings = self.clone();
         settings.remote_path = crate::paths::normalize_google_drive_path(&settings.remote_path);
         settings.root_folder_id = settings.root_folder_id.trim().to_string();
+        settings.client_id = settings.client_id.trim().to_string();
         settings
     }
 }
@@ -309,11 +315,13 @@ mod tests {
         let settings = GoogleDriveSettings {
             remote_path: " :/Team\\Shared ".to_string(),
             root_folder_id: " root-id \n".to_string(),
+            client_id: " 123.apps.googleusercontent.com\n".to_string(),
         }
         .normalized();
 
         assert_eq!(settings.remote_path, "Team/Shared");
         assert_eq!(settings.root_folder_id, "root-id");
+        assert_eq!(settings.client_id, "123.apps.googleusercontent.com");
     }
 
     #[test]

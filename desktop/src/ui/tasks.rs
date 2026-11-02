@@ -268,6 +268,7 @@ impl Ui {
         let mut settings = self.form.settings(self.platform);
         settings.selected_provider = CloudProvider::GoogleDrive;
         let connected = self.credentials.google_drive;
+        let client_secret = self.form.gdrive_client_secret.text.trim().to_string();
         self.run(
             move |backend| {
                 let google_drive = settings.google_drive.clone();
@@ -279,7 +280,7 @@ impl Ui {
                     backend.log_info(
                         "Starting Google Drive authorization. Complete the sign-in in your browser.",
                     );
-                    backend.configure_google_drive(google_drive)?;
+                    backend.configure_google_drive(google_drive, &client_secret)?;
                     backend.log_info(
                         "Google Drive is connected. Use Save and mount all to mount it.",
                     );
@@ -289,6 +290,8 @@ impl Ui {
             move |ui, result: Result<(), String>| {
                 if result.is_ok() {
                     ui.credentials.google_drive = !connected;
+                    // Saved with the rclone config now.
+                    ui.form.gdrive_client_secret.replace_text("");
                 }
                 let failed = if connected {
                     "Couldn't disconnect Google Drive"

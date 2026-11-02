@@ -15,12 +15,13 @@ use serde::Deserialize;
 
 use crate::credentials::{
     delete_google_drive_config, delete_one_drive_config, load_b2_credentials,
-    load_seedbox_password, save_google_drive_config, save_one_drive_config, save_seedbox_password,
+    load_google_drive_config, load_seedbox_password, save_google_drive_config,
+    save_one_drive_config, save_seedbox_password,
 };
 #[cfg(not(test))]
 use crate::credentials::{
     has_saved_google_drive_config, has_saved_one_drive_config, has_saved_seedbox_password,
-    load_google_drive_config, load_one_drive_config,
+    load_one_drive_config,
 };
 use crate::logging::{redact_sensitive_line, LogEmitter};
 use crate::models::{
@@ -177,8 +178,17 @@ impl RcloneManager {
         &self,
         app: &Host,
         google_drive: &GoogleDriveSettings,
+        client_secret: &str,
     ) -> Result<(), String> {
         let google_drive = google_drive.normalized();
+        let client = google_client_args(
+            &google_drive.client_id,
+            client_secret,
+            load_google_drive_config()?.as_deref(),
+            std::fs::read_to_string(crate::paths::app_data_dir().join(GOOGLE_CLIENT_FILE))
+                .ok()
+                .as_deref(),
+        )?;
         let rclone_path = self.resolve_rclone_path(app)?;
         ensure_app_data_dir()?;
 
@@ -190,12 +200,23 @@ impl RcloneManager {
             "create".to_string(),
             GDRIVE_REMOTE.to_string(),
             "drive".to_string(),
+        ];
+        if client.is_empty() {
+            self.log_info("Using rclone's shared Google client, which Google rate-limits.");
+        } else {
+            self.log_info(&format!(
+                "Using your Google client {}.",
+                google_drive.client_id
+            ));
+        }
+        args.extend(client);
+        args.extend([
             "scope".to_string(),
             "drive".to_string(),
             "config_is_local".to_string(),
             "true".to_string(),
             "--no-output".to_string(),
-        ];
+        ]);
 
         if !google_drive.root_folder_id.is_empty() {
             args.push("root_folder_id".to_string());
@@ -1031,6 +1052,51 @@ pub fn is_one_drive_configured() -> bool {
     {
         config::has_config_section(&rclone_config_path(), ONEDRIVE_REMOTE)
     }
+}
+
+/// Where the client's JSON from Google Cloud ("Download JSON") can be put,
+/// so connecting finds the secret without it being typed in.
+pub const GOOGLE_CLIENT_FILE: &str = "google-oauth-client.json";
+
+/// The `rclone config create` options for the user's own Google client:
+/// none for rclone's shared one. Without a typed secret, it uses the one
+/// saved with the last connection, then the downloaded client file, when
+/// their client ID matches.
+fn google_client_args(
+    client_id: &str,
+    client_secret: &str,
+    saved: Option<&[String]>,
+    downloaded: Option<&str>,
+) -> Result<Vec<String>, String> {
+    let client_id = client_id.trim();
+    if client_id.is_empty() {
+        return Ok(Vec::new());
+    }
+    let client_secret = match client_secret.trim() {
+        "" => saved
+            .filter(|lines| config_value(lines, "client_id").as_deref() == Some(client_id))
+            .and_then(|lines| config_value(lines, "client_secret"))
+            .or_else(|| downloaded.and_then(|json| downloaded_client_secret(json, client_id)))
+            .ok_or_else(|| "Enter the client secret for your Google client ID.".to_string())?,
+        secret => secret.to_string(),
+    };
+    Ok(vec![
+        "client_id".to_string(),
+        client_id.to_string(),
+        "client_secret".to_string(),
+        client_secret,
+    ])
+}
+
+/// The secret in a Google Cloud client JSON (`installed` for a Desktop app
+/// client), if it belongs to `client_id`.
+fn downloaded_client_secret(json: &str, client_id: &str) -> Option<String> {
+    let value: serde_json::Value = serde_json::from_str(json).ok()?;
+    let client = value.get("installed").or_else(|| value.get("web"))?;
+    (client.get("client_id")?.as_str()? == client_id)
+        .then(|| client.get("client_secret")?.as_str().map(str::to_string))
+        .flatten()
+        .filter(|secret| !secret.is_empty())
 }
 
 fn ensure_google_drive_config() -> Result<(), String> {
@@ -2437,6 +2503,79 @@ mod tests {
         assert!(has_complete_seedbox_config());
 
         crate::test_support::clear_test_dirs();
+    }
+
+    #[test]
+    fn google_drive_uses_the_shared_client_without_a_client_id() {
+        assert!(google_client_args(" ", "secret", None, None)
+            .unwrap()
+            .is_empty());
+    }
+
+    #[test]
+    fn google_drive_passes_the_users_own_client_to_rclone() {
+        assert_eq!(
+            google_client_args(" id.apps.googleusercontent.com ", " secret ", None, None).unwrap(),
+            vec![
+                "client_id",
+                "id.apps.googleusercontent.com",
+                "client_secret",
+                "secret",
+            ]
+        );
+    }
+
+    #[test]
+    fn google_drive_reconnects_with_the_saved_secret_for_the_same_client() {
+        let saved = [
+            "type = drive".to_string(),
+            "client_id = id.apps.googleusercontent.com".to_string(),
+            "client_secret = saved-secret".to_string(),
+        ];
+
+        assert_eq!(
+            google_client_args("id.apps.googleusercontent.com", "", Some(&saved), None).unwrap()[3],
+            "saved-secret"
+        );
+        assert_eq!(
+            google_client_args("other.apps.googleusercontent.com", "", Some(&saved), None)
+                .unwrap_err(),
+            "Enter the client secret for your Google client ID."
+        );
+        assert!(google_client_args("id.apps.googleusercontent.com", "", None, None).is_err());
+    }
+
+    #[test]
+    fn google_drive_finds_the_secret_in_the_downloaded_client_file() {
+        let downloaded = r#"{"installed":{"client_id":"id.apps.googleusercontent.com","project_id":"p","client_secret":"file-secret","redirect_uris":["http://localhost"]}}"#;
+
+        assert_eq!(
+            google_client_args("id.apps.googleusercontent.com", "", None, Some(downloaded))
+                .unwrap()[3],
+            "file-secret"
+        );
+        // A typed secret wins, and another client's file isn't used.
+        assert_eq!(
+            google_client_args(
+                "id.apps.googleusercontent.com",
+                "typed",
+                None,
+                Some(downloaded)
+            )
+            .unwrap()[3],
+            "typed"
+        );
+        assert!(google_client_args(
+            "other.apps.googleusercontent.com",
+            "",
+            None,
+            Some(downloaded)
+        )
+        .is_err());
+        assert!(
+            google_client_args("id.apps.googleusercontent.com", "", None, Some("not json"))
+                .is_err()
+        );
     }
 
     #[test]

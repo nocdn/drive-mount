@@ -45,6 +45,9 @@ pub struct Form {
     pub buckets: Vec<BucketDraft>,
     pub gdrive_path: TextEdit,
     pub gdrive_root: TextEdit,
+    pub gdrive_client_id: TextEdit,
+    /// Only kept until the next connect, which saves it with the rclone config.
+    pub gdrive_client_secret: TextEdit,
     pub onedrive_path: TextEdit,
     pub seedbox_host: TextEdit,
     pub seedbox_port: TextEdit,
@@ -65,6 +68,8 @@ impl Form {
             buckets: Vec::new(),
             gdrive_path: TextEdit::new(settings.google_drive.remote_path.clone()),
             gdrive_root: TextEdit::new(settings.google_drive.root_folder_id.clone()),
+            gdrive_client_id: TextEdit::new(settings.google_drive.client_id.clone()),
+            gdrive_client_secret: TextEdit::new("").secure(),
             onedrive_path: TextEdit::new(settings.one_drive.remote_path.clone()),
             seedbox_host: TextEdit::new(settings.seedbox.host.clone()),
             seedbox_port: TextEdit::new(settings.seedbox.normalized().port.to_string()),
@@ -141,6 +146,7 @@ impl Form {
         GoogleDriveSettings {
             remote_path: self.gdrive_path.text.trim().to_string(),
             root_folder_id: self.gdrive_root.text.trim().to_string(),
+            client_id: self.gdrive_client_id.text.trim().to_string(),
         }
     }
 

@@ -113,7 +113,7 @@ fn configured(ui: &mut Ui, platform: Platform) {
         ],
         google_drive: GoogleDriveSettings {
             remote_path: "Work".into(),
-            root_folder_id: String::new(),
+            ..GoogleDriveSettings::default()
         },
         seedbox: SeedboxSettings {
             host: "lyra.usbx.me".into(),

@@ -398,12 +398,54 @@ pub(super) fn google_drive(ui: &Ui, p: Paint) -> El {
             ),
         ],
     );
+    let client = section(
+        p,
+        "client",
+        "Google client",
+        vec![
+            setting_row(
+                p,
+                "client-id",
+                "Client ID",
+                Some("From a Desktop app OAuth client in Google Cloud"),
+                text_field(
+                    p,
+                    "client-id-field",
+                    &ui.form.gdrive_client_id,
+                    |ui| &mut ui.form.gdrive_client_id,
+                    "rclone's shared client",
+                    FIELD_WIDTH,
+                    false,
+                ),
+            ),
+            setting_row(
+                p,
+                "client-secret",
+                "Client secret",
+                Some("Or put the downloaded JSON in the app folder as google-oauth-client.json"),
+                secret_field(
+                    p,
+                    "client-secret-field",
+                    &ui.form.gdrive_client_secret,
+                    |ui| &mut ui.form.gdrive_client_secret,
+                    "Optional",
+                    false,
+                ),
+            ),
+        ],
+    )
+    .child(note(
+        "client-help",
+        "Your own client keeps Google's rate limits to your requests. Disconnect and connect again after changing it",
+        p.muted(),
+    ));
     scroll_body(
         "google-drive-body",
         page("google-drive")
             .children(failure_banner(ui, p))
             .child(account)
-            .child(folder),
+            .child(folder)
+            .child(client),
     )
 }
 
