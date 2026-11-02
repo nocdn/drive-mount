@@ -2,7 +2,6 @@ import SwiftUI
 
 struct ContentView: View {
     @Environment(ConnectionListViewModel.self) private var viewModel
-    @State private var isAddingConnection = false
 
     var body: some View {
         NavigationStack {
@@ -67,18 +66,19 @@ struct ContentView: View {
                 }
             }
             .toolbar {
-                ToolbarItem(placement: .topBarTrailing) {
-                    Button {
-                        isAddingConnection = true
-                    } label: {
-                        Label("Add Connection", systemImage: "plus")
+                ToolbarItem(placement: .primaryAction) {
+                    Menu("Add Connection", systemImage: "plus") {
+                        ForEach(CloudProvider.allCases) { provider in
+                            Button(provider.displayName, systemImage: provider.symbolName) {
+                                Task {
+                                    await viewModel.addConnection(provider: provider)
+                                }
+                            }
+                            .accessibilityIdentifier("add-provider-\(provider.rawValue)")
+                        }
                     }
                     .accessibilityIdentifier("add-connection-button")
                 }
-            }
-            .sheet(isPresented: $isAddingConnection) {
-                AddConnectionView()
-                    .environment(viewModel)
             }
             .refreshable {
                 await viewModel.syncFileProviderDomains()

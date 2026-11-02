@@ -14,6 +14,21 @@ final class DriveMountUITests: XCTestCase {
         XCTAssertTrue(app.buttons["add-connection-button"].exists)
     }
 
+    func testAddConnectionMenuListsAllProviders() {
+        let app = XCUIApplication()
+        app.launchArguments = ["--uitesting"]
+        app.launch()
+
+        let addButton = app.buttons["add-connection-button"]
+        XCTAssertTrue(addButton.waitForExistence(timeout: 5))
+        addButton.tap()
+
+        XCTAssertTrue(app.buttons["add-provider-b2"].waitForExistence(timeout: 2))
+        XCTAssertTrue(app.buttons["add-provider-googleDrive"].exists)
+        XCTAssertTrue(app.buttons["add-provider-oneDrive"].exists)
+        XCTAssertTrue(app.buttons["add-provider-seedbox"].exists)
+    }
+
     func testSeededB2ConnectionAppearsWhenEnvironmentIsPresent() throws {
         let bucket = Self.environmentValue("DRIVEMOUNT_TEST_B2_BUCKET")
         let keyID = Self.environmentValue("DRIVEMOUNT_TEST_B2_KEY_ID")

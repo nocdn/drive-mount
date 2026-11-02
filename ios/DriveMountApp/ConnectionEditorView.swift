@@ -131,7 +131,7 @@ private struct SeedboxFields: View {
     @Binding var settings: SeedboxConnectionSettings
 
     var body: some View {
-        Section("Seedbox") {
+        Section {
             TextField("Host", text: $settings.host)
                 .textInputAutocapitalization(.never)
                 .autocorrectionDisabled()
@@ -148,17 +148,13 @@ private struct SeedboxFields: View {
             Stepper(value: $settings.port, in: 1...65535) {
                 LabeledContent("SFTP Port", value: "\(settings.port)")
             }
-            Text("SFTP is used for large downloads. Port 22 is the usual seedbox port.")
-                .font(.caption)
-                .foregroundStyle(.secondary)
-            if settings.port == 21 {
-                Text("Port 21 is the old FTPS default. Files will connect with SFTP on port 22.")
-                    .font(.caption)
-                    .foregroundStyle(.secondary)
-            }
             TextField("Remote path", text: $settings.remotePath)
                 .textInputAutocapitalization(.never)
             Toggle("Read Only", isOn: $settings.readOnly)
+        } header: {
+            Text("Seedbox")
+        } footer: {
+            Text("SFTP is used for large downloads. Port 22 is the usual seedbox port; port 21 (the old FTPS default) still connects over SFTP on 22.")
         }
     }
 }

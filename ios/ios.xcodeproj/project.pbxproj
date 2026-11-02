@@ -27,7 +27,7 @@
 		A2B000000000000000000001 /* DriveMountApp.swift in Sources */ = {isa = PBXBuildFile; fileRef = A20000000000000000000001 /* DriveMountApp.swift */; };
 		A2B000000000000000000002 /* ContentView.swift in Sources */ = {isa = PBXBuildFile; fileRef = A20000000000000000000002 /* ContentView.swift */; };
 		A2B000000000000000000003 /* ConnectionListViewModel.swift in Sources */ = {isa = PBXBuildFile; fileRef = A20000000000000000000003 /* ConnectionListViewModel.swift */; };
-		A2B000000000000000000004 /* AddConnectionView.swift in Sources */ = {isa = PBXBuildFile; fileRef = A20000000000000000000004 /* AddConnectionView.swift */; };
+
 		A2B000000000000000000005 /* ConnectionEditorView.swift in Sources */ = {isa = PBXBuildFile; fileRef = A20000000000000000000005 /* ConnectionEditorView.swift */; };
 		A2B000000000000000000006 /* Assets.xcassets in Resources */ = {isa = PBXBuildFile; fileRef = A20000000000000000000006 /* Assets.xcassets */; };
 		A2B000000000000000000007 /* DriveMountFileProvider.appex in Embed App Extensions */ = {isa = PBXBuildFile; fileRef = A90000000000000000000002 /* DriveMountFileProvider.appex */; settings = {ATTRIBUTES = (CodeSignOnCopy, RemoveHeadersOnCopy, ); }; };
@@ -113,7 +113,7 @@
 		A20000000000000000000001 /* DriveMountApp.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = DriveMountApp.swift; sourceTree = "<group>"; };
 		A20000000000000000000002 /* ContentView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ContentView.swift; sourceTree = "<group>"; };
 		A20000000000000000000003 /* ConnectionListViewModel.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ConnectionListViewModel.swift; sourceTree = "<group>"; };
-		A20000000000000000000004 /* AddConnectionView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AddConnectionView.swift; sourceTree = "<group>"; };
+
 		A20000000000000000000005 /* ConnectionEditorView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ConnectionEditorView.swift; sourceTree = "<group>"; };
 		A20000000000000000000006 /* Assets.xcassets */ = {isa = PBXFileReference; lastKnownFileType = folder.assetcatalog; path = Assets.xcassets; sourceTree = "<group>"; };
 		A20000000000000000000007 /* DriveMount.entitlements */ = {isa = PBXFileReference; lastKnownFileType = text.plist.entitlements; path = DriveMount.entitlements; sourceTree = "<group>"; };
@@ -205,7 +205,6 @@
 				A20000000000000000000001 /* DriveMountApp.swift */,
 				A20000000000000000000002 /* ContentView.swift */,
 				A20000000000000000000003 /* ConnectionListViewModel.swift */,
-				A20000000000000000000004 /* AddConnectionView.swift */,
 				A20000000000000000000005 /* ConnectionEditorView.swift */,
 				A20000000000000000000006 /* Assets.xcassets */,
 				A20000000000000000000007 /* DriveMount.entitlements */,
@@ -425,7 +424,6 @@
 				A2B000000000000000000001 /* DriveMountApp.swift in Sources */,
 				A2B000000000000000000002 /* ContentView.swift in Sources */,
 				A2B000000000000000000003 /* ConnectionListViewModel.swift in Sources */,
-				A2B000000000000000000004 /* AddConnectionView.swift in Sources */,
 				A2B000000000000000000005 /* ConnectionEditorView.swift in Sources */,
 				A1B000000000000000000001 /* AppConstants.swift in Sources */,
 				A1B000000000000000000002 /* CloudProvider.swift in Sources */,
