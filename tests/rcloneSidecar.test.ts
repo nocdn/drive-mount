@@ -1,5 +1,6 @@
 import { describe, expect, test } from "bun:test";
-import { targets, version } from "../scripts/download-rclone.mjs";
+import path from "node:path";
+import { findExecutable, targets, version } from "../scripts/download-rclone.mjs";
 
 describe("rclone sidecar release", () => {
   test("includes the VFS handle caching race fix", () => {
@@ -16,5 +17,17 @@ describe("rclone sidecar release", () => {
       expect(target.archiveName).toStartWith(`rclone-${version}-`);
       expect(target.sha256).toMatch(/^[a-f0-9]{64}$/);
     }
+  });
+
+  test("finds the executable by name inside the archive's folder", () => {
+    const root = path.join("tmp", "unzipped");
+    const folder = `rclone-${version}-windows-amd64`;
+    expect(
+      findExecutable(root, [folder, `${folder}\\README.txt`, `${folder}\\rclone.exe`], "rclone.exe"),
+    ).toBe(path.join(root, `${folder}\\rclone.exe`));
+    expect(findExecutable(root, [`${folder}/RCLONE.EXE`], "rclone.exe")).toBe(
+      path.join(root, `${folder}/RCLONE.EXE`),
+    );
+    expect(findExecutable(root, [`${folder}/rclone`, `${folder}/rclone.1`], "rclone.exe")).toBeNull();
   });
 });

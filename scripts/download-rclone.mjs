@@ -91,7 +91,16 @@ async function extractZip(zipPath, destDir) {
   await fs.mkdir(destDir, { recursive: true });
 
   if (process.platform === "win32") {
+    // Windows' own bsdtar reads zip archives; Expand-Archive is the fallback
+    // on a Windows without it.
+    try {
+      await run("tar.exe", ["-xf", zipPath, "-C", destDir]);
+      return;
+    } catch (error) {
+      console.warn(`tar.exe could not extract the archive, trying Expand-Archive: ${error.message}`);
+    }
     const command = [
+      "$ErrorActionPreference = 'Stop';",
       "Expand-Archive",
       "-LiteralPath",
       powerShellSingleQuoted(zipPath),
@@ -118,20 +127,22 @@ async function extractZip(zipPath, destDir) {
   await run("unzip", ["-q", zipPath, "-d", destDir]);
 }
 
-async function findExtractedBinary(root, executableName) {
-  const entries = await fs.readdir(root, { withFileTypes: true });
-  for (const entry of entries) {
-    const entryPath = path.join(root, entry.name);
-    if (entry.isDirectory()) {
-      const found = await findExtractedBinary(entryPath, executableName);
-      if (found) {
-        return found;
-      }
-    } else if (entry.name === executableName) {
-      return entryPath;
-    }
-  }
-  return null;
+/** Every file under `root`, relative to it. */
+export async function listFiles(root) {
+  const entries = await fs.readdir(root, { recursive: true });
+  return entries.map((entry) => entry.toString());
+}
+
+/**
+ * The path of `executableName` among `files` (relative to `root`), matched by
+ * name alone: directory entry types aren't relied on, which some Windows
+ * file systems leave unknown.
+ */
+export function findExecutable(root, files, executableName) {
+  const match = files.find(
+    (file) => path.basename(file.replaceAll("\\", "/")).toLowerCase() === executableName.toLowerCase(),
+  );
+  return match ? path.join(root, match) : null;
 }
 
 async function main() {
@@ -164,9 +175,12 @@ async function main() {
     await fs.writeFile(zipPath, archive);
     await extractZip(zipPath, unzipDir);
 
-    const found = await findExtractedBinary(unzipDir, target.executableName);
+    const files = await listFiles(unzipDir);
+    const found = findExecutable(unzipDir, files, target.executableName);
     if (!found) {
-      throw new Error(`Downloaded archive did not contain ${target.executableName}`);
+      throw new Error(
+        `Downloaded archive did not contain ${target.executableName}; extracted: ${files.join(", ") || "nothing"}`,
+      );
     }
 
     await fs.copyFile(found, dest);
