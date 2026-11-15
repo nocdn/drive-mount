@@ -105,15 +105,25 @@ fn main() {
 
     // Unmounts once, however the app ends: the menu bar's Quit returns from
     // `app.run()`, while a system quit (Cmd+Q, Dock, logout) only posts the
-    // terminate notification before AppKit exits the process.
+    // terminate notification before AppKit exits the process. Rune ends the
+    // process the moment it quits unless asked for an orderly exit, and its
+    // own quit hook runs only in open windows, while this app usually runs
+    // with none, in the menu bar.
     let quit = Rc::new({
         let backend = backend.clone();
         let done = Cell::new(false);
         move || {
             if !done.replace(true) {
                 tray.set_quitting();
-                backend.shut_down();
-                backend.log_info("Cloud Drive Mount quit.");
+                // On a worker thread: the quit's notifications spin a run
+                // loop, and on the main thread that runs winit's observers
+                // after its event loop has ended, which aborts the app.
+                let backend = backend.clone();
+                let _ = std::thread::spawn(move || {
+                    backend.shut_down();
+                    backend.log_info("Cloud Drive Mount quit.");
+                })
+                .join();
             }
         }
     });
@@ -123,6 +133,7 @@ fn main() {
         move || quit()
     });
 
+    rune::orderly_exit();
     app.run();
     quit();
 }

@@ -13,9 +13,9 @@ path = "src/main.rs"
 # The window is drawn with Rune (https://github.com/anomalyco/rune) in OpenCode's
 # design language, the same way Hex is. Keep all three on one Rune revision.
 [dependencies]
-rune = { git = "https://github.com/anomalyco/rune.git", rev = "f5def6d4f9259580cbbd6472498e4de6b4d754b6" }
-rune-kit = { git = "https://github.com/anomalyco/rune.git", rev = "f5def6d4f9259580cbbd6472498e4de6b4d754b6" }
-rune-theme-opencode = { git = "https://github.com/anomalyco/rune.git", rev = "f5def6d4f9259580cbbd6472498e4de6b4d754b6" }
+rune = { git = "https://github.com/anomalyco/rune.git", rev = "30c564251a9c0e2687720a5b12c903af04d5f2b1" }
+rune-kit = { git = "https://github.com/anomalyco/rune.git", rev = "30c564251a9c0e2687720a5b12c903af04d5f2b1" }
+rune-theme-opencode = { git = "https://github.com/anomalyco/rune.git", rev = "30c564251a9c0e2687720a5b12c903af04d5f2b1" }
 serde = { version = "1", features = ["derive"] }
 serde_json = "1"
 thiserror = "2"
@@ -34,6 +34,16 @@ objc2-foundation = { version = "0.3.2", features = ["NSData", "NSGeometry", "NSO
 
 [target.'cfg(windows)'.dependencies]
 windows = { version = "0.62", features = ["Win32_Foundation", "Win32_Graphics_Dwm", "Win32_Storage_FileSystem", "Win32_System_Registry", "Win32_UI_Shell", "Win32_UI_WindowsAndMessaging"] }
+
+# The crates Rune patches in its own workspace ("Depending on Rune" in Rune's
+# README): a dependency's [patch] never reaches the app that uses it. Keep the
+# rev the same as the Rune pin above.
+[patch.crates-io]
+winit = { git = "https://github.com/anomalyco/rune.git", rev = "30c564251a9c0e2687720a5b12c903af04d5f2b1" }
+parley_engine = { git = "https://github.com/anomalyco/rune.git", rev = "30c564251a9c0e2687720a5b12c903af04d5f2b1" }
+wgpu-hal = { git = "https://github.com/anomalyco/rune.git", rev = "30c564251a9c0e2687720a5b12c903af04d5f2b1" }
+accesskit_windows = { git = "https://github.com/anomalyco/rune.git", rev = "30c564251a9c0e2687720a5b12c903af04d5f2b1" }
+accesskit_macos = { git = "https://github.com/anomalyco/rune.git", rev = "30c564251a9c0e2687720a5b12c903af04d5f2b1" }
 
 [dev-dependencies]
 tempfile = "3"

@@ -495,14 +495,18 @@ fn on_reopen(ui: &mut Ui, has_visible_windows: bool, _: &mut Tx) -> bool {
     true
 }
 
-/// Shows the window in front of whatever app is active.
+/// Shows the window in front of whatever app is active, as the active app,
+/// so it takes the keyboard and its traffic lights are lit. The cooperative
+/// `activate` is refused when the request isn't a click in this app (a second
+/// launch, the menu bar item's menu), leaving the window in front but grey.
 pub fn bring_forward(window: &rune::AppHandle<Ui>) {
     window.open();
     window.focus();
     #[cfg(target_os = "macos")]
     window.update_if(|_, _| {
         if let Some(mtm) = objc2_foundation::MainThreadMarker::new() {
-            objc2_app_kit::NSApplication::sharedApplication(mtm).activate();
+            #[allow(deprecated)]
+            objc2_app_kit::NSApplication::sharedApplication(mtm).activateIgnoringOtherApps(true);
         }
         false
     });

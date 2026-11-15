@@ -241,7 +241,13 @@ fn a_system_quit_unmounts_too() {
     assert!(terminate.contains("NSApplicationWillTerminateNotification"));
     assert!(main.contains("terminate::on_terminate("));
     assert!(main.contains("if !done.replace(true) {"));
-    assert!(main.contains("app.run();\n    quit();"));
+    assert!(main.contains("rune::orderly_exit();\n    app.run();\n    quit();"));
+    // After app.run() returns, a notification sent from the main thread runs
+    // winit's leftover run loop observers and aborts before anything unmounts.
+    let quitting = &main[main.find("tray.set_quitting();").unwrap()..];
+    let worker = quitting.find("std::thread::spawn(move || {").unwrap();
+    assert!(worker < quitting.find("backend.shut_down();").unwrap());
+    assert!(quitting.contains(".join();"));
 }
 
 #[test]
@@ -342,4 +348,53 @@ fn macos_dev_builds_are_signed_with_the_installers_identity() {
     assert!(!manifest_dir()
         .join("../scripts/create-signing-certificate.sh")
         .exists());
+}
+
+#[test]
+fn rune_and_its_patched_crates_share_one_revision() {
+    let cargo = read_file("Cargo.toml");
+    let revs: Vec<&str> = cargo
+        .lines()
+        .filter(|line| line.contains("github.com/anomalyco/rune.git"))
+        .map(|line| {
+            let rest = line
+                .split("rev = \"")
+                .nth(1)
+                .expect("a rune line pins a rev");
+            &rest[..rest.find('"').expect("the rev is quoted")]
+        })
+        .collect();
+    // rune, rune-kit, rune-theme-opencode, and the crates Rune patches, which
+    // a dependency's own [patch] never reaches.
+    assert_eq!(revs.len(), 8, "{revs:?}");
+    assert!(revs.iter().all(|rev| *rev == revs[0]), "{revs:?}");
+    assert!(cargo.contains("[patch.crates-io]"));
+    for patched in [
+        "winit",
+        "parley_engine",
+        "wgpu-hal",
+        "accesskit_windows",
+        "accesskit_macos",
+    ] {
+        assert!(
+            cargo.contains(&format!(
+                "\n{patched} = {{ git = \"https://github.com/anomalyco/rune.git\""
+            )),
+            "{patched}"
+        );
+    }
+}
+
+#[test]
+fn showing_the_window_makes_the_app_active_on_macos() {
+    let ui = read_file("src/ui/mod.rs");
+    let bring_forward = &ui[ui
+        .find("pub fn bring_forward")
+        .expect("bring_forward exists")..];
+    let bring_forward = &bring_forward[..bring_forward.find("\n}\n").expect("its body ends")];
+
+    // The cooperative `activate` is refused unless the request is a click in
+    // the app, which left the window in front with grey traffic lights.
+    assert!(bring_forward.contains("activateIgnoringOtherApps(true)"));
+    assert!(!bring_forward.contains(".activate()"));
 }
