@@ -365,17 +365,22 @@ fn rune_and_its_patched_crates_share_one_revision() {
         })
         .collect();
     // rune, rune-kit, rune-theme-opencode, and the crates Rune patches, which
-    // a dependency's own [patch] never reaches.
-    assert_eq!(revs.len(), 8, "{revs:?}");
+    // a dependency's own [patch] never reaches: exactly the list in Rune's own
+    // [patch.crates-io] at that rev.
+    let patched = [
+        "wgpu-hal",
+        "naga",
+        "winit",
+        "sctk-adwaita",
+        "parley_engine",
+        "accesskit_windows",
+        "accesskit_atspi_common",
+        "accesskit_macos",
+    ];
+    assert_eq!(revs.len(), 3 + patched.len(), "{revs:?}");
     assert!(revs.iter().all(|rev| *rev == revs[0]), "{revs:?}");
     assert!(cargo.contains("[patch.crates-io]"));
-    for patched in [
-        "winit",
-        "parley_engine",
-        "wgpu-hal",
-        "accesskit_windows",
-        "accesskit_macos",
-    ] {
+    for patched in patched {
         assert!(
             cargo.contains(&format!(
                 "\n{patched} = {{ git = \"https://github.com/anomalyco/rune.git\""

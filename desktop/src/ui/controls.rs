@@ -1,8 +1,8 @@
 //! Settings controls on `rune-kit`, in OpenCode's design language
 //! (`rune-theme-opencode`), following Hex's building blocks: the page, the
 //! raised card of rows, the row, switch, select menu, buttons, tags and
-//! notes. Colours, type, radii, elevation and motion come from the kit's
-//! tokens; the numbers left here are layout metrics.
+//! notes. The kit supplies the visual tokens, with a Windows caption color
+//! for the Close button.
 
 use rune::{col, edit_access, el, row, text, Color, El, TextEdit, TextStyle, Tx};
 use rune_kit::{
@@ -348,6 +348,71 @@ pub(super) fn overflow(
         .build(p.k)
         .key(format!("{key}-trigger"));
     menu.trigger(trigger).build(p.k, layer)
+}
+
+/// A window control's side: Small, the nearest to a traffic light's 14 pt
+/// that still leaves its glyph room.
+pub(super) const WINDOW_CONTROL: f32 = 20.0;
+
+/// Windows: the window's close, maximize and minimize, as the window has no
+/// title bar of its own there (`Titlebar::controls(false)` in `ui::app`),
+/// one traffic light's pitch apart (`ui::sidebar` puts them where the lights
+/// would be). Maximize shows restore while the window is maximized. Close
+/// hides the window to the tray, as the title bar's did.
+pub(super) fn window_controls(p: Paint, maximized: bool) -> El {
+    let (zoom_glyph, zoom_label) = if maximized {
+        (&super::icons::RESTORE, "Restore")
+    } else {
+        (&super::icons::MAXIMIZE, "Maximize")
+    };
+    let button = |key: &str, glyph: &'static rune::Icon, label: &str, press: fn(&mut Tx)| {
+        IconButton::new(glyph)
+            .variant(IconButtonVariant::Ghost)
+            .control_size(ControlSize::Small)
+            .help(label)
+            .on_press_tx(move |_: &mut Ui, tx: &mut Tx| press(tx))
+            .build(p.k)
+            .key(key)
+            .radius(p.k.radius.xs)
+    };
+    // Windows 11's CaptionControlCloseFillPrimary and corresponding pressed fill.
+    let close_red = rune::color::hex("#C42B1C").expect("valid caption color");
+    let close = row()
+        .key("close")
+        .role("button")
+        .label("Close")
+        .help("Close")
+        .size(WINDOW_CONTROL, WINDOW_CONTROL)
+        .center()
+        .radius(p.k.radius.xs)
+        .focusable(true)
+        .focus_ring(2.0, 2.0, p.k.c.border_focus)
+        .hover_fill(close_red)
+        .press_fill(close_red.alpha(0xe6 as f32 / 255.0))
+        .hover_group_pointer()
+        .press_color(Color::WHITE)
+        .on_press_tx(|_: &mut Ui, tx: &mut Tx| tx.close_window())
+        .child(
+            rune::icon(&rune_theme_opencode::icons::CLOSE, 16.0)
+                .key("icon")
+                .color(p.text())
+                .group_color(Color::WHITE)
+                .a11y_hidden(),
+        );
+    row()
+        .key("window-controls")
+        .gap(rune::Chrome::TRAFFIC_PITCH - WINDOW_CONTROL)
+        .center_y()
+        .child(close)
+        .child(button("maximize", zoom_glyph, zoom_label, |tx| {
+            tx.toggle_maximized()
+        }))
+        .child(button(
+            "minimize",
+            &super::icons::MINIMIZE,
+            "Minimize",
+            |tx| tx.minimize(),
+        ))
 }
 
 #[derive(Clone, Copy, PartialEq)]

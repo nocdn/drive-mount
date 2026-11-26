@@ -16,6 +16,32 @@ macro_rules! line_icon {
     };
 }
 
+/// Minimize: a bar as wide as the theme's close cross beside it
+/// (`rune_theme_opencode::icons::CLOSE`), on its 16 point grid.
+pub(super) static MINIMIZE: Icon = Icon {
+    name: "cdm-minimize",
+    view: 16.0,
+    body: r#"<path d="M4.5 8H11.5" stroke-linecap="round" stroke="currentColor"/>"#,
+};
+
+/// Maximize: a square as wide as the close cross.
+pub(super) static MAXIMIZE: Icon = Icon {
+    name: "cdm-maximize",
+    view: 16.0,
+    body: r#"<rect x="4.5" y="4.5" width="7" height="7" rx="1" fill="none" stroke="currentColor"/>"#,
+};
+
+/// Restore, for a maximized window: a square in front of another, up and to
+/// the right, in the same 7 points as [`MAXIMIZE`].
+pub(super) static RESTORE: Icon = Icon {
+    name: "cdm-restore",
+    view: 16.0,
+    body: concat!(
+        r#"<rect x="4.5" y="6.5" width="5" height="5" rx="0.75" fill="none" stroke="currentColor"/>"#,
+        r#"<path d="M6.5 6.5V5.25C6.5 4.84 6.84 4.5 7.25 4.5H10.75C11.16 4.5 11.5 4.84 11.5 5.25V8.75C11.5 9.16 11.16 9.5 10.75 9.5H9.5" fill="none" stroke-linecap="round" stroke="currentColor"/>"#,
+    ),
+};
+
 line_icon!(
     DRIVES,
     "cdm-drives",

@@ -1,8 +1,11 @@
 //! Cloud Drive Mount's window, drawn with Rune in OpenCode's design
 //! language, following Hex's layout: a deep-background sidebar of panes and
 //! a raised, rounded content panel with the pane's title and actions on top.
+//! Neither platform shows a title bar: macOS draws its traffic lights over the
+//! sidebar's top, and Windows the app's close, maximize and minimize in their
+//! place.
 //! Views use `rune-kit` components and the kit's tokens through `Paint`
-//! (`controls.rs`); no colour literals.
+//! (`controls.rs`).
 
 mod controls;
 mod drives;
@@ -443,6 +446,12 @@ pub fn app(backend: Option<Backend>, show_on_launch: bool) -> rune::App<Ui> {
             ..rune::Chrome::DEFAULT
         })
         .on_close(on_close);
+    // Windows: no title bar (icon, title and caption buttons). The window
+    // keeps its resize edges, Aero Snap and Alt+Space; the sidebar and the
+    // pane header move it, and the sidebar's top holds the window's close,
+    // maximize and minimize (`controls::window_controls`).
+    #[cfg(windows)]
+    let app = app.titlebar(rune::Titlebar::new(TITLE_BAND).controls(false));
     let Some(backend) = backend else {
         return app;
     };
@@ -541,9 +550,9 @@ fn view(ui: &Ui, cx: &mut Cx<Ui>) -> El {
         .key("panel")
         .grow(1.0)
         .shrink()
-        .mt(8.0)
-        .mr(8.0)
-        .mb(8.0)
+        .mt(PANEL_INSET)
+        .mr(PANEL_INSET)
+        .mb(PANEL_INSET)
         .radius(p.k.radius.lg)
         .fill(p.k.c.bg_base)
         .border(p.hair, p.k.c.border_weak)
@@ -557,7 +566,7 @@ fn view(ui: &Ui, cx: &mut Cx<Ui>) -> El {
         .role("window")
         .fill(p.k.c.bg_deep)
         .hover_motion_within(Anim::INSTANT, Anim::INSTANT)
-        .child(sidebar(ui, p))
+        .child(sidebar(ui, p, cx.is_maximized()))
         .child(panel);
     rune_kit::root(window, layer)
 }
@@ -567,28 +576,38 @@ fn view(ui: &Ui, cx: &mut Cx<Ui>) -> El {
 const TRAFFIC_LIGHTS: (f32, f32) = (16.0, 18.0);
 
 /// macOS draws the traffic lights over the sidebar (Rune's window has a
-/// transparent, full-size title bar), so the navigation starts below them,
-/// as far under them as it was under AppKit's own spot.
-const SIDEBAR_TOP: f32 = if cfg!(target_os = "macos") {
-    40.0 + (TRAFFIC_LIGHTS.1 - 9.0)
-} else {
-    12.0
-};
+/// transparent, full-size title bar), and Windows has the app's window
+/// controls there instead, so the navigation starts below them, as far under
+/// them as it was under AppKit's own spot.
+const SIDEBAR_TOP: f32 = 40.0 + (TRAFFIC_LIGHTS.1 - 9.0);
+
+/// Windows: where the window controls sit in the sidebar, the three centred
+/// on the three traffic lights.
+const WINDOW_CONTROLS: (f32, f32) = (
+    TRAFFIC_LIGHTS.0 + (rune::Chrome::TRAFFIC_LIGHT - controls::WINDOW_CONTROL) / 2.0,
+    TRAFFIC_LIGHTS.1 + (rune::Chrome::TRAFFIC_LIGHT - controls::WINDOW_CONTROL) / 2.0,
+);
 const NAV_ROW_HEIGHT: f32 = 28.0;
 const NAV_ROW_GAP: f32 = 4.0;
 const NAV_GROUP_GAP: f32 = 14.0;
 
-/// On macOS the sidebar and the pane header stand in for the title bar:
-/// pressing their background moves the window.
+/// How far the content panel sits in from the window's edges.
+const PANEL_INSET: f32 = 8.0;
+const PANE_HEADER_HEIGHT: f32 = 52.0;
+/// Windows: the band the title bar was, now the pane header's
+/// (`rune::Titlebar`).
+#[cfg_attr(not(windows), allow(dead_code))]
+const TITLE_BAND: f32 = PANEL_INSET + PANE_HEADER_HEIGHT;
+
+/// The sidebar and the pane header stand in for the title bar, which macOS
+/// draws transparent (its traffic lights over the sidebar) and Windows
+/// doesn't draw: pressing their background moves the window, a double click
+/// zooms it and a right click opens the window menu.
 fn title_bar(element: El) -> El {
-    if cfg!(target_os = "macos") {
-        element.window_drag()
-    } else {
-        element
-    }
+    element.window_drag()
 }
 
-fn sidebar(ui: &Ui, p: Paint) -> El {
+fn sidebar(ui: &Ui, p: Paint, maximized: bool) -> El {
     let mut nav = source_list(col().key("nav"));
     for pane in Pane::ALL {
         let above = if pane.starts_group() {
@@ -607,6 +626,10 @@ fn sidebar(ui: &Ui, p: Paint) -> El {
         .pb(12.0)
         .pl(10.0)
         .pr(6.0)
+        .children((ui.platform == Platform::Windows).then(|| {
+            let (left, top) = WINDOW_CONTROLS;
+            controls::window_controls(p, maximized).absolute(left, top)
+        }))
         .child(nav)
         .child(el().key("spacer").grow(1.0))
         .child(footer(ui, p))
@@ -720,7 +743,7 @@ fn footer(ui: &Ui, p: Paint) -> El {
 fn pane_header(p: Paint, title: &str, actions: Vec<El>) -> El {
     title_bar(row())
         .key("pane-header")
-        .h(52.0)
+        .h(PANE_HEADER_HEIGHT)
         .px(METRICS.page_px + METRICS.label_inset)
         .gap(8.0)
         .center_y()

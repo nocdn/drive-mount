@@ -165,6 +165,137 @@ fn windows_bucket_rows_pick_a_drive_letter_from_a_menu() {
     assert_eq!(rt.state.open, Some(Menu::BucketDrive(0)));
 }
 
+/// The middle of macOS's traffic light `index` (0 to 2, left to right).
+fn traffic_light(index: usize) -> (f32, f32) {
+    let rects = rune::Chrome {
+        traffic_lights: Some(super::TRAFFIC_LIGHTS),
+        ..rune::Chrome::DEFAULT
+    }
+    .traffic_light_rects()
+    .expect("placed lights");
+    let [x, y, w, h] = rects[index];
+    (x + w / 2.0, y + h / 2.0)
+}
+
+fn near(a: (f32, f32), b: (f32, f32)) -> bool {
+    (a.0 - b.0).abs() < 0.5 && (a.1 - b.1).abs() < 0.5
+}
+
+/// The label of the element whose path ends with `key`.
+fn label(rt: &rune::Runtime<Ui>, key: &str) -> Option<String> {
+    rt.elements()
+        .into_iter()
+        .find(|element| !element.exiting && element.path.ends_with(key))
+        .and_then(|element| element.label)
+}
+
+#[test]
+fn windows_puts_its_window_controls_where_the_traffic_lights_are() {
+    let rt = runtime(scene("drives-windows"));
+    let controls = ["close", "maximize", "minimize"].map(|button| {
+        rt.find(&format!("sidebar/window-controls/{button}"))
+            .unwrap_or_else(|| panic!("{button} is in the sidebar"))
+    });
+    for (light, at) in controls.iter().enumerate() {
+        assert!(near(*at, traffic_light(light)), "{light}: {at:?}");
+    }
+    let drives = rt.find("nav-drives").expect("the first pane");
+    assert!(controls[0].1 < drives.1, "above the panes");
+    assert!(rt.find("pane-header/window-controls").is_none());
+}
+
+#[test]
+fn windows_caption_buttons_have_tighter_hover_corners() {
+    let mut rt = runtime(scene("drives-windows"));
+    let radius = rune_theme_opencode::kit(true).radius.xs;
+    for key in ["close", "maximize", "minimize"] {
+        let path = format!("window-controls/{key}");
+        let (x, y) = rt.find(&path).expect("window button");
+        rt.pointer_move(x, y);
+        rt.frame(1.0 / 60.0);
+        let button = rt
+            .elements()
+            .into_iter()
+            .find(|element| element.path.ends_with(&path))
+            .expect("window button");
+        assert_eq!(button.hover, 1.0, "{key} should be hovered");
+        assert_eq!(button.radius, radius, "{key} should use the smaller radius");
+    }
+}
+
+#[test]
+fn windows_close_hover_paints_caption_red_with_a_white_icon() {
+    let mut rt = runtime(scene("drives-windows"));
+    rt.set_srgb_blend(false);
+    let (x, y) = rt.find("window-controls/close").expect("Close button");
+    let hover_fill = rune::color::hex("#C42B1C").unwrap().premul(1.0);
+    assert!(!rt
+        .instances
+        .iter()
+        .any(|instance| instance.fill == hover_fill));
+
+    rt.pointer_move(x, y);
+    rt.frame(1.0 / 60.0);
+
+    assert!(rt
+        .instances
+        .iter()
+        .any(|instance| instance.fill == hover_fill));
+    let glyph = rt
+        .elements()
+        .into_iter()
+        .find(|element| element.path.ends_with("window-controls/close/icon"))
+        .expect("Close button icon");
+    assert_eq!(glyph.text_color, Some(rune::Color::WHITE));
+}
+
+#[test]
+fn maximize_offers_restore_once_the_window_is_maximized() {
+    let mut rt = runtime(scene("drives-windows"));
+    assert_eq!(
+        label(&rt, "window-controls/maximize").as_deref(),
+        Some("Maximize")
+    );
+    rt.set_maximized(true);
+    rt.frame(1.0 / 60.0);
+    assert_eq!(
+        label(&rt, "window-controls/maximize").as_deref(),
+        Some("Restore")
+    );
+}
+
+#[test]
+fn the_windows_sidebar_starts_where_the_macos_one_does() {
+    let windows = runtime(scene("drives-windows")).find("nav-drives");
+    let mac = runtime(scene("drives")).find("nav-drives");
+    assert!(windows.is_some());
+    assert_eq!(windows, mac);
+}
+
+#[test]
+fn windows_panes_without_actions_still_have_the_window_controls() {
+    let mut ui = scene("drives-windows");
+    ui.pane = Pane::General;
+    let rt = runtime(ui);
+    for button in ["close", "maximize", "minimize"] {
+        assert!(rt.find(&format!("window-controls/{button}")).is_some());
+    }
+}
+
+#[test]
+fn the_windows_close_button_closes_the_window() {
+    let mut rt = runtime(scene("drives-windows"));
+    assert_eq!(rt.shell_request, None);
+    click(&mut rt, "window-controls/close");
+    assert_eq!(rt.shell_request, Some(rune::Shell::Close));
+}
+
+#[test]
+fn macos_keeps_its_traffic_lights_instead() {
+    let rt = runtime(scene("drives"));
+    assert!(rt.find("window-controls").is_none());
+}
+
 #[test]
 fn a_running_operation_disables_the_mount_actions() {
     let rt = runtime(scene("mounting"));
